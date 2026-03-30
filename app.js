@@ -201,16 +201,22 @@ const D1_PLAYTYPE_METRICS = [
   { source: "3PA/FGA", suffix: "three_pr", label: "3Pr", defaultVisible: false },
 ];
 const D1_TRUE_PLAYTYPE_IDS = ["iso", "pnr_bh", "post_up", "pnr_roll", "spot_up", "off_screen", "hand_off", "cut", "off_reb", "transition"];
+const D1_PLAYTYPE_FAMILY_PREFIXES = [...D1_TRUE_PLAYTYPE_IDS, "halfcourt", "creation", "shooting", "assisted_fin", "unassisted_fin", "transition", "runner", "drive"];
+const PLAYTYPE_PERCENTILE_FREQ_FLOOR = 1;
 
 const D1_SUMMARY_COLUMNS = [
-  { key: "halfcourt_freq", label: "HC Freq", defaultVisible: true },
   { key: "halfcourt_ppp", label: "HC PPP", defaultVisible: true },
   { key: "halfcourt_two_pa", label: "HC 2PA", defaultVisible: false },
   { key: "halfcourt_two_p_pct", label: "HC 2P%", defaultVisible: false },
-  { key: "transition_freq", label: "Trans Freq", defaultVisible: true },
   { key: "transition_ppp", label: "Trans PPP", defaultVisible: true },
   { key: "transition_two_fg_att", label: "Trans 2PA", defaultVisible: false },
   { key: "transition_two_fg_pct", label: "Trans 2P%", defaultVisible: false },
+];
+const D1_PLAYTYPE_FREQ_POSS_COLUMNS = [
+  { key: "halfcourt_poss", label: "HC Poss", defaultVisible: false },
+  { key: "halfcourt_freq", label: "HC Freq", defaultVisible: false },
+  { key: "transition_poss", label: "Trans Poss", defaultVisible: false },
+  { key: "transition_freq", label: "Trans Freq", defaultVisible: false },
 ];
 
 const D1_DRIVE_COLUMNS = [
@@ -311,6 +317,8 @@ const D1_ADVANCED_COLUMNS = [
   { key: "tov_pct_adv", label: "TOV%", defaultVisible: true },
   { key: "stl_pct", label: "STL%", defaultVisible: true },
   { key: "blk_pct", label: "BLK%", defaultVisible: true },
+  { key: "stl_pct_percentile", label: "STL Pctl", defaultVisible: true },
+  { key: "blk_pct_percentile", label: "BLK Pctl", defaultVisible: true },
 ];
 
 function getD1PlaytypeMetrics(playtypeId) {
@@ -402,8 +410,12 @@ function buildD1Config() {
   ];
   const playtypeGroups = [];
   const playtypeAnalysisColumns = [];
+  const playtypeAnalysisDefaultColumns = [];
 
   D1_SUMMARY_COLUMNS.forEach((item) => {
+    labels[item.key] = item.label;
+  });
+  D1_PLAYTYPE_FREQ_POSS_COLUMNS.forEach((item) => {
     labels[item.key] = item.label;
   });
   D1_SHOT_PROFILE_COLUMNS.forEach((item) => {
@@ -437,7 +449,8 @@ function buildD1Config() {
       defaultColumns,
     });
     if (D1_TRUE_PLAYTYPE_IDS.includes(playtype.id)) {
-      playtypeAnalysisColumns.push(...defaultColumns);
+      playtypeAnalysisColumns.push(...columns);
+      playtypeAnalysisDefaultColumns.push(...defaultColumns);
     }
 
     metrics.forEach((metric) => {
@@ -447,12 +460,14 @@ function buildD1Config() {
 
   const transitionGroup = getD1TransitionGroup();
   playtypeGroups.push(transitionGroup.group);
-  playtypeAnalysisColumns.push(...transitionGroup.group.defaultColumns);
+  playtypeAnalysisColumns.push(...transitionGroup.group.columns);
+  playtypeAnalysisDefaultColumns.push(...transitionGroup.group.defaultColumns);
+  playtypeAnalysisColumns.push(...D1_PLAYTYPE_FREQ_POSS_COLUMNS.map((item) => item.key));
   groups.push({
     id: "playtype_analysis",
     label: "Playtype Analysis",
     columns: [...new Set(playtypeAnalysisColumns)],
-    defaultColumns: [...new Set(playtypeAnalysisColumns)],
+    defaultColumns: [...new Set(playtypeAnalysisDefaultColumns)],
   });
   groups.push(...playtypeGroups);
   groups.push(
@@ -491,6 +506,9 @@ function buildD1Config() {
     title: "D1",
     subtitle: "",
     dataScript: "data/d1_enriched_all_seasons.js",
+    mobileDataManifestScript: "data/vendor/d1_year_manifest.js",
+    mobileDataScriptTemplate: "data/vendor/d1_year_chunks/{season}.js",
+    mobileInitialYears: 1,
     deferredExtraScripts: [
       "data/vendor/d1_frontend_data.js",
       "data/vendor/d1_drives.js",
@@ -506,7 +524,7 @@ function buildD1Config() {
     playerColumn: "player_name",
     teamColumn: "team_name",
     lockedColumns: ["rank", "season", "player_name", "team_name"],
-    searchColumns: ["player_name", "team_name", "conference", "coach", "team_search_text", "coach_search_text"],
+    searchColumns: ["player_name", "player_search_text", "team_name", "conference", "coach", "team_search_text", "coach_search_text"],
     sortBy: "min",
     sortDir: "desc",
     demoColumns,
@@ -554,8 +572,8 @@ const NBA_COMPANION_GROUPS = [
   {
     id: "advanced",
     label: "Advanced",
-    columns: ["ncaa_orb_pct", "nba_orb_pct", "ncaa_drb_pct", "nba_drb_pct", "ncaa_usg_pct", "nba_usg_pct", "ncaa_ast_pct", "nba_ast_pct", "ncaa_ast_to", "nba_ast_to", "ncaa_tov_pct", "nba_tov_pct", "ncaa_stl_pct", "nba_stl_pct", "ncaa_blk_pct", "nba_blk_pct", "ncaa_ts_pct", "nba_ts_pct", "ncaa_efg_pct", "nba_efg_pct"],
-    defaultColumns: ["ncaa_usg_pct", "nba_usg_pct", "ncaa_ast_pct", "nba_ast_pct", "ncaa_ast_to", "nba_ast_to", "ncaa_tov_pct", "nba_tov_pct", "ncaa_stl_pct", "nba_stl_pct", "ncaa_blk_pct", "nba_blk_pct", "ncaa_ts_pct", "nba_ts_pct", "ncaa_efg_pct", "nba_efg_pct"],
+    columns: ["ncaa_orb_pct", "nba_orb_pct", "ncaa_drb_pct", "nba_drb_pct", "ncaa_usg_pct", "nba_usg_pct", "ncaa_ast_pct", "nba_ast_pct", "ncaa_ast_to", "nba_ast_to", "ncaa_tov_pct", "nba_tov_pct", "ncaa_stl_pct", "nba_stl_pct", "ncaa_blk_pct", "nba_blk_pct", "ncaa_stl_pct_percentile", "nba_stl_pct_percentile", "ncaa_blk_pct_percentile", "nba_blk_pct_percentile", "ncaa_ts_pct", "nba_ts_pct", "ncaa_efg_pct", "nba_efg_pct"],
+    defaultColumns: ["ncaa_usg_pct", "nba_usg_pct", "ncaa_ast_pct", "nba_ast_pct", "ncaa_ast_to", "nba_ast_to", "ncaa_tov_pct", "nba_tov_pct", "ncaa_stl_pct", "nba_stl_pct", "ncaa_blk_pct", "nba_blk_pct", "ncaa_stl_pct_percentile", "nba_stl_pct_percentile", "ncaa_blk_pct_percentile", "nba_blk_pct_percentile", "ncaa_ts_pct", "nba_ts_pct", "ncaa_efg_pct", "nba_efg_pct"],
   },
   {
     id: "shooting",
@@ -601,6 +619,10 @@ const NBA_COMPANION_LABELS = {
   nba_stl_pct: "NBA STL%",
   ncaa_blk_pct: "NCAA BLK%",
   nba_blk_pct: "NBA BLK%",
+  ncaa_stl_pct_percentile: "NCAA STL Pctl",
+  nba_stl_pct_percentile: "NBA STL Pctl",
+  ncaa_blk_pct_percentile: "NCAA BLK Pctl",
+  nba_blk_pct_percentile: "NBA BLK Pctl",
   ncaa_ts_pct: "NCAA TS%",
   nba_ts_pct: "NBA TS%",
   ncaa_efg_pct: "NCAA eFG%",
@@ -647,6 +669,8 @@ const NBA_COMPANION_COPY_MAP = [
   ["ncaa_tov_pct", "tov_pct_adv"],
   ["ncaa_stl_pct", "stl_pct"],
   ["ncaa_blk_pct", "blk_pct"],
+  ["ncaa_stl_pct_percentile", "stl_pct_percentile"],
+  ["ncaa_blk_pct_percentile", "blk_pct_percentile"],
   ["ncaa_ts_pct", "ts_pct"],
   ["ncaa_efg_pct", "efg_pct"],
   ["ncaa_rim_pct", "rim_pct"],
@@ -681,6 +705,8 @@ const NBA_COMPANION_NBA_COPY_MAP = [
   ["nba_tov_pct", "topct"],
   ["nba_stl_pct", "stlpct"],
   ["nba_blk_pct", "blkpct"],
+  ["nba_stl_pct_percentile", "stlpct_percentile"],
+  ["nba_blk_pct_percentile", "blkpct_percentile"],
   ["nba_ts_pct", "tspct"],
   ["nba_efg_pct", "efg"],
   ["nba_rim_pct", "fgpct_rim"],
@@ -696,6 +722,39 @@ const NBA_COMPANION_NBA_COPY_MAP = [
   ["nba_three_pr", "three_pr"],
 ];
 
+const DEFENSE_RATE_PERCENTILE_COLUMNS = {
+  d1: [
+    { source: "stl_pct", percentile: "stl_pct_percentile" },
+    { source: "blk_pct", percentile: "blk_pct_percentile" },
+  ],
+  d2: [
+    { source: "stl_pct", percentile: "stl_pct_percentile" },
+    { source: "blk_pct", percentile: "blk_pct_percentile" },
+  ],
+  naia: [
+    { source: "stl_pct", percentile: "stl_pct_percentile" },
+    { source: "blk_pct", percentile: "blk_pct_percentile" },
+  ],
+  juco: [
+    { source: "stl_pct", percentile: "stl_pct_percentile" },
+    { source: "blk_pct", percentile: "blk_pct_percentile" },
+  ],
+  fiba: [
+    { source: "stl_pct", percentile: "stl_pct_percentile" },
+    { source: "blk_pct", percentile: "blk_pct_percentile" },
+  ],
+  nba: [
+    { source: "stlpct", percentile: "stlpct_percentile" },
+    { source: "blkpct", percentile: "blkpct_percentile" },
+  ],
+  nba_companion: [
+    { source: "ncaa_stl_pct", percentile: "ncaa_stl_pct_percentile" },
+    { source: "ncaa_blk_pct", percentile: "ncaa_blk_pct_percentile" },
+    { source: "nba_stl_pct", percentile: "nba_stl_pct_percentile" },
+    { source: "nba_blk_pct", percentile: "nba_blk_pct_percentile" },
+  ],
+};
+
 function buildNbaCompanionConfig() {
   const demoColumns = ["conference", "pos", "class_year", "height_in", "weight_lb", "bmi", "age", "dob", "gp", "min", "mpg", "draft_pick"];
   return {
@@ -707,7 +766,7 @@ function buildNbaCompanionConfig() {
     playerColumn: "player_name",
     teamColumn: "team_name",
     lockedColumns: ["rank", "season", "player_name", "team_name"],
-    searchColumns: ["player_name", "team_name", "conference", "coach", "team_search_text", "coach_search_text"],
+    searchColumns: ["player_name", "player_search_text", "team_name", "conference", "coach", "team_search_text", "coach_search_text"],
     sortBy: "nba_epm",
     sortDir: "desc",
     demoColumns,
@@ -763,7 +822,7 @@ const DATASETS = {
     demoFilterColumns: [],
     groups: [
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag"] },
-      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
+      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "two_pm", "two_pa", "two_p_pct", "3pm", "3pa", "3p_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "three_pa_per100"], defaultColumns: ["fg_pct", "two_p_pct", "3p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "three_pa_per100"] },
       buildLowerTierShotProfileGroup(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"] },
@@ -775,7 +834,7 @@ const DATASETS = {
       { id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C"] },
       { id: "class_year", label: "Class", column: "class_year", sort: ["Fr", "So", "Jr", "Sr", "Gr"] },
     ],
-    defaultVisible: ["rank", "season", "player", "team_name", "class_year", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "two_p_pct", "3p_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "three_pa_per100", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
+    defaultVisible: ["rank", "season", "player", "team_name", "class_year", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "two_p_pct", "3p_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "three_pa_per100", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
     labels: {
       rank: "",
       season: "Year",
@@ -834,6 +893,8 @@ const DATASETS = {
       tov_pct: "TOV%",
       stl_pct: "STL%",
       blk_pct: "BLK%",
+      stl_pct_percentile: "STL Pctl",
+      blk_pct_percentile: "BLK Pctl",
       usg_pct: "USG%",
       ast_to: "AST/TO",
       ftr: "FTr",
@@ -864,7 +925,7 @@ const DATASETS = {
     demoFilterColumns: [],
     groups: [
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag"] },
-      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
+      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "tpm", "tpa", "tp_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"] },
       buildLowerTierShotProfileGroup(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"] },
@@ -877,7 +938,7 @@ const DATASETS = {
       { id: "status_path", label: "Status", options: [{ value: "all", label: "All" }, { value: "d1", label: "D1" }, { value: "formerd1", label: "Former D1" }] },
     ]),
     minYear: 2011,
-    defaultVisible: ["rank", "season", "player_name", "team_name", "division", "age", "height_in", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
+    defaultVisible: ["rank", "season", "player_name", "team_name", "division", "age", "height_in", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
     labels: {
       rank: "",
       season: "Year",
@@ -938,6 +999,8 @@ const DATASETS = {
       ast_pct: "AST%",
       stl_pct: "STL%",
       blk_pct: "BLK%",
+      stl_pct_percentile: "STL Pctl",
+      blk_pct_percentile: "BLK Pctl",
       tov_pct: "TOV%",
       usg_pct: "USG%",
       ast_to: "AST/TO",
@@ -967,7 +1030,7 @@ const DATASETS = {
     demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "gp", "min", "mpg", "dob"],
     groups: [
       { id: "summary", label: "Summary", columns: ["adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["adjoe", "adrtg", "porpag", "dporpag"] },
-      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
+      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "tpm", "tpa", "tp_pct", "ftm", "fta", "ft_pct", "ts_pct", "efg_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr"] },
       buildLowerTierShotProfileGroup(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"] },
@@ -980,7 +1043,7 @@ const DATASETS = {
       { id: "region", label: "Region", column: "region" },
       { id: "status_path", label: "Status", options: [{ value: "all", label: "All" }, { value: "d1", label: "D1" }, { value: "formerd1", label: "Former D1" }, { value: "nba", label: "NBA" }] },
     ]),
-    defaultVisible: ["rank", "season", "player_name", "team_name", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "usg_pct", "min_per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
+    defaultVisible: ["rank", "season", "player_name", "team_name", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "usg_pct", "min_per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
     labels: {
       rank: "",
       season: "Year",
@@ -1041,6 +1104,8 @@ const DATASETS = {
       ast_pct: "AST%",
       stl_pct: "STL%",
       blk_pct: "BLK%",
+      stl_pct_percentile: "STL Pctl",
+      blk_pct_percentile: "BLK Pctl",
       tov_pct: "TOV%",
       usg_pct: "USG%",
       ast_to: "AST/TO",
@@ -1059,6 +1124,106 @@ const DATASETS = {
       d1_peak_dprpg: "D1 Peak dPRPG",
       d1_peak_bpm: "D1 Peak BPM",
       ...LOWER_TIER_SHOT_PROFILE_LABELS,
+    },
+  },
+  grassroots: {
+    id: "grassroots",
+    navLabel: "Grassroots",
+    title: "Grassroots",
+    subtitle: "EYBL + 3SSB + UAA",
+    dataScript: "data/vendor/grassroots_all_seasons.js",
+    globalName: "GRASSROOTS_ALL_CSV",
+    yearColumn: "season",
+    playerColumn: "player_name",
+    teamColumn: "team_name",
+    lockedColumns: ["rank", "season", "age_range", "circuit", "player_name", "team_name"],
+    searchColumns: ["player_name", "player_search_text", "team_name", "team_search_text", "age_range", "level", "event_name", "circuit"],
+    sortBy: "pts_pg",
+    sortDir: "desc",
+    defaultAllYears: true,
+    minuteDefault: 1,
+    demoColumns: ["pos", "class_year", "height_in", "weight_lb", "gp", "min", "mpg"],
+    demoFilterColumns: ["height_in", "weight_lb", "gp", "min", "mpg"],
+    groups: [
+      { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "pts", "pts_pg", "trb", "trb_pg", "ast", "ast_pg", "ram", "c_ram", "psp"], defaultColumns: ["gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "ram", "c_ram"] },
+      { id: "shooting", label: "Shooting", columns: ["fg_pct", "2p_pct", "tp_pct", "three_pr", "three_pr_plus_ftm_fga", "fgm", "fga", "2pm", "2pa", "tpm", "tpa", "tpm_pg", "tpa_pg", "ftm", "ftm_pg", "ftm_fga", "three_pe"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "three_pr", "three_pr_plus_ftm_fga", "fgm", "fga", "tpm", "tpa", "tpm_pg", "tpa_pg", "ftm_pg", "ftm_fga"] },
+      { id: "playmaking", label: "Playmaking", columns: ["ast", "ast_pg", "tov", "tov_pg", "usg_pct", "atr", "psp"], defaultColumns: ["ast", "ast_pg", "tov", "tov_pg", "usg_pct", "atr", "psp"] },
+      { id: "defense", label: "Defense", columns: ["trb", "trb_pg", "stl", "stl_pg", "blk", "blk_pg", "pf", "pf_pg", "blk_pf", "dsi", "stocks", "stocks_pg", "stocks_pf"], defaultColumns: ["trb", "trb_pg", "stl", "stl_pg", "blk", "blk_pg", "blk_pf", "stocks", "stocks_pg", "stocks_pf"] },
+      { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40"] },
+    ],
+    singleFilters: withSharedSingleFilters([
+      { id: "circuit", label: "Circuit", column: "circuit" },
+      { id: "age_range", label: "Age", column: "age_range", options: [{ value: "all", label: "All Ages" }, { value: "17U", label: "17U" }, { value: "16U", label: "16U" }, { value: "15U", label: "15U" }] },
+      { id: "class_year", label: "Class", column: "class_year" },
+    ]),
+    multiFilters: [
+      { id: "pos", label: "Pos", column: "pos", sort: ["PG", "G", "SG", "G/F", "F", "SF", "PF", "C"] },
+    ],
+    defaultVisible: ["rank", "season", "age_range", "circuit", "player_name", "team_name", "pos", "class_year", "height_in", "weight_lb", "gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "fg_pct", "2p_pct", "tp_pct", "three_pr", "three_pr_plus_ftm_fga", "tpm_pg", "tpa_pg", "ftm_fga", "usg_pct", "ram", "c_ram", "psp", "atr", "dsi", "blk_pf", "stocks_pf", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40"],
+    labels: {
+      rank: "",
+      season: "Year",
+      event_total_players: "Field",
+      age_range: "Age",
+      level: "Level",
+      circuit: "Circuit",
+      event_name: "Event",
+      player_name: "Player",
+      team_name: "Team",
+      pos: "Pos",
+      class_year: "Class",
+      height_in: "HT",
+      weight_lb: "WT",
+      gp: "GP",
+      min: "MIN",
+      mpg: "MIN/G",
+      pts: "PTS",
+      pts_pg: "PTS/G",
+      trb: "TRB",
+      trb_pg: "TRB/G",
+      ast: "AST",
+      ast_pg: "AST/G",
+      tov: "TOV",
+      tov_pg: "TOV/G",
+      stl: "STL",
+      stl_pg: "STL/G",
+      blk: "BLK",
+      blk_pg: "BLK/G",
+      pf: "PF",
+      pf_pg: "PF/G",
+      stocks: "Stocks",
+      stocks_pg: "Stocks/G",
+      fgm: "FGM",
+      fga: "FGA",
+      fg_pct: "FG%",
+      "2pm": "2PM",
+      "2pa": "2PA",
+      "2p_pct": "2P%",
+      tpm: "3PM",
+      tpa: "3PA",
+      tpm_pg: "3PM/G",
+      tpa_pg: "3PA/G",
+      ftm: "FTM",
+      ftm_pg: "FTM/G",
+      ftm_fga: "FTMr",
+      tp_pct: "3PT%",
+      three_pr: "3Pr",
+      three_pr_plus_ftm_fga: "3Pr+FTMr",
+      three_pe: "3PE",
+      ram: "RAM",
+      c_ram: "C-RAM",
+      psp: "PSP",
+      usg_pct: "USG%",
+      atr: "AST/TO",
+      dsi: "DSI",
+      blk_pf: "BLK/PF",
+      stocks_pf: "Stocks/PF",
+      pts_per40: "PTS/40",
+      trb_per40: "TRB/40",
+      ast_per40: "AST/40",
+      stl_per40: "STL/40",
+      blk_per40: "BLK/40",
+      stocks_per40: "Stocks/40",
     },
   },
   fiba: {
@@ -1082,7 +1247,7 @@ const DATASETS = {
     demoFilterColumns: ["height_in", "age", "dob", "gp", "min", "mpg"],
     groups: [
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "eff_pg", "plus_minus_pg"], defaultColumns: ["min", "mpg", "eff_pg", "plus_minus_pg"] },
-      { id: "advanced", label: "Advanced", columns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "rgm_per", "fic", "ppr", "nba_career_epm", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
+      { id: "advanced", label: "Advanced", columns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "rgm_per", "fic", "ppr", "nba_career_epm", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "3pm", "3pa", "tp_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"] },
       buildLowerTierShotProfileGroup(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"] },
@@ -1093,7 +1258,7 @@ const DATASETS = {
       { id: "status_path", label: "Status", options: [{ value: "all", label: "All" }, { value: "d1", label: "D1" }, { value: "nba", label: "NBA" }] },
     ]), "color_mode", "competition_position"),
     multiFilters: [{ id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C", "G", "F", "C/F", "F/C"] }],
-    defaultVisible: ["rank", "season", "player_name", "team_name", "competition_label", "pos", "min", "mpg", "eff_pg", "plus_minus_pg", "min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"],
+    defaultVisible: ["rank", "season", "player_name", "team_name", "competition_label", "pos", "min", "mpg", "eff_pg", "plus_minus_pg", "min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"],
     labels: {
       rank: "",
       season: "Year",
@@ -1161,6 +1326,8 @@ const DATASETS = {
       tov_pct: "TOV%",
       stl_pct: "STL%",
       blk_pct: "BLK%",
+      stl_pct_percentile: "STL Pctl",
+      blk_pct_percentile: "BLK Pctl",
       ...LOWER_TIER_SHOT_PROFILE_LABELS,
     },
   },
@@ -1183,11 +1350,11 @@ const DATASETS = {
     groups: [
       { id: "summary", label: "Summary", columns: ["off", "def", "tot", "ewins", "per", "porpag", "fic"] },
       { id: "shot_profile", label: "Shot Profile", columns: ["fgpct_rim", "rim_ast_pct", "fga_rim_75", "fgpct_mid", "mid_ast_pct", "fga_mid_75", "fg2pct", "two_ast_pct", "fg3pct", "three_ast_pct", "fg3a_75", "ftpct", "three_p_per100", "three_pr", "ftr"] },
-      { id: "advanced", label: "Advanced", columns: ["orbpct", "drbpct", "usg", "astpct", "ast_to", "topct", "stlpct", "blkpct", "tspct", "efg"] },
+      { id: "advanced", label: "Advanced", columns: ["orbpct", "drbpct", "usg", "astpct", "ast_to", "topct", "stlpct", "blkpct", "stlpct_percentile", "blkpct_percentile", "tspct", "efg"] },
     ],
     singleFilters: withSharedSingleFilters(),
     multiFilters: [{ id: "pos_text", label: "Pos", column: "pos_text", sort: ["PG", "SG", "SF", "PF", "C"] }],
-    defaultVisible: ["rank", "season", "player_name", "team_alias", "pos_text", "age", "gp", "mp", "off", "def", "tot", "ewins", "per", "porpag", "fic", "fgpct_rim", "fgpct_mid", "fg2pct", "fg3pct", "ftpct", "three_p_per100", "three_pr", "ftr", "usg", "orbpct", "drbpct", "astpct", "ast_to", "topct", "stlpct", "blkpct", "tspct", "efg"],
+    defaultVisible: ["rank", "season", "player_name", "team_alias", "pos_text", "age", "gp", "mp", "off", "def", "tot", "ewins", "per", "porpag", "fic", "fgpct_rim", "fgpct_mid", "fg2pct", "fg3pct", "ftpct", "three_p_per100", "three_pr", "ftr", "usg", "orbpct", "drbpct", "astpct", "ast_to", "topct", "stlpct", "blkpct", "stlpct_percentile", "blkpct_percentile", "tspct", "efg"],
     labels: {
       rank: "",
       season: "Year",
@@ -1229,6 +1396,8 @@ const DATASETS = {
       topct: "TOV%",
       stlpct: "STL%",
       blkpct: "BLK%",
+      stlpct_percentile: "STL Pctl",
+      blkpct_percentile: "BLK Pctl",
       ast_to: "AST/TO",
       rim_ast_pct: "Rim Ast%",
       mid_ast_pct: "Mid Ast%",
@@ -1332,12 +1501,19 @@ function wireGlobalEvents() {
     renderCurrentDataset();
   });
 
-  elements.selectAllYearsBtn.addEventListener("click", () => {
+  elements.selectAllYearsBtn.addEventListener("click", async () => {
     const state = getCurrentUiState();
     const dataset = getCurrentDataset();
     if (!state || !dataset) return;
-    state.years = new Set(dataset.meta.years);
-    renderCurrentDataset();
+    try {
+      const years = getAvailableYears(dataset);
+      await ensureDatasetYearsLoaded(dataset, years);
+      state.years = new Set(years);
+      renderCurrentDataset();
+    } catch (error) {
+      elements.statusPill.textContent = `${dataset.navLabel} load failed`;
+      elements.resultsSubtitle.textContent = getStringValue(error?.message || error);
+    }
   });
 
   elements.selectLatestYearBtn.addEventListener("click", () => {
@@ -1630,6 +1806,7 @@ function scheduleStatusAnnotations(datasetId) {
   const dataset = appState.datasetCache[datasetId];
   const state = appState.uiState[datasetId];
   if (!dataset || dataset._statusAnnotated || !dataset.singleFilters?.some((filter) => filter.id === "status_path")) return;
+  if (dataset.id === "d1" && isMobileLiteD1Dataset(dataset)) return;
   if (getStringValue(state?.extraSelects?.status_path) && getStringValue(state?.extraSelects?.status_path) !== "all") return;
   scheduleBackgroundTask(`status:${datasetId}`, async () => {
     if (appState.currentId !== datasetId) return;
@@ -1726,6 +1903,7 @@ function reapplyDatasetPostProcessing(rows, config) {
   applyCalculatedRatings(rows, config.id);
   rows.forEach((row) => populateImpactMetrics(row));
   applyPerNormalization(rows, config.id);
+  populateDefenseRatePercentiles(rows, config.id);
   return rows;
 }
 
@@ -1764,8 +1942,13 @@ async function ensureDatasetHydrated(datasetId) {
 
 async function ensureDatasetLoaded(datasetId, options = {}) {
   if (appState.datasetCache[datasetId]) {
+    const cached = appState.datasetCache[datasetId];
+    if (datasetId === "d1" && isMobileLiteD1Dataset(cached) && options.requireHydrated) {
+      await upgradeMobileD1Dataset(cached, options);
+      return appState.datasetCache[datasetId];
+    }
     if (options.requireHydrated) await ensureDatasetHydrated(datasetId);
-    return appState.datasetCache[datasetId];
+    return cached;
   }
 
   if (datasetId === "nba_companion") {
@@ -1779,30 +1962,53 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
   if (options.requireHydrated && supportsDeferredHydration(config)) {
     await Promise.all((config.deferredExtraScripts || []).map((src) => loadScriptOnce(src)));
   }
-  await loadScriptOnce(config.dataScript);
-  const rawPayload = window[config.globalName] ?? "";
-  const csvText = Array.isArray(rawPayload) ? rawPayload.join("\n") : String(rawPayload);
-  const rows = parseCSV(csvText);
-  let normalized = normalizeRows(rows, datasetId);
-  if (config.minYear) {
-    normalized = normalized.filter((row) => {
-      const season = Number(row[config.yearColumn]);
-      return Number.isFinite(season) ? season >= config.minYear : true;
-    });
+  let useMobileLite = datasetId === "d1" && isCompactViewport() && !options.requireHydrated && config.mobileDataScriptTemplate;
+  let rows;
+  let availableYears = [];
+  try {
+    if (useMobileLite) {
+      await loadScriptOnce(config.mobileDataManifestScript);
+      availableYears = getD1AvailableYears(config);
+      const initialYears = getD1InitialYears(config);
+      if (!initialYears.length) {
+        await loadScriptOnce(config.dataScript);
+        const rawPayload = window[config.globalName] ?? "";
+        const csvText = Array.isArray(rawPayload) ? rawPayload.join("\n") : String(rawPayload);
+        rows = parseDatasetRows(csvText, datasetId, config, options);
+        availableYears = Array.from(new Set(rows.map((row) => getStringValue(row[config.yearColumn])).filter(Boolean))).sort(compareYears);
+      } else {
+        rows = [];
+        const initialDataset = { id: datasetId, rows, _loadedYears: new Set() };
+        await loadD1RowsForYears(initialDataset, config, initialYears, options);
+        rows = initialDataset.rows;
+        availableYears = getD1AvailableYears(config);
+      }
+    } else {
+      await loadScriptOnce(config.dataScript);
+      const rawPayload = window[config.globalName] ?? "";
+      const csvText = Array.isArray(rawPayload) ? rawPayload.join("\n") : String(rawPayload);
+      rows = parseDatasetRows(csvText, datasetId, config, options);
+    }
+  } catch (error) {
+    if (!useMobileLite) throw error;
+    useMobileLite = false;
+    await loadScriptOnce(config.dataScript);
+    const rawPayload = window[config.globalName] ?? "";
+    const csvText = Array.isArray(rawPayload) ? rawPayload.join("\n") : String(rawPayload);
+    rows = parseDatasetRows(csvText, datasetId, config, options);
   }
   const deferredHydrationMode = supportsDeferredHydration(config) && !options.requireHydrated
     ? (config.deferredHydrationMode || "full")
     : "";
   const deferHydration = Boolean(deferredHydrationMode);
-  if (!config.precomputed && deferredHydrationMode !== "full") {
-    enrichDatasetRows(normalized, datasetId);
-    normalized.forEach((row) => {
-      normalizePercentLikeColumns(row, datasetId);
-    });
+  rows = finalizeDatasetRows(rows, config);
+  const meta = buildDatasetMeta(rows, config);
+  const dataset = { ...config, rows, meta, _hydrated: !deferHydration, _hydrationPending: deferHydration };
+  dataset._loadedYears = new Set(meta.years);
+  if (datasetId === "d1" && useMobileLite) {
+    dataset._mobileLite = true;
+    dataset.availableYears = availableYears.length ? availableYears : meta.years;
   }
-  normalized = reapplyDatasetPostProcessing(normalized, config);
-  const meta = buildDatasetMeta(normalized, config);
-  const dataset = { ...config, rows: normalized, meta, _hydrated: !deferHydration, _hydrationPending: deferHydration };
   appState.datasetCache[datasetId] = dataset;
   if (options.requireHydrated) {
     await ensureDatasetHydrated(datasetId);
@@ -1819,7 +2025,7 @@ async function ensureNbaCompanionDataset() {
   }
 
   const config = DATASETS.nba_companion;
-  const [d1Dataset, nbaDataset] = await Promise.all([ensureDatasetLoaded("d1"), ensureDatasetLoaded("nba")]);
+  const [d1Dataset, nbaDataset] = await Promise.all([ensureDatasetLoaded("d1", { requireHydrated: true }), ensureDatasetLoaded("nba")]);
   const graph = buildStatusGraph([d1Dataset, nbaDataset]);
   const rows = buildNbaCompanionRows(d1Dataset, nbaDataset, graph);
   const meta = buildDatasetMeta(rows, config);
@@ -1836,12 +2042,10 @@ function buildNbaCompanionRows(d1Dataset, nbaDataset, graph) {
   nbaGroups.forEach((group) => {
     nbaCareerByNodeId.set(group.nodeId, aggregateCareerRows(nbaDataset, group.rows));
   });
+  const nbaLookup = buildStatusLookupIndex(nbaGroups);
+  populateDefenseRatePercentiles(Array.from(nbaCareerByNodeId.values()), "nba");
   d1Groups.forEach((group) => {
-    const reachableNbaGroups = getReachableStatusGroups(group, graph, "nba", "forward");
-    const bestCareer = reachableNbaGroups
-      .map((targetGroup) => nbaCareerByNodeId.get(targetGroup.nodeId))
-      .filter(Boolean)
-      .sort((left, right) => companionNbaCareerScore(right) - companionNbaCareerScore(left))[0];
+    const bestCareer = selectBestNbaCareerCandidate(group, nbaGroups, nbaCareerByNodeId, graph, nbaLookup);
     if (bestCareer) nbaCareerByD1NodeId.set(group.nodeId, bestCareer);
   });
 
@@ -1904,6 +2108,140 @@ function loadScriptOnce(src) {
   return promise;
 }
 
+function isCompactViewport() {
+  return Boolean(window.matchMedia && window.matchMedia("(max-width: 860px)").matches);
+}
+
+function getAvailableYears(dataset) {
+  if (Array.isArray(dataset?.availableYears) && dataset.availableYears.length) return dataset.availableYears;
+  if (Array.isArray(dataset?.meta?.years) && dataset.meta.years.length) return dataset.meta.years;
+  return [];
+}
+
+function getD1Manifest() {
+  return window.D1_YEAR_MANIFEST || null;
+}
+
+function getD1AvailableYears(config) {
+  const manifestYears = getD1Manifest()?.years;
+  if (Array.isArray(manifestYears) && manifestYears.length) return manifestYears;
+  return Array.isArray(config?.availableYears) ? config.availableYears : [];
+}
+
+function getD1InitialYears(config) {
+  const years = getD1AvailableYears(config);
+  if (!years.length) return [];
+  const count = Math.max(1, Number(config?.mobileInitialYears) || 1);
+  return years.slice(-count);
+}
+
+function getD1YearChunkPath(config, season) {
+  if (!config?.mobileDataScriptTemplate) return "";
+  return config.mobileDataScriptTemplate.replace("{season}", sanitizeDeferredSeasonKey(season));
+}
+
+function getLoadedYearSet(dataset) {
+  if (!dataset._loadedYears) dataset._loadedYears = new Set();
+  return dataset._loadedYears;
+}
+
+function parseDatasetRows(csvText, datasetId, config, options = {}) {
+  const rows = parseCSV(csvText);
+  let normalized = normalizeRows(rows, datasetId);
+  if (config.minYear) {
+    normalized = normalized.filter((row) => {
+      const season = Number(row[config.yearColumn]);
+      return Number.isFinite(season) ? season >= config.minYear : true;
+    });
+  }
+  const deferredHydrationMode = supportsDeferredHydration(config) && !options.requireHydrated
+    ? (config.deferredHydrationMode || "full")
+    : "";
+  if (!config.precomputed && deferredHydrationMode !== "full") {
+    enrichDatasetRows(normalized, datasetId);
+    normalized.forEach((row) => normalizePercentLikeColumns(row, datasetId));
+  }
+  return normalized;
+}
+
+function finalizeDatasetRows(rows, config) {
+  return reapplyDatasetPostProcessing(rows, config);
+}
+
+function isMobileLiteD1Dataset(dataset) {
+  return Boolean(dataset?.id === "d1" && dataset?._mobileLite);
+}
+
+async function loadD1RowsForYears(dataset, config, years, options = {}) {
+  const targetYears = Array.from(new Set((years || []).map((season) => getStringValue(season).trim()).filter(Boolean)));
+  if (!targetYears.length) return dataset;
+  if (!dataset._d1RowLoads) dataset._d1RowLoads = new Map();
+  if (!dataset._loadedYears) dataset._loadedYears = new Set();
+
+  const rowsToAppend = [];
+  for (const season of targetYears) {
+    if (dataset._loadedYears.has(season)) continue;
+    if (!dataset._d1RowLoads.has(season)) {
+      const promise = (async () => {
+        const src = getD1YearChunkPath(config, season);
+        if (!src) throw new Error(`Missing D1 chunk for ${season}`);
+        await loadScriptOnce(src);
+        const chunkMap = window.D1_YEAR_CSV_CHUNKS || {};
+        const csvText = chunkMap[season];
+        if (!csvText) throw new Error(`Missing D1 rows for ${season}`);
+        return parseDatasetRows(csvText, dataset.id, config, options);
+      })();
+      dataset._d1RowLoads.set(season, promise);
+    }
+    const rows = await dataset._d1RowLoads.get(season);
+    rowsToAppend.push(...rows);
+    dataset._loadedYears.add(season);
+    dataset._d1RowLoads.delete(season);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  }
+
+  if (!rowsToAppend.length) return dataset;
+  const mergedRows = dataset.rows.concat(rowsToAppend);
+  dataset.rows = finalizeDatasetRows(mergedRows, config);
+  dataset.meta = buildDatasetMeta(dataset.rows, config);
+  invalidateDatasetDerivedCaches(dataset.id);
+  return dataset;
+}
+
+async function upgradeMobileD1Dataset(dataset, options = {}) {
+  if (!dataset || dataset.id !== "d1" || !dataset._mobileLite) return dataset;
+  const config = DATASETS.d1;
+  if (config.extraScripts?.length) {
+    await Promise.all(config.extraScripts.map((src) => loadScriptOnce(src)));
+  }
+  if (options.requireHydrated && supportsDeferredHydration(config)) {
+    await Promise.all((config.deferredExtraScripts || []).map((src) => loadScriptOnce(src)));
+  }
+  await loadScriptOnce(config.dataScript);
+  const rawPayload = window[config.globalName] ?? "";
+  const csvText = Array.isArray(rawPayload) ? rawPayload.join("\n") : String(rawPayload);
+  const rows = finalizeDatasetRows(parseDatasetRows(csvText, dataset.id, config, options), config);
+  dataset.rows = rows;
+  dataset.meta = buildDatasetMeta(rows, config);
+  dataset.availableYears = getD1AvailableYears(config);
+  dataset._loadedYears = new Set(dataset.meta.years);
+  dataset._mobileLite = false;
+  dataset._hydrated = Boolean(!supportsDeferredHydration(config) || options.requireHydrated);
+  dataset._hydrationPending = supportsDeferredHydration(config) && !options.requireHydrated;
+  invalidateDatasetDerivedCaches(dataset.id);
+  return dataset;
+}
+
+async function ensureDatasetYearsLoaded(dataset, years, options = {}) {
+  if (!dataset || dataset.id !== "d1" || !isMobileLiteD1Dataset(dataset)) return dataset;
+  const targetYears = Array.from(new Set((years || []).map((season) => getStringValue(season).trim()).filter(Boolean)));
+  const missingYears = targetYears.filter((season) => !getLoadedYearSet(dataset).has(season));
+  if (!missingYears.length) return dataset;
+  elements.statusPill.textContent = `Loading ${dataset.navLabel} ${missingYears.join(" / ")}`;
+  await loadD1RowsForYears(dataset, DATASETS.d1, missingYears, options);
+  return dataset;
+}
+
 function enrichDatasetRows(rows, datasetId) {
   if (datasetId === "d1") enrichD1Rows(rows);
   if (datasetId === "naia") enrichNaiaRows(rows);
@@ -1922,7 +2260,9 @@ async function ensureStatusAnnotations(datasetId) {
   }
 
   const promise = (async () => {
-    const source = appState.datasetCache[datasetId] || await ensureDatasetLoaded(datasetId);
+    const source = datasetId === "d1" && isMobileLiteD1Dataset(appState.datasetCache[datasetId])
+      ? await ensureDatasetLoaded(datasetId, { requireHydrated: true })
+      : (appState.datasetCache[datasetId] || await ensureDatasetLoaded(datasetId, datasetId === "d1" ? { requireHydrated: true } : {}));
     const precomputed = await loadPrecomputedStatusAnnotations();
     if (applyPrecomputedStatusAnnotations(source, precomputed)) {
       source.meta = buildDatasetMeta(source.rows, source);
@@ -1931,7 +2271,7 @@ async function ensureStatusAnnotations(datasetId) {
     const requiredIds = datasetId === "d1"
       ? ["d1", "d2", "naia", "juco", "nba"]
       : [datasetId, "d1", "nba"];
-    const datasets = await Promise.all(requiredIds.map((id) => ensureDatasetLoaded(id)));
+    const datasets = await Promise.all(requiredIds.map((id) => ensureDatasetLoaded(id, id === "d1" ? { requireHydrated: true } : {})));
     const graph = buildStatusGraph(datasets);
     const fallbackSource = datasets.find((dataset) => dataset.id === datasetId);
     annotateStatusFlags(fallbackSource, graph);
@@ -2066,13 +2406,18 @@ function getStatusGroups(dataset) {
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key).push(row);
   });
-  dataset._statusGroups = mergeCareerRowGroups(dataset, Array.from(grouped.values())).map((rows, index) => ({
-    ...buildCareerGroupMeta(dataset, rows),
-    datasetId: dataset.id,
-    nodeId: `${dataset.id}:${index}`,
-    nameKey: normalizeNameKey(getPreferredStatusName(rows)),
-    nameKeys: buildStatusNameKeys(getPreferredStatusName(rows)),
-  }));
+  dataset._statusGroups = mergeCareerRowGroups(dataset, Array.from(grouped.values())).map((rows, index) => {
+    const meta = buildCareerGroupMeta(dataset, rows);
+    const preferredName = getPreferredStatusName(rows);
+    return {
+      ...meta,
+      datasetId: dataset.id,
+      nodeId: `${dataset.id}:${index}`,
+      nameKey: normalizeNameKey(preferredName),
+      nameKeys: buildStatusNameKeys(preferredName),
+      identityKeys: buildStatusIdentityKeys(meta, rows),
+    };
+  });
   return dataset._statusGroups;
 }
 
@@ -2098,7 +2443,8 @@ function buildStatusGraph(datasets) {
   (datasets || []).forEach((dataset) => {
     getStatusGroups(dataset).forEach((group) => {
       nodes.set(group.nodeId, group);
-      (group.nameKeys || [group.nameKey]).forEach((nameKey) => {
+      const bucketKeys = new Set([...(group.nameKeys || [group.nameKey]), ...(group.identityKeys || [])]);
+      bucketKeys.forEach((nameKey) => {
         if (!nameKey) return;
         if (!nameBuckets.has(nameKey)) nameBuckets.set(nameKey, []);
         nameBuckets.get(nameKey).push(group);
@@ -2335,6 +2681,12 @@ function getReachableStatusGroups(sourceGroup, graph, targetDatasetId, direction
 function annotateLinkedStatusMetrics(sourceDataset, graph) {
   if (!sourceDataset?.rows?.length || sourceDataset._linkedStatusMetricsAnnotated) return;
   const nbaDataset = appState.datasetCache?.nba;
+  const nbaGroups = nbaDataset ? getStatusGroups(nbaDataset) : [];
+  const nbaCareerByNodeId = new Map();
+  nbaGroups.forEach((group) => {
+    nbaCareerByNodeId.set(group.nodeId, aggregateCareerRows(nbaDataset, group.rows || []));
+  });
+  const nbaLookup = nbaDataset ? buildStatusLookupIndex(nbaGroups) : null;
   const sourceGroups = getStatusGroups(sourceDataset);
   sourceGroups.forEach((group) => {
     const manualD2NbaOverride = getManualD2NbaOverrideForGroup(group);
@@ -2344,10 +2696,7 @@ function annotateLinkedStatusMetrics(sourceDataset, graph) {
     const d1PeakDprpg = d1Rows.map((row) => row.dporpag).filter(Number.isFinite);
     const d1PeakBpm = d1Rows.map((row) => row.bpm).filter(Number.isFinite);
     const linkedNbaCareer = nbaDataset
-      ? getReachableStatusGroups(group, graph, "nba", "forward")
-        .map((targetGroup) => aggregateCareerRows(nbaDataset, targetGroup.rows || []))
-        .filter(Boolean)
-        .sort((left, right) => companionNbaCareerScore(right) - companionNbaCareerScore(left))[0]
+      ? selectBestNbaCareerCandidate(group, nbaGroups, nbaCareerByNodeId, graph, nbaLookup)
       : null;
     const nbaCareer = linkedNbaCareer || findManualNbaCareer(manualD2NbaOverride, nbaDataset);
     group.rows.forEach((row) => {
@@ -2368,17 +2717,29 @@ function annotateLinkedStatusMetrics(sourceDataset, graph) {
 
 function statusGroupsMatch(left, right) {
   if (!left || !right || left.datasetId === right.datasetId) return false;
-  const leftKeys = new Set(left.nameKeys || [left.nameKey]);
-  const sharedKey = (right.nameKeys || [right.nameKey]).find((key) => leftKeys.has(key));
+  const leftKeys = new Set([...(left.nameKeys || [left.nameKey]), ...(left.identityKeys || [])]);
+  const sharedKey = [...(right.nameKeys || [right.nameKey]), ...(right.identityKeys || [])].find((key) => leftKeys.has(key));
   if (!sharedKey) return false;
   if (left.dobs.length && right.dobs.length && !left.dobs.some((dob) => right.dobs.includes(dob))) return false;
+  if (left.draftPicks.length && right.draftPicks.length && !left.draftPicks.some((pick) => right.draftPicks.includes(pick))) return false;
+  if (left.rookieYears.length && right.rookieYears.length && !left.rookieYears.some((year) => right.rookieYears.includes(year))) return false;
   if (left.heights.length && right.heights.length) {
     const tolerance = statusHeightTolerance(left.datasetId, right.datasetId);
     const compatibleHeight = left.heights.some((height) => right.heights.some((other) => Math.abs(height - other) <= tolerance));
     if (!compatibleHeight) return false;
   }
   const sameStrictName = left.nameKey && right.nameKey && left.nameKey === right.nameKey;
-  const hasIdentityAnchor = left.dobs.length || right.dobs.length || left.heights.length || right.heights.length;
+  const hasIdentityAnchor = /^id\|/.test(sharedKey)
+    || /^dob\|/.test(sharedKey)
+    || /^lastdob\|/.test(sharedKey)
+    || /^dobheight\|/.test(sharedKey)
+    || /^dobdraft\|/.test(sharedKey)
+    || /^dobrookie\|/.test(sharedKey)
+    || /^draftheight\|/.test(sharedKey)
+    || /^rookieheight\|/.test(sharedKey)
+    || /^draftrookie\|/.test(sharedKey)
+    || /^lastdraft\|/.test(sharedKey)
+    || /^lastrookie\|/.test(sharedKey);
   if (!sameStrictName && !hasIdentityAnchor) return false;
   return true;
 }
@@ -2402,6 +2763,208 @@ function buildStatusNameKeys(value) {
     keys.add([tokens[0], tokens[1], tokens[tokens.length - 1]].join(" "));
   }
   return Array.from(keys).filter(Boolean);
+}
+
+function buildStatusIdentityKeys(meta, rows) {
+  const keys = new Set();
+  const preferredName = normalizeNameKey(getPreferredStatusName(rows));
+  const lastName = getNameLastToken(preferredName);
+  const heights = Array.from(new Set((meta?.heights || [])
+    .map((height) => Math.round(Number(height)))
+    .filter((height) => Number.isFinite(height))));
+  const draftPicks = Array.from(new Set((meta?.draftPicks || [])
+    .map((pick) => Math.round(Number(pick)))
+    .filter((pick) => Number.isFinite(pick))));
+  const rookieYears = Array.from(new Set((meta?.rookieYears || [])
+    .map((year) => Math.round(Number(year)))
+    .filter((year) => Number.isFinite(year))));
+
+  (meta?.explicitIds || []).forEach((id) => {
+    const key = normalizeKey(id);
+    if (key) keys.add(`id|${key}`);
+  });
+
+  (meta?.dobs || []).forEach((dob) => {
+    const dobKey = getStringValue(dob).trim();
+    if (!dobKey) return;
+    keys.add(`dob|${dobKey}`);
+    if (lastName) keys.add(`lastdob|${lastName}|${dobKey}`);
+    heights.forEach((height) => keys.add(`dobheight|${dobKey}|${height}`));
+    draftPicks.forEach((pick) => keys.add(`dobdraft|${dobKey}|${pick}`));
+    rookieYears.forEach((year) => keys.add(`dobrookie|${dobKey}|${year}`));
+  });
+
+  heights.forEach((height) => {
+    if (lastName) keys.add(`lastheight|${lastName}|${height}`);
+    draftPicks.forEach((pick) => keys.add(`draftheight|${pick}|${height}`));
+    rookieYears.forEach((year) => keys.add(`rookieheight|${year}|${height}`));
+  });
+
+  draftPicks.forEach((pick) => {
+    if (lastName) keys.add(`lastdraft|${lastName}|${pick}`);
+    rookieYears.forEach((year) => keys.add(`draftrookie|${pick}|${year}`));
+  });
+
+  rookieYears.forEach((year) => {
+    if (lastName) keys.add(`lastrookie|${lastName}|${year}`);
+  });
+
+  return Array.from(keys).filter(Boolean);
+}
+
+function buildStatusLookupIndex(groups) {
+  const index = {
+    byNameKey: new Map(),
+    byIdentityKey: new Map(),
+    byDob: new Map(),
+    byDraftPick: new Map(),
+    byRookieYear: new Map(),
+    byLastName: new Map(),
+  };
+
+  (groups || []).forEach((group) => {
+    addStatusLookupEntry(index.byNameKey, group.nameKeys || [group.nameKey], group);
+    addStatusLookupEntry(index.byIdentityKey, group.identityKeys || [], group);
+    addStatusLookupEntry(index.byDob, group.dobs || [], group);
+    addStatusLookupEntry(index.byDraftPick, group.draftPicks || [], group);
+    addStatusLookupEntry(index.byRookieYear, group.rookieYears || [], group);
+    const lastName = getNameLastToken(getPreferredStatusName(group.rows));
+    if (lastName) addStatusLookupEntry(index.byLastName, [lastName], group);
+  });
+
+  return index;
+}
+
+function addStatusLookupEntry(map, keys, group) {
+  (keys || []).forEach((key) => {
+    const normalized = getStringValue(key).trim();
+    if (!normalized) return;
+    if (!map.has(normalized)) map.set(normalized, new Map());
+    map.get(normalized).set(group.nodeId, group);
+  });
+}
+
+function collectStatusLookupGroups(index, keys) {
+  const groups = new Map();
+  (keys || []).forEach((key) => {
+    const normalized = getStringValue(key).trim();
+    if (!normalized) return;
+    const bucket = index?.get(normalized);
+    if (!bucket) return;
+    bucket.forEach((group, nodeId) => {
+      if (!groups.has(nodeId)) groups.set(nodeId, group);
+    });
+  });
+  return Array.from(groups.values());
+}
+
+function getMinimumNumericGap(leftValues, rightValues) {
+  if (!leftValues?.length || !rightValues?.length) return Number.NaN;
+  let best = Number.POSITIVE_INFINITY;
+  leftValues.forEach((left) => {
+    rightValues.forEach((right) => {
+      const gap = Math.abs(left - right);
+      if (gap < best) best = gap;
+    });
+  });
+  return Number.isFinite(best) && best !== Number.POSITIVE_INFINITY ? best : Number.NaN;
+}
+
+function findSharedValue(leftValues, rightValues) {
+  if (!leftValues?.length || !rightValues?.length) return null;
+  return leftValues.find((value) => rightValues.includes(value)) ?? null;
+}
+
+function scoreLinkedNbaCareerCandidate(sourceGroup, targetGroup, targetCareer, options = {}) {
+  if (!sourceGroup || !targetGroup || targetGroup.datasetId !== "nba") return Number.NEGATIVE_INFINITY;
+
+  const sourceName = normalizeNameKey(getPreferredStatusName(sourceGroup.rows));
+  const targetName = normalizeNameKey(getPreferredStatusName(targetGroup.rows));
+  const sourceLooseName = normalizeLooseNameKey(getPreferredStatusName(sourceGroup.rows));
+  const targetLooseName = normalizeLooseNameKey(getPreferredStatusName(targetGroup.rows));
+  const sourceLast = getNameLastToken(sourceName);
+  const targetLast = getNameLastToken(targetName);
+  const sourceNames = new Set([...(sourceGroup.nameKeys || [sourceGroup.nameKey]), sourceName].filter(Boolean));
+  const targetNames = new Set([...(targetGroup.nameKeys || [targetGroup.nameKey]), targetName].filter(Boolean));
+  const sharedNameKey = [...targetNames].find((key) => sourceNames.has(key));
+  const sharedStrictName = sourceName && targetName && sourceName === targetName;
+  const sharedLooseName = sourceLooseName && targetLooseName && sourceLooseName === targetLooseName;
+
+  const sharedDob = findSharedValue(sourceGroup.dobs, targetGroup.dobs);
+  const sharedDraftPick = findSharedValue(sourceGroup.draftPicks, targetGroup.draftPicks);
+  const sharedRookieYear = findSharedValue(sourceGroup.rookieYears, targetGroup.rookieYears);
+  const heightGap = getMinimumNumericGap(sourceGroup.heights, targetGroup.heights);
+
+  if (sourceGroup.dobs.length && targetGroup.dobs.length && !sharedDob) return Number.NEGATIVE_INFINITY;
+  if (sourceGroup.draftPicks.length && targetGroup.draftPicks.length && !sharedDraftPick) return Number.NEGATIVE_INFINITY;
+  if (sourceGroup.rookieYears.length && targetGroup.rookieYears.length && !sharedRookieYear) return Number.NEGATIVE_INFINITY;
+  if (Number.isFinite(heightGap) && heightGap > statusHeightTolerance(sourceGroup.datasetId, targetGroup.datasetId)) return Number.NEGATIVE_INFINITY;
+
+  let score = 0;
+  if (sharedStrictName) score += 240;
+  else if (sharedLooseName) score += 200;
+  else if (sharedNameKey && sharedNameKey !== sourceLast && sharedNameKey !== targetLast) score += 150;
+
+  if (sharedDob) score += 260;
+  if (sharedDraftPick) score += 220;
+  if (sharedRookieYear) score += 180;
+
+  const sourceYear = Number.isFinite(sourceGroup.maxYear) ? sourceGroup.maxYear : firstFinite(...(sourceGroup.years || []), Number.NaN);
+  const targetRookieYear = Number.isFinite(targetGroup.minYear) ? targetGroup.minYear : firstFinite(...(targetGroup.rookieYears || []), Number.NaN);
+  if (Number.isFinite(sourceYear) && Number.isFinite(targetRookieYear)) {
+    const gap = Math.abs(targetRookieYear - sourceYear);
+    score += Math.max(0, 120 - (gap * 35));
+  }
+
+  if (Number.isFinite(heightGap)) score += Math.max(0, 90 - (heightGap * 20));
+  if (options.reachable) score += 35;
+  score += Math.min(40, companionNbaCareerScore(targetCareer) / 50);
+  return score;
+}
+
+function selectBestNbaCareerCandidate(sourceGroup, nbaGroups, nbaCareerByNodeId, graph, lookup, options = {}) {
+  const candidates = new Map();
+  const addCandidate = (group, reachable = false) => {
+    if (!group || group.datasetId !== "nba") return;
+    const current = candidates.get(group.nodeId);
+    if (current) {
+      current.reachable = current.reachable || reachable;
+      return;
+    }
+    candidates.set(group.nodeId, { group, reachable });
+  };
+
+  const sourceYear = Number.isFinite(sourceGroup?.maxYear) ? sourceGroup.maxYear : firstFinite(...(sourceGroup?.years || []), Number.NaN);
+  const yearKeys = Number.isFinite(sourceYear)
+    ? [sourceYear - 1, sourceYear, sourceYear + 1]
+    : [];
+
+  collectStatusLookupGroups(lookup?.byNameKey, sourceGroup?.nameKeys || [sourceGroup?.nameKey]).forEach((group) => addCandidate(group));
+  collectStatusLookupGroups(lookup?.byIdentityKey, sourceGroup?.identityKeys || []).forEach((group) => addCandidate(group));
+  collectStatusLookupGroups(lookup?.byDob, sourceGroup?.dobs || []).forEach((group) => addCandidate(group));
+  collectStatusLookupGroups(lookup?.byDraftPick, sourceGroup?.draftPicks || []).forEach((group) => addCandidate(group));
+  collectStatusLookupGroups(lookup?.byRookieYear, yearKeys).forEach((group) => addCandidate(group));
+  const lastName = getNameLastToken(getPreferredStatusName(sourceGroup?.rows || []));
+  if (!candidates.size && lastName) collectStatusLookupGroups(lookup?.byLastName, [lastName]).forEach((group) => addCandidate(group));
+
+  getReachableStatusGroups(sourceGroup, graph, "nba", "forward").forEach((group) => addCandidate(group, true));
+  (options.candidateGroups || []).forEach((group) => addCandidate(group));
+
+  let best = null;
+  let secondBest = Number.NEGATIVE_INFINITY;
+  candidates.forEach(({ group, reachable }) => {
+    const career = nbaCareerByNodeId?.get(group.nodeId);
+    if (!career) return;
+    const score = scoreLinkedNbaCareerCandidate(sourceGroup, group, career, { reachable });
+    if (score > secondBest) secondBest = score;
+    if (!best || score > best.score) {
+      best = { group, career, score, reachable };
+    }
+  });
+
+  if (!best || best.score < 120) return null;
+  if (secondBest > Number.NEGATIVE_INFINITY && (best.score - secondBest) < 20 && !best.reachable) return null;
+  return best.career;
 }
 
 function getStatusTransitionPairs(sourceGroup, targetGroup) {
@@ -2484,6 +3047,12 @@ function statusRowsCompatible(sourceRow, targetRow, sourceDatasetId = "", target
   const sourceDob = getStringValue(sourceRow?.dob).trim();
   const targetDob = getStringValue(targetRow?.dob).trim();
   if (sourceDob && targetDob && sourceDob !== targetDob) return false;
+  const sourceDraftPick = sourceRow?._draftPickBlank ? Number.NaN : Number(sourceRow?.draft_pick);
+  const targetDraftPick = targetRow?._draftPickBlank ? Number.NaN : Number(targetRow?.draft_pick);
+  if (Number.isFinite(sourceDraftPick) && Number.isFinite(targetDraftPick) && sourceDraftPick !== targetDraftPick) return false;
+  const sourceRookieYear = Number(sourceRow?.rookie_year);
+  const targetRookieYear = Number(targetRow?.rookie_year);
+  if (Number.isFinite(sourceRookieYear) && Number.isFinite(targetRookieYear) && sourceRookieYear !== targetRookieYear) return false;
   const sourceHeight = firstFinite(sourceRow?.height_in, sourceRow?.inches, Number.NaN);
   const targetHeight = firstFinite(targetRow?.height_in, targetRow?.inches, Number.NaN);
   if (Number.isFinite(sourceHeight) && Number.isFinite(targetHeight)) {
@@ -2540,6 +3109,10 @@ function enrichD1Rows(rows) {
     player: values[0],
     team: values[1],
     poss: Number(values[4]),
+    draftPickHint: Number.isFinite(Number(values[6])) && Number(values[6]) > 0 ? Number(values[6]) : Number.NaN,
+    classYearHint: values[7],
+    heightHint: parseHeightToInches(values[8]),
+    isRawCandidate: true,
     values,
   })));
   const advIndex = Object.fromEntries(advHeaders.map((header, index) => [header, index]));
@@ -2682,6 +3255,7 @@ function enrichD1Rows(rows) {
     if (coachName) row.coach = coachName;
     refreshDerivedBiography(row);
   });
+  repairD1SplitAliasRows(rows);
   resolveD1SharedNameAssignments(rows);
 }
 
@@ -3040,9 +3614,34 @@ function buildD1CandidateMap(entries) {
     const season = getStringValue(normalizeSeasonValue(entry.season));
     const name = normalizeNameKey(entry.player);
     if (!season || !name) return;
-    const key = `${season}|${name}`;
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(entry);
+    const looseName = normalizeLooseNameKey(entry.player);
+    const lastName = getNameLastToken(entry.player);
+    entry.nameKey = name;
+    entry.looseNameKey = looseName;
+    entry.lastNameKey = lastName;
+    if (entry.isRawCandidate) {
+      const draftPick = Number(entry.draftPickHint);
+      entry.draftPickHint = Number.isFinite(draftPick) ? draftPick : Number.NaN;
+      entry.classYearHint = normalizeClassValue(entry.classYearHint);
+      const height = Number(entry.heightHint);
+      entry.heightHint = Number.isFinite(height) ? height : Number.NaN;
+    }
+    const keys = new Set([name]);
+    if (looseName) keys.add(looseName);
+    if (lastName) keys.add(lastName);
+    if (entry.isRawCandidate) {
+      const draftPick = Number(entry.draftPickHint);
+      if (Number.isFinite(draftPick)) {
+        const pickKey = `pick:${Math.round(draftPick)}`;
+        keys.add(`${name}|${pickKey}`);
+        if (lastName) keys.add(`${lastName}|${pickKey}`);
+      }
+    }
+    keys.forEach((key) => {
+      const seasonKey = `${season}|${key}`;
+      if (!map.has(seasonKey)) map.set(seasonKey, []);
+      map.get(seasonKey).push(entry);
+    });
   });
   return map;
 }
@@ -3050,7 +3649,11 @@ function buildD1CandidateMap(entries) {
 function collectD1Candidates(index, seasonValue, playerName) {
   const season = getStringValue(normalizeSeasonValue(seasonValue));
   if (!season) return [];
-  const nameKeys = Array.from(new Set([normalizeNameKey(playerName), normalizeLooseNameKey(playerName)].filter(Boolean)));
+  const nameKeys = Array.from(new Set([
+    normalizeNameKey(playerName),
+    normalizeLooseNameKey(playerName),
+    getNameLastToken(playerName),
+  ].filter(Boolean)));
   const unique = new Map();
   nameKeys.forEach((nameKey) => {
     (index.get(`${season}|${nameKey}`) || []).forEach((entry) => {
@@ -3061,13 +3664,32 @@ function collectD1Candidates(index, seasonValue, playerName) {
   return Array.from(unique.values());
 }
 
-function scoreD1CandidateMatch(candidate, teamVariants, possTarget) {
+function scoreD1CandidateMatch(candidate, row, teamVariants, possTarget) {
   const candidateTeam = normalizeKey(candidate?.team);
   const teamScore = Math.max(...teamVariants.map((team) => teamMatchScore(team, candidateTeam)), 0);
   const possScore = Number.isFinite(possTarget) && Number.isFinite(candidate?.poss) ? Math.max(0, 12 - Math.abs(possTarget - candidate.poss) / 20) : 0;
+  const rowNameKey = normalizeNameKey(row?.player_name || row?.player);
+  const rowLooseNameKey = normalizeLooseNameKey(row?.player_name || row?.player);
+  const rowLastNameKey = getNameLastToken(row?.player_name || row?.player);
+  const nameScore = candidate?.nameKey && rowNameKey === candidate.nameKey
+    ? 18
+    : (candidate?.looseNameKey && rowLooseNameKey === candidate.looseNameKey ? 10 : (candidate?.lastNameKey && rowLastNameKey === candidate.lastNameKey ? 6 : 0));
+  const rowDraftPick = row?._draftPickBlank ? Number.NaN : Number(row?.draft_pick);
+  const candidateDraftPick = Number(candidate?.draftPickHint);
+  const draftScore = Number.isFinite(rowDraftPick) && Number.isFinite(candidateDraftPick)
+    ? Math.max(0, 18 - (Math.abs(rowDraftPick - candidateDraftPick) * 6))
+    : 0;
+  const rowClass = normalizeClassValue(row?.class_year);
+  const candidateClass = normalizeClassValue(candidate?.classYearHint);
+  const classScore = rowClass && candidateClass && rowClass === candidateClass ? 6 : 0;
+  const rowHeight = firstFinite(row?.height_in, row?.inches, Number.NaN);
+  const candidateHeight = Number(candidate?.heightHint);
+  const heightScore = Number.isFinite(rowHeight) && Number.isFinite(candidateHeight)
+    ? Math.max(0, 10 - (Math.abs(rowHeight - candidateHeight) * 2))
+    : 0;
   return {
     candidate,
-    score: (teamScore * 2) + possScore,
+    score: (teamScore * 2) + possScore + nameScore + draftScore + classScore + heightScore,
     teamScore,
     possScore,
   };
@@ -3077,15 +3699,17 @@ function isUsableD1CandidateScore(match) {
   return Boolean(match?.candidate) && match.score >= 50 && match.teamScore >= 50;
 }
 
-function findBestD1Candidate(index, seasonValue, playerName, teamVariants, possTarget) {
-  const candidates = collectD1Candidates(index, seasonValue, playerName);
+function findBestD1Candidate(index, row) {
+  const candidates = collectD1Candidates(index, row?.season, row?.player_name);
   if (!candidates.length) return null;
+  const teamVariants = buildTeamVariants(row?.team_full || row?.team_name);
+  const possTarget = firstFinite(row?.total_poss, row?.min, Number.NaN);
   let best = null;
   let bestScore = -Infinity;
   let bestTeamScore = -Infinity;
   let secondBestScore = -Infinity;
   candidates.forEach((candidate) => {
-    const { score, teamScore } = scoreD1CandidateMatch(candidate, teamVariants, possTarget);
+    const { score, teamScore } = scoreD1CandidateMatch(candidate, row, teamVariants, possTarget);
     if (score > secondBestScore) secondBestScore = score;
     if (score > bestScore) {
       secondBestScore = bestScore;
@@ -3115,9 +3739,7 @@ function assignD1CandidateMatches(rows, index) {
   grouped.forEach((group) => {
     if (group.length === 1) {
       const row = group[0];
-      const teamVariants = buildTeamVariants(row.team_full || row.team_name);
-      const possTarget = firstFinite(row.total_poss, row.min, Number.NaN);
-      matches.set(row, findBestD1Candidate(index, row.season, row.player_name, teamVariants, possTarget));
+      matches.set(row, findBestD1Candidate(index, row));
       return;
     }
 
@@ -3139,7 +3761,7 @@ function assignD1CandidateMatches(rows, index) {
       return {
         row,
         options: candidates
-          .map((candidate) => scoreD1CandidateMatch(candidate, teamVariants, possTarget))
+          .map((candidate) => scoreD1CandidateMatch(candidate, row, teamVariants, possTarget))
           .filter(isUsableD1CandidateScore)
           .sort((left, right) => right.score - left.score),
       };
@@ -3177,6 +3799,188 @@ function assignD1CandidateMatches(rows, index) {
   });
 
   return matches;
+}
+
+function repairD1SplitAliasRows(rows) {
+  if (!Array.isArray(rows) || rows.length < 2) return;
+  const groups = new Map();
+  rows.forEach((row) => {
+    const signature = getD1SplitAliasSignature(row);
+    if (!signature) return;
+    if (!groups.has(signature)) groups.set(signature, []);
+    groups.get(signature).push(row);
+  });
+  if (!groups.size) return;
+
+  const replacements = new Map();
+  const mergedAway = new Set();
+  groups.forEach((group) => {
+    const nameKeys = Array.from(new Set(group.map((row) => normalizeNameKey(row.player_name || row.player)).filter(Boolean)));
+    if (nameKeys.length < 2) return;
+    const lastNames = Array.from(new Set(group.map((row) => getNameLastToken(row.player_name || row.player)).filter(Boolean)));
+    if (lastNames.length !== 1) return;
+    if (!group.some((row) => d1PlaytypeCoverageCount(row) > 0 || d1PlaytypePossessionSum(row) > 0)) return;
+    const merged = buildMergedD1SplitAliasRow(group);
+    if (!merged) return;
+    const keeper = chooseD1SplitAliasPlaytypeLeader(group);
+    if (!keeper) return;
+    replacements.set(keeper, merged);
+    group.forEach((row) => {
+      if (row !== keeper) mergedAway.add(row);
+    });
+  });
+  if (!replacements.size && !mergedAway.size) return;
+
+  const repaired = [];
+  rows.forEach((row) => {
+    if (mergedAway.has(row)) return;
+    repaired.push(replacements.get(row) || row);
+  });
+  rows.splice(0, rows.length, ...repaired);
+}
+
+function getD1SplitAliasSignature(row) {
+  if (!row) return "";
+  const season = getStringValue(normalizeSeasonValue(row.season));
+  const team = normalizeKey(row.team_name || row.team_full);
+  const lastName = getNameLastToken(row.player_name || row.player);
+  if (!season || !team || !lastName) return "";
+  return [season, team, lastName].join("|");
+}
+
+function formatD1SplitAliasValue(value, decimals = 3) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "";
+  return numeric.toFixed(decimals);
+}
+
+function chooseD1SplitAliasPlaytypeLeader(group) {
+  return (group || [])
+    .slice()
+    .sort((left, right) => d1SplitAliasPlaytypeLeaderScore(right) - d1SplitAliasPlaytypeLeaderScore(left))[0] || null;
+}
+
+function d1SplitAliasPlaytypeLeaderScore(row) {
+  const possSum = d1PlaytypePossessionSum(row);
+  const coverage = d1PlaytypeCoverageCount(row);
+  const transitionPoss = Math.max(firstFinite(row.transition_poss, Number.NaN), 0);
+  return (coverage * 100000) + (possSum * 1000) + transitionPoss + countMeaningfulRowFields(row);
+}
+
+function d1SplitAliasIdentityScore(row) {
+  const playerIdBonus = getStringValue(row.player_id || row.pid || row.id).trim() ? 500 : 0;
+  const dobBonus = getStringValue(row.dob).trim() ? 250 : 0;
+  const draftBonus = Number.isFinite(row.draft_pick) && !row._draftPickBlank ? 150 : 0;
+  return playerIdBonus + dobBonus + draftBonus + countMeaningfulRowFields(row);
+}
+
+function d1PlaytypePossessionSum(row) {
+  return D1_TRUE_PLAYTYPE_IDS.reduce((sum, id) => sum + Math.max(firstFinite(row[`${id}_poss`], 0), 0), 0);
+}
+
+function d1PlaytypeCoverageCount(row) {
+  return D1_TRUE_PLAYTYPE_IDS.reduce((sum, id) => sum + (firstFinite(row[`${id}_poss`], 0) > 0 ? 1 : 0), 0);
+}
+
+function countMeaningfulRowFields(row) {
+  return Object.entries(row || {}).reduce((sum, [column, value]) => {
+    if (column.startsWith("_")) return sum;
+    if (value == null || value === "") return sum;
+    if (typeof value === "number" && !Number.isFinite(value)) return sum;
+    return sum + 1;
+  }, 0);
+}
+
+function chooseBestD1SplitAliasPrefixSource(group, prefix) {
+  return (group || [])
+    .slice()
+    .sort((left, right) => d1SplitAliasPrefixScore(right, prefix) - d1SplitAliasPrefixScore(left, prefix))[0] || null;
+}
+
+function d1SplitAliasPrefixScore(row, prefix) {
+  const keys = Object.keys(row || {}).filter((column) => column === prefix || column.startsWith(`${prefix}_`));
+  if (!keys.length) return -1;
+  const meaningful = keys.reduce((sum, column) => sum + (hasMeaningfulFieldValue(row[column]) ? 1 : 0), 0);
+  if (!meaningful) return -1;
+  let anchor = Number.NaN;
+  if (prefix === "transition") {
+    anchor = firstFinite(row.transition_poss, row.transition_freq, Number.NaN);
+  } else if (prefix === "halfcourt") {
+    anchor = firstFinite(row.halfcourt_two_pa, row.halfcourt_freq, Number.NaN);
+  } else if (prefix === "runner") {
+    anchor = firstFinite(row.runner_fg_att, row.runner_freq, Number.NaN);
+  } else if (prefix === "drive") {
+    anchor = firstFinite(row.drive_poss, row.drive_freq, Number.NaN);
+  } else {
+    anchor = firstFinite(row[`${prefix}_poss`], row[`${prefix}_freq`], row[`${prefix}_ppp`], Number.NaN);
+  }
+  return (meaningful * 1000) + Math.max(anchor, 0);
+}
+
+function copyD1SplitAliasPrefixFields(target, source, prefix) {
+  if (!target || !source) return;
+  Object.keys(source).forEach((column) => {
+    if (column === prefix || column.startsWith(`${prefix}_`)) target[column] = source[column];
+  });
+}
+
+function buildMergedD1SplitAliasRow(group) {
+  if (!group?.length) return null;
+  const playtypeLeader = chooseD1SplitAliasPlaytypeLeader(group);
+  if (!playtypeLeader) return null;
+  const identityLeader = group
+    .slice()
+    .sort((left, right) => d1SplitAliasIdentityScore(right) - d1SplitAliasIdentityScore(left))[0] || playtypeLeader;
+  const merged = { ...playtypeLeader };
+  const aliasNames = new Set();
+
+  group.forEach((row) => {
+    const playerName = getStringValue(row.player_name || row.player).trim();
+    if (playerName) aliasNames.add(playerName);
+    Object.keys(row || {}).forEach((column) => {
+      if (column.startsWith("_")) return;
+      if (["player_name", "player", "player_search_text", "team_search_text", "coach_search_text"].includes(column)) return;
+      if (!hasMeaningfulFieldValue(merged[column]) && hasMeaningfulFieldValue(row[column])) {
+        merged[column] = row[column];
+      }
+    });
+  });
+
+  [...D1_TRUE_PLAYTYPE_IDS, "halfcourt", "creation", "shooting", "assisted_fin", "unassisted_fin", "transition", "runner", "drive"].forEach((prefix) => {
+    const source = chooseBestD1SplitAliasPrefixSource(group, prefix);
+    if (source) copyD1SplitAliasPrefixFields(merged, source, prefix);
+  });
+
+  if ((!Number.isFinite(merged.draft_pick) || merged._draftPickBlank) && Number.isFinite(identityLeader.draft_pick) && !identityLeader._draftPickBlank) {
+    merged.draft_pick = identityLeader.draft_pick;
+    merged._draftPickBlank = false;
+  }
+  if (!getStringValue(merged.player_id || merged.pid || merged.id).trim()) {
+    const identityId = getStringValue(identityLeader.player_id || identityLeader.pid || identityLeader.id).trim();
+    if (identityId) merged.player_id = identityId;
+  }
+  if (!getStringValue(merged.dob).trim()) {
+    const dob = getStringValue(identityLeader.dob).trim();
+    if (dob) merged.dob = dob;
+  }
+
+  merged.player_search_text = Array.from(aliasNames).join(" ");
+  merged._searchCacheKey = "";
+  merged._searchHaystack = "";
+  merged._colorBucketCacheKey = "";
+  merged._colorBucketValue = "";
+  return enhanceRowForDataset(merged, "d1");
+}
+
+function hasMeaningfulFieldValue(value) {
+  if (value == null || value === "") return false;
+  if (typeof value === "number") return Number.isFinite(value);
+  return true;
+}
+
+function getNameLastToken(value) {
+  const tokens = normalizeNameKey(value).split(" ").filter(Boolean);
+  return tokens[tokens.length - 1] || "";
 }
 
 function resolveD1SharedNameAssignments(rows) {
@@ -3284,18 +4088,51 @@ function getRowColumnValue(dataset, row, column) {
 function findManualNbaCareer(override, nbaDataset) {
   if (!override?.nba_name || !nbaDataset?.rows?.length) return null;
   const targetName = normalizeNameKey(override.nba_name);
+  const targetLooseName = normalizeLooseNameKey(override.nba_name);
+  const targetLast = getNameLastToken(targetName);
   const firstYear = Number(override.first_nba_year);
   const rows = nbaDataset.rows.filter((row) => {
-    if (normalizeNameKey(row.player_name) !== targetName) return false;
+    const rowName = normalizeNameKey(row.player_name);
+    const rowLooseName = normalizeLooseNameKey(row.player_name);
+    const rowLast = getNameLastToken(rowName);
+    if (rowName !== targetName && rowLooseName !== targetLooseName && rowLast !== targetLast) return false;
     if (Number.isFinite(firstYear) && Number.isFinite(row.rookie_year) && row.rookie_year < firstYear - 1) return false;
     return true;
   });
   if (!rows.length) return null;
   const merged = mergeCareerRowGroups(nbaDataset, rows.map((row) => [row]));
-  return merged
-    .map((groupRows) => aggregateCareerRows(nbaDataset, groupRows))
-    .filter(Boolean)
-    .sort((left, right) => companionNbaCareerScore(right) - companionNbaCareerScore(left))[0] || null;
+  const candidateGroups = merged.map((groupRows, index) => {
+    const meta = buildCareerGroupMeta(nbaDataset, groupRows);
+    const preferredName = getPreferredStatusName(groupRows);
+    return {
+      ...meta,
+      rows: groupRows,
+      datasetId: "nba",
+      nodeId: `manual:${index}`,
+      nameKey: normalizeNameKey(preferredName),
+      nameKeys: buildStatusNameKeys(preferredName),
+      identityKeys: buildStatusIdentityKeys(meta, groupRows),
+    };
+  });
+  const candidateCareerByNodeId = new Map(candidateGroups.map((group) => [group.nodeId, aggregateCareerRows(nbaDataset, group.rows)]));
+  const sourceSeason = Number.isFinite(firstYear) ? Math.round(firstYear) : Number.NaN;
+  const sourceGroup = {
+    datasetId: "manual",
+    rows: [{ player_name: override.nba_name, season: sourceSeason }],
+    nameKey: targetName,
+    nameKeys: buildStatusNameKeys(override.nba_name),
+    identityKeys: [],
+    dobs: [],
+    heights: [],
+    draftPicks: [],
+    rookieYears: Number.isFinite(sourceSeason) ? [sourceSeason] : [],
+    years: Number.isFinite(sourceSeason) ? [sourceSeason] : [],
+    minYear: Number.isFinite(sourceSeason) ? sourceSeason : 0,
+    maxYear: Number.isFinite(sourceSeason) ? sourceSeason : 0,
+    explicitIds: [],
+  };
+  const lookup = buildStatusLookupIndex(candidateGroups);
+  return selectBestNbaCareerCandidate(sourceGroup, candidateGroups, candidateCareerByNodeId, null, lookup, { candidateGroups });
 }
 
 function assignD1RawMetric(row, values, baseIndex, metricIndex, target) {
@@ -3698,28 +4535,41 @@ function renderFilters(dataset, state) {
   renderStatGroups(dataset, state);
   elements.searchInput.value = state.search;
   const searchLabel = document.querySelector('label[for="searchInput"]');
-  if (searchLabel) searchLabel.textContent = dataset.id === "d1" ? "Player / Team / Coach" : "Player / Team";
-  elements.searchInput.placeholder = dataset.id === "d1" ? "Use && for multiple terms" : "Start typing";
+  if (searchLabel) {
+    if (dataset.id === "d1") searchLabel.textContent = "Player / Team / Coach";
+    else if (dataset.id === "grassroots") searchLabel.textContent = "Player / Team / Age";
+    else searchLabel.textContent = "Player / Team";
+  }
+  elements.searchInput.placeholder = dataset.id === "d1" ? "Use &&, comma, or semicolon for OR" : "Start typing";
 }
 
 function renderYearPills(dataset, state) {
-  elements.yearPills.innerHTML = dataset.meta.years
+  const years = getAvailableYears(dataset);
+  const loadedYears = getLoadedYearSet(dataset);
+  elements.yearPills.innerHTML = years
     .map((year) => {
       const active = state.years.has(year) ? "is-active" : "";
-      return `<button class="pill-toggle ${active}" data-year="${escapeHtml(year)}" type="button">${escapeHtml(year)}</button>`;
+      const loaded = loadedYears.has(year) ? "" : " is-unloaded";
+      return `<button class="pill-toggle ${active}${loaded}" data-year="${escapeHtml(year)}" type="button">${escapeHtml(year)}</button>`;
     })
     .join("");
 
   elements.yearPills.querySelectorAll("[data-year]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const year = button.dataset.year;
       if (!year) return;
-      if (state.years.has(year)) {
-        state.years.delete(year);
-      } else {
-        state.years.add(year);
+      try {
+        if (state.years.has(year)) {
+          state.years.delete(year);
+        } else {
+          await ensureDatasetYearsLoaded(dataset, [year]);
+          state.years.add(year);
+        }
+        renderCurrentDataset();
+      } catch (error) {
+        elements.statusPill.textContent = `${dataset.navLabel} load failed`;
+        elements.resultsSubtitle.textContent = getStringValue(error?.message || error);
       }
-      renderCurrentDataset();
     });
   });
 }
@@ -3781,23 +4631,30 @@ function renderExtraFilters(dataset, state) {
 
   elements.singleSelectFilters.querySelectorAll("[data-single-filter]").forEach((select) => {
     select.addEventListener("change", async () => {
-      const filterId = select.dataset.singleFilter;
-      state.extraSelects[filterId] = select.value;
-      if (filterId === "view_mode") {
-        state.team = "all";
-        if (select.value === "career") {
-          state.years = new Set(dataset.meta.years);
+      try {
+        const filterId = select.dataset.singleFilter;
+        state.extraSelects[filterId] = select.value;
+        if (filterId === "view_mode") {
+          state.team = "all";
+          if (select.value === "career") {
+            const years = getAvailableYears(dataset);
+            await ensureDatasetYearsLoaded(dataset, years);
+            state.years = new Set(years);
+          }
         }
-      }
-      if (filterId === "status_path" && select.value !== "all") {
-        if (!dataset._statusAnnotated) {
-          elements.statusPill.textContent = `Loading ${dataset.navLabel} status`;
-          await ensureStatusAnnotations(dataset.id);
-          if (appState.currentId !== dataset.id) return;
-          resetUiCaches(state);
+        if (filterId === "status_path" && select.value !== "all") {
+          if (!dataset._statusAnnotated) {
+            elements.statusPill.textContent = `Loading ${dataset.navLabel} status`;
+            await ensureStatusAnnotations(dataset.id);
+            if (appState.currentId !== dataset.id) return;
+            resetUiCaches(state);
+          }
         }
+        renderCurrentDataset();
+      } catch (error) {
+        elements.statusPill.textContent = `${dataset.navLabel} load failed`;
+        elements.resultsSubtitle.textContent = getStringValue(error?.message || error);
       }
-      renderCurrentDataset();
     });
   });
 
@@ -3920,7 +4777,7 @@ function renderStatGroups(dataset, state) {
     const section = template.querySelector(".stat-group");
     const header = template.querySelector(".stat-group__header");
     const body = template.querySelector(".stat-group__body");
-    const groupState = getGroupSelectionState(group, state);
+    const groupState = getGroupSelectionState(dataset, group, state);
     header.innerHTML = `<button class="group-cycle-button ${group.columns.some((column) => state.visibleColumns[column]) ? "is-active" : ""}" type="button" data-group-cycle="${escapeAttribute(group.id)}">${escapeHtml(group.label)} <span class="cycle-note">(${escapeHtml(groupState)})</span></button>`;
 
     group.columns.forEach((column) => {
@@ -4000,43 +4857,62 @@ function renderStatGroups(dataset, state) {
   });
 }
 
-function getGroupSelectionState(group, state) {
+function getGroupSelectionState(dataset, group, state) {
   const visible = group.columns.filter((column) => state.visibleColumns[column]);
   if (!visible.length) return "none";
   if (visible.length === group.columns.length) return "all";
-  if (group.columns.every((column) => Boolean(state.visibleColumns[column]) === group.defaultColumns.includes(column))) return "default";
+  if (areSameColumns(visible, group.defaultColumns || [])) return "default";
+  if (dataset?.id === "d1" && group?.id === "playtype_analysis") {
+    if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "freq"))) return "freq";
+    if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "poss"))) return "poss";
+  }
   return "custom";
 }
 
-async function cycleGroupVisibility(dataset, state, group) {
-  const cycleActions = ["none", "all", "default"];
-  const actionIndex = state.groupCycles[group.id] ?? 0;
-  const action = cycleActions[actionIndex];
+function areSameColumns(left = [], right = []) {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((column) => rightSet.has(column));
+}
 
-  if (action !== "none") {
-    const targetColumns = group.columns.filter((column) => {
-      if (action === "all") return !state.visibleColumns[column];
-      return group.defaultColumns.includes(column) && !state.visibleColumns[column];
-    });
-    if (targetColumns.length) {
-      await ensureDeferredColumnsReady(dataset, state, targetColumns, { scope: "visible" });
-      if (appState.currentId !== dataset.id) return;
-    }
+function getGroupCycleActions(dataset, group) {
+  if (dataset?.id === "d1" && group?.id === "playtype_analysis") return ["default", "freq", "poss", "all", "none"];
+  return ["default", "all", "none"];
+}
+
+function getGroupColumnsForMode(dataset, group, mode) {
+  if (!group) return [];
+  if (mode === "all") return group.columns || [];
+  if (mode === "default") return group.defaultColumns || [];
+  if (dataset?.id === "d1" && group.id === "playtype_analysis") {
+    if (mode === "freq") return (group.columns || []).filter((column) => /_freq$/i.test(column));
+    if (mode === "poss") return (group.columns || []).filter((column) => /_poss$/i.test(column));
+  }
+  return [];
+}
+
+async function cycleGroupVisibility(dataset, state, group) {
+  const cycleActions = getGroupCycleActions(dataset, group);
+  const currentMode = getGroupSelectionState(dataset, group, state);
+  const currentIndex = cycleActions.indexOf(currentMode);
+  const nextMode = cycleActions[(currentIndex + 1) % cycleActions.length] || cycleActions[0] || "none";
+  const targetModeColumns = getGroupColumnsForMode(dataset, group, nextMode);
+  const targetColumns = nextMode === "all"
+    ? group.columns.filter((column) => !state.visibleColumns[column])
+    : group.columns.filter((column) => targetModeColumns.includes(column) && !state.visibleColumns[column]);
+
+  if (targetColumns.length) {
+    await ensureDeferredColumnsReady(dataset, state, targetColumns, { scope: "visible" });
+    if (appState.currentId !== dataset.id) return;
   }
 
   group.columns.forEach((column) => {
     if (!(column in state.visibleColumns)) return;
-    if (action === "all") {
-      state.visibleColumns[column] = true;
-    } else if (action === "default") {
-      state.visibleColumns[column] = group.defaultColumns.includes(column);
-    } else {
-      state.visibleColumns[column] = false;
-      if (state.numericFilters[column]) state.numericFilters[column] = { min: "", max: "" };
-    }
+    const shouldShow = nextMode === "all" ? true : nextMode !== "none" && targetModeColumns.includes(column);
+    state.visibleColumns[column] = shouldShow;
+    if (!shouldShow && state.numericFilters[column]) state.numericFilters[column] = { min: "", max: "" };
   });
 
-  state.groupCycles[group.id] = (actionIndex + 1) % cycleActions.length;
   renderCurrentDataset();
 }
 
@@ -4076,26 +4952,7 @@ function renderTableLegend(dataset, state) {
       const groupId = button.dataset.statGroup;
       const group = dataset.meta.groups.find((item) => item.id === groupId);
       if (!group) return;
-      const groupState = getGroupSelectionState(group, state);
-      const nextMode = groupState === "none" ? "default" : (groupState === "default" ? "all" : "none");
-      if (nextMode !== "none") {
-        const targetColumns = group.columns.filter((column) => {
-          if (nextMode === "all") return !state.visibleColumns[column];
-          return group.defaultColumns.includes(column) && !state.visibleColumns[column];
-        });
-        if (targetColumns.length) {
-          await ensureDeferredColumnsReady(dataset, state, targetColumns, { scope: "visible" });
-          if (appState.currentId !== dataset.id) return;
-        }
-      }
-      group.columns.forEach((column) => {
-        if (!(column in state.visibleColumns)) return;
-        if (nextMode === "all") state.visibleColumns[column] = true;
-        else if (nextMode === "default") state.visibleColumns[column] = group.defaultColumns.includes(column);
-        else state.visibleColumns[column] = false;
-        if (nextMode === "none" && state.numericFilters[column]) state.numericFilters[column] = { min: "", max: "" };
-      });
-      renderCurrentDataset();
+      await cycleGroupVisibility(dataset, state, group);
     });
   });
 
@@ -4129,7 +4986,7 @@ function getFilteredRows(dataset, state) {
 }
 
 function getFilterContextRows(dataset, state, options = {}) {
-  const searchTerms = parseSearchTerms(state.search);
+  const searchClauses = parseSearchTerms(state.search);
   const sourceRows = options.rows || getDisplayRows(dataset, state);
   const applyYearFilter = !options.ignoreYears && state.extraSelects.view_mode !== "career";
 
@@ -4139,7 +4996,15 @@ function getFilterContextRows(dataset, state, options = {}) {
       const yearValue = getStringValue(row[dataset.yearColumn]);
       if (state.years.size && !state.years.has(yearValue)) return false;
     }
-    if (!options.ignoreTeam && state.team !== "all" && getStringValue(row[dataset.teamColumn]) !== state.team) return false;
+    if (!options.ignoreTeam && state.team !== "all") {
+      const selectedTeam = getStringValue(state.team);
+      const rowTeam = getStringValue(row[dataset.teamColumn]);
+      if (rowTeam !== selectedTeam) {
+        if (state.extraSelects.view_mode !== "career") return false;
+        const teamSearch = normalizeKey(row.team_search_text || rowTeam);
+        if (!teamSearch || !teamSearch.includes(normalizeKey(selectedTeam))) return false;
+      }
+    }
 
     for (const filter of dataset.singleFilters || []) {
       if (options.ignoreSingleFilterId && filter.id === options.ignoreSingleFilterId) continue;
@@ -4169,9 +5034,9 @@ function getFilterContextRows(dataset, state, options = {}) {
       if (!selected.has(getStringValue(row[filter.column]))) return false;
     }
 
-    if (!options.ignoreSearch && searchTerms.length) {
+    if (!options.ignoreSearch && searchClauses.length) {
       const haystack = getRowSearchHaystack(dataset, row);
-      const matches = searchTerms.every((term) => haystack.includes(term));
+      const matches = searchClauses.some((clause) => clause.every((term) => haystack.includes(term)));
       if (!matches) return false;
     }
 
@@ -4206,9 +5071,9 @@ function getFilterContextRows(dataset, state, options = {}) {
 
 function parseSearchTerms(value) {
   return getStringValue(value)
-    .split(/&&|,|;/)
-    .map((part) => part.trim().toLowerCase())
-    .filter(Boolean);
+    .split(/\s*(?:&&|,|;)\s*/)
+    .map((clause) => clause.trim().toLowerCase().split(/\s+/).filter(Boolean))
+    .filter((clause) => clause.length);
 }
 
 function getRowSearchHaystack(dataset, row) {
@@ -4296,6 +5161,7 @@ function buildCareerRows(dataset, state) {
   const careerRows = mergedGroups.map((rows) => (rows.length <= 1 ? rows[0] : aggregateCareerRows(dataset, rows)));
   applyCalculatedRatings(careerRows, dataset.id);
   applyPerNormalization(careerRows, dataset.id);
+  populateDefenseRatePercentiles(careerRows, dataset.id);
   state._careerCache = { key: cacheKey, rows: careerRows };
   return careerRows;
 }
@@ -4303,14 +5169,46 @@ function buildCareerRows(dataset, state) {
 function getCareerGroupKey(dataset, row) {
   const explicitId = getStringValue(row.player_id || row.pid || row.id).trim();
   if (explicitId) return `${dataset.id}|id|${explicitId}`;
+  if (dataset.id === "grassroots") {
+    const grassrootsKey = getGrassrootsCareerAliasKey(row);
+    if (grassrootsKey) return `${dataset.id}|grassroots|${grassrootsKey}`;
+  }
   const player = normalizeKey(row.player_name || row.player);
   const dob = getStringValue(row.dob).trim();
   const height = firstFinite(row.height_in, row.inches, "");
   const rookie = Number.isFinite(row.rookie_year) ? row.rookie_year : "";
+  const draftPick = Number.isFinite(row.draft_pick) && !row._draftPickBlank ? row.draft_pick : "";
   const era = Math.floor(extractLeadingYear(row.season) / 8);
-  if (dob) return `${dataset.id}|dob|${player}|${dob}|${height}`;
-  if (rookie !== "") return `${dataset.id}|rookie|${player}|${rookie}|${height}`;
+  if (dob) return `${dataset.id}|dob|${player}|${dob}|${height}|${rookie}|${draftPick}`;
+  if (rookie !== "" || draftPick !== "") return `${dataset.id}|rookie|${player}|${rookie}|${draftPick}|${height}`;
+  if (draftPick !== "") return `${dataset.id}|draft|${player}|${draftPick}|${height}`;
   return `${dataset.id}|era|${player}|${height}|${era}`;
+}
+
+function getGrassrootsCareerAliasKey(rowsOrRow) {
+  const rows = Array.isArray(rowsOrRow) ? rowsOrRow : [rowsOrRow];
+  if (!rows.length) return "";
+  const sample = rows
+    .slice()
+    .sort((left, right) => grassrootsAliasRowScore(right) - grassrootsAliasRowScore(left))[0] || {};
+  const lastName = getNameLastToken(sample.player_name || sample.player);
+  if (!lastName) return "";
+  const height = firstFinite(sample.height_in, sample.inches, Number.NaN);
+  const weight = firstFinite(sample.weight_lb, sample.weight, Number.NaN);
+  const pos = normalizePosLabel(sample.pos || sample.pos_text);
+  const heightKey = Number.isFinite(height) ? Math.round(height) : "";
+  const weightKey = Number.isFinite(weight) ? Math.round(weight / 5) * 5 : "";
+  return [lastName, heightKey, weightKey, pos].join("|");
+}
+
+function grassrootsAliasRowScore(row) {
+  let score = countMeaningfulRowFields(row);
+  if (getNameLastToken(row.player_name || row.player)) score += 50;
+  if (Number.isFinite(firstFinite(row.height_in, row.inches, Number.NaN))) score += 25;
+  if (Number.isFinite(firstFinite(row.weight_lb, row.weight, Number.NaN))) score += 15;
+  if (normalizePosLabel(row.pos || row.pos_text)) score += 10;
+  if (normalizeClassValue(row.class_year)) score += 5;
+  return score;
 }
 
 function aggregateCareerRows(dataset, rows) {
@@ -4328,6 +5226,7 @@ function aggregateCareerRows(dataset, rows) {
   let latest = rows[0] || {};
   const minuteWeights = new Array(rows.length);
   const defaultWeights = new Array(rows.length);
+  const playerSearchValues = new Set();
   const teamSearchValues = new Set();
   const coachSearchValues = new Set();
   const competitionLabels = new Set();
@@ -4335,6 +5234,8 @@ function aggregateCareerRows(dataset, rows) {
     if (compareYears(getStringValue(row[dataset.yearColumn]), getStringValue(latest[dataset.yearColumn])) < 0) {
       latest = row;
     }
+    const playerText = getStringValue(row.player_search_text || row.player_name || row.player).trim();
+    if (playerText) playerSearchValues.add(playerText);
     const teamText = getStringValue(row.team_search_text || row[dataset.teamColumn]).trim();
     if (teamText) teamSearchValues.add(teamText);
     const coachText = getStringValue(row.coach_search_text || row.coach).trim();
@@ -4349,6 +5250,8 @@ function aggregateCareerRows(dataset, rows) {
   });
   const plans = getCareerAggregationPlans(dataset);
   const aggregate = latest ? Object.create(latest) : {};
+  const mergedTeams = Array.from(teamSearchValues);
+  const preferredPlayerName = dataset.id === "grassroots" ? getPreferredStatusName(rows) : "";
 
   plans.forEach((plan) => {
     const { column, mode, weightMode } = plan;
@@ -4420,8 +5323,16 @@ function aggregateCareerRows(dataset, rows) {
   });
 
   aggregate[dataset.yearColumn] = latest[dataset.yearColumn];
-  aggregate[dataset.teamColumn] = latest[dataset.teamColumn];
-  aggregate.team_search_text = Array.from(teamSearchValues).join(" ");
+  aggregate[dataset.teamColumn] = dataset.id === "grassroots" ? mergedTeams.join(" / ") : latest[dataset.teamColumn];
+  if (dataset.id === "grassroots") {
+    aggregate.team_full = aggregate[dataset.teamColumn];
+    if (preferredPlayerName) {
+      aggregate.player_name = preferredPlayerName;
+      aggregate.player = preferredPlayerName;
+    }
+  }
+  aggregate.player_search_text = Array.from(playerSearchValues).join(" ");
+  aggregate.team_search_text = mergedTeams.join(" / ");
   aggregate.coach_search_text = Array.from(coachSearchValues).join(" ");
   if (dataset.id === "fiba") {
     aggregate.competition_label = Array.from(competitionLabels).join(" / ");
@@ -4438,11 +5349,11 @@ function aggregateCareerRows(dataset, rows) {
 function mergeCareerRowGroups(dataset, groups) {
   const buckets = new Map();
   groups.forEach((rows) => {
-    const sample = rows[0] || {};
-    const nameKey = normalizeNameKey(sample.player_name || sample.player);
-    if (!nameKey) return;
-    if (!buckets.has(nameKey)) buckets.set(nameKey, []);
-    buckets.get(nameKey).push(buildCareerGroupMeta(dataset, rows));
+    const meta = buildCareerGroupMeta(dataset, rows);
+    const bucketKey = getCareerMergeBucketKey(meta, rows);
+    if (!bucketKey) return;
+    if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+    buckets.get(bucketKey).push(meta);
   });
 
   const merged = [];
@@ -4458,6 +5369,8 @@ function mergeCareerRowGroups(dataset, groups) {
         target.maxYear = Math.max(target.maxYear, candidate.maxYear);
         target.dobs = Array.from(new Set(target.dobs.concat(candidate.dobs)));
         target.heights = Array.from(new Set(target.heights.concat(candidate.heights)));
+        target.draftPicks = Array.from(new Set(target.draftPicks.concat(candidate.draftPicks)));
+        target.rookieYears = Array.from(new Set(target.rookieYears.concat(candidate.rookieYears)));
       } else {
         current.push(candidate);
       }
@@ -4467,6 +5380,44 @@ function mergeCareerRowGroups(dataset, groups) {
   return merged.length ? merged : groups;
 }
 
+function getCareerMergeBucketKey(meta, rows) {
+  if (rows?.length && Object.prototype.hasOwnProperty.call(rows[0] || {}, "circuit")) {
+    const grassrootsKey = getGrassrootsCareerAliasKey(rows);
+    if (grassrootsKey) return `grassroots|${grassrootsKey}`;
+  }
+  const preferredName = normalizeNameKey(getPreferredStatusName(rows));
+  const lastName = getNameLastToken(preferredName);
+  const explicitId = meta?.explicitIds?.[0] || "";
+  if (explicitId) return `id|${explicitId}`;
+  if (meta?.dobs?.length) {
+    const dob = getStringValue(meta.dobs[0]).trim();
+    if (dob) return `dob|${dob}`;
+  }
+  if (meta?.draftPicks?.length && meta?.rookieYears?.length) {
+    const draftPick = Math.min(...meta.draftPicks);
+    const rookieYear = Math.min(...meta.rookieYears);
+    return `draftrookie|${draftPick}|${rookieYear}`;
+  }
+  if (meta?.draftPicks?.length && meta?.heights?.length) {
+    const draftPick = Math.min(...meta.draftPicks);
+    const height = Math.round(Math.min(...meta.heights));
+    return `draftheight|${draftPick}|${height}`;
+  }
+  if (meta?.rookieYears?.length && meta?.heights?.length) {
+    const rookieYear = Math.min(...meta.rookieYears);
+    const height = Math.round(Math.min(...meta.heights));
+    return `rookieheight|${rookieYear}|${height}`;
+  }
+  if (preferredName) {
+    if (meta?.heights?.length) {
+      const height = Math.round(Math.min(...meta.heights));
+      return `name|${preferredName}|${height}`;
+    }
+    return `name|${preferredName}`;
+  }
+  return "";
+}
+
 function buildCareerGroupMeta(dataset, rows) {
   let latestRow = rows[0] || {};
   let earliestRow = rows[0] || {};
@@ -4474,6 +5425,8 @@ function buildCareerGroupMeta(dataset, rows) {
   const dobs = new Set();
   const heights = new Set();
   const explicitIds = new Set();
+  const draftPicks = new Set();
+  const rookieYears = new Set();
   rows.forEach((row) => {
     if (compareYears(getStringValue(row[dataset.yearColumn]), getStringValue(latestRow[dataset.yearColumn])) < 0) {
       latestRow = row;
@@ -4489,6 +5442,10 @@ function buildCareerGroupMeta(dataset, rows) {
     if (Number.isFinite(height)) heights.add(height);
     const explicitId = getStringValue(row.player_id || row.pid || row.id).trim();
     if (explicitId) explicitIds.add(explicitId);
+    const draftPick = Number(row.draft_pick);
+    if (Number.isFinite(draftPick) && !row._draftPickBlank) draftPicks.add(Math.round(draftPick));
+    const rookieYear = Number(row.rookie_year);
+    if (Number.isFinite(rookieYear)) rookieYears.add(Math.round(rookieYear));
   });
   years.sort((a, b) => a - b);
   return {
@@ -4499,6 +5456,8 @@ function buildCareerGroupMeta(dataset, rows) {
     dobs: Array.from(dobs),
     heights: Array.from(heights),
     explicitIds: Array.from(explicitIds),
+    draftPicks: Array.from(draftPicks).sort((left, right) => left - right),
+    rookieYears: Array.from(rookieYears).sort((left, right) => left - right),
     latestClass: normalizeClassValue(latestRow.class_year),
     earliestClass: normalizeClassValue(earliestRow.class_year),
     latestMinutes: getMinutesValue(latestRow),
@@ -4511,13 +5470,18 @@ function canMergeCareerGroups(left, right) {
     return left.explicitIds.some((id) => right.explicitIds.includes(id));
   }
   if (left.dobs.length && right.dobs.length && !left.dobs.some((dob) => right.dobs.includes(dob))) return false;
+  if (left.draftPicks.length && right.draftPicks.length && !left.draftPicks.some((pick) => right.draftPicks.includes(pick))) return false;
+  if (left.rookieYears.length && right.rookieYears.length && !left.rookieYears.some((year) => right.rookieYears.includes(year))) return false;
   if (left.heights.length && right.heights.length) {
     const compatibleHeight = left.heights.some((height) => right.heights.some((other) => Math.abs(height - other) <= 1));
     if (!compatibleHeight) return false;
   }
   if (left.maxYear >= right.minYear && right.maxYear >= left.minYear) return false;
   const gap = left.maxYear < right.minYear ? right.minYear - left.maxYear : left.minYear - right.maxYear;
-  const hasExtraIdentity = (left.dobs.length && right.dobs.length) || (left.heights.length && right.heights.length);
+  const hasExtraIdentity = (left.dobs.length && right.dobs.length)
+    || (left.heights.length && right.heights.length)
+    || (left.draftPicks.length && right.draftPicks.length)
+    || (left.rookieYears.length && right.rookieYears.length);
   return gap <= (hasExtraIdentity ? 2 : 1);
 }
 
@@ -4549,7 +5513,7 @@ function shouldSumCareerColumn(column) {
 function getCareerAggregationPlans(dataset) {
   if (dataset?._careerAggregationPlans) return dataset._careerAggregationPlans;
   const plans = (dataset?.meta?.numericColumns || [])
-    .filter((column) => !shouldUseLatestCareerValue(column))
+    .filter((column) => !shouldUseLatestCareerValue(column) && !/percentile$/i.test(stripCompanionPrefix(column)))
     .map((column) => {
       if (shouldMinCareerColumn(column)) return { column, mode: "min", weightMode: "" };
       if (shouldMaxCareerColumn(column)) return { column, mode: "max", weightMode: "" };
@@ -4562,7 +5526,7 @@ function getCareerAggregationPlans(dataset) {
 
 function getCareerWeightMode(column) {
   const baseColumn = stripCompanionPrefix(column);
-  if (/(_ppp$|pct|rate|freq|share|three_pr|ftr|ast_to|per$|ppr|fic|bpm|epm|porpag|adjoe|ortg|drtg|usg|off$|def$|tot$)/i.test(baseColumn)) {
+  if (/(_ppp$|pct|rate|freq|share|three_pr|ftm_fga|ftr|ast_to|per$|ppr|fic|bpm|epm|porpag|adjoe|ortg|drtg|usg|off$|def$|tot$)/i.test(baseColumn)) {
     return "minutes";
   }
   if (/(_per40$|_pg$|_per100$|_75$)/i.test(baseColumn)) {
@@ -4658,6 +5622,12 @@ function getColumnWidth(column, dataset) {
   const baseColumn = stripCompanionPrefix(column);
   if (column === "rank") return 18;
   if (baseColumn === dataset.yearColumn || baseColumn === "season") return 48;
+  if (baseColumn === "age_range") return 52;
+  if (baseColumn === "event_name") return 180;
+  if (baseColumn === "circuit") return 56;
+  if (baseColumn === "ftm_fga") return 54;
+  if (baseColumn === "blk_pf" || baseColumn === "stocks_pf") return 54;
+  if (baseColumn === "three_pr_plus_ftm_fga") return 92;
   if (/player/i.test(baseColumn)) return 148;
   if (baseColumn === dataset.teamColumn || /team/i.test(baseColumn)) return 88;
   if (baseColumn === "competition_label") return 94;
@@ -4750,6 +5720,7 @@ function buildColumnScales(dataset, state, visibleColumns, rows) {
   const scales = {};
   visibleColumns.forEach((column) => {
     if (!shouldColorColumn(dataset, column)) return;
+    const weighted = shouldWeightPercentileColumn(column);
     const buckets = new Map();
     rows.forEach((row) => {
       const value = getRowColumnValue(dataset, row, column);
@@ -4757,11 +5728,21 @@ function buildColumnScales(dataset, state, visibleColumns, rows) {
       if (shouldSkipPercentileColor(row, column)) return;
       const bucketKey = getCachedColorBucketKey(state, row);
       if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+      if (weighted) {
+        const weight = getPercentileWeight(row, column);
+        if (!(weight > 0)) return;
+        buckets.get(bucketKey).push({ value, weight });
+        return;
+      }
       buckets.get(bucketKey).push(value);
     });
     const sortedBuckets = {};
     buckets.forEach((values, key) => {
-      if (values.length > 1) sortedBuckets[key] = values.sort((left, right) => left - right);
+      if (values.length > 1) {
+        sortedBuckets[key] = weighted
+          ? values.sort((left, right) => left.value - right.value)
+          : values.sort((left, right) => left - right);
+      }
     });
     if (Object.keys(sortedBuckets).length) scales[column] = sortedBuckets;
   });
@@ -4788,6 +5769,7 @@ function getColorScale(dataset, state, visibleColumns) {
 function shouldColorColumn(dataset, column) {
   const baseColumn = stripCompanionPrefix(column);
   if (/^(gp|g|gs)$/i.test(baseColumn)) return false;
+  if (/percentile$/i.test(baseColumn)) return false;
   return dataset.meta.statColumnSet.has(column) && dataset.meta.numericColumnSet.has(column);
 }
 
@@ -4844,14 +5826,116 @@ function getCellStyle(dataset, state, column, value, colorScale, row) {
     return "background-color: rgb(226, 196, 184); color: #111111;";
   }
   const bucketKey = getCachedColorBucketKey(state, row);
-  const sorted = colorScale[column]?.[bucketKey] || colorScale[column]?.all;
-  if (!sorted || sorted.length < 2) return "";
-  let pct = percentileFromSorted(sorted, value);
+  const distribution = colorScale[column]?.[bucketKey] || colorScale[column]?.all;
+  if (!distribution) return "";
+  let pct = percentileFromDistribution(distribution, value);
   if (pct == null) return "";
   if (isInverseColorColumn(column)) pct = 1 - pct;
   if (isInverseShotAssistColorColumn(column)) pct = 1 - pct;
   const style = colorFromPercentile(pct);
   return `background-color: ${style.bg}; color: ${style.color};`;
+}
+
+function shouldWeightPercentileColumn(column) {
+  const prefix = getD1PlaytypeColumnPrefix(column);
+  if (!prefix) return false;
+  return !/(?:_freq|_poss)$/i.test(stripCompanionPrefix(column));
+}
+
+function getD1PlaytypeColumnPrefix(column) {
+  const baseColumn = stripCompanionPrefix(column);
+  let best = "";
+  D1_PLAYTYPE_FAMILY_PREFIXES.forEach((prefix) => {
+    if (baseColumn === prefix || baseColumn.startsWith(`${prefix}_`)) {
+      if (prefix.length > best.length) best = prefix;
+    }
+  });
+  return best;
+}
+
+function getPercentileWeight(row, column) {
+  const prefix = getD1PlaytypeColumnPrefix(column);
+  if (!prefix) return 1;
+  const freq = getD1PlaytypeFrequency(row, prefix);
+  if (!Number.isFinite(freq) || freq < 0) return 1;
+  if (freq >= PLAYTYPE_PERCENTILE_FREQ_FLOOR) return freq;
+  return (freq * freq) / PLAYTYPE_PERCENTILE_FREQ_FLOOR;
+}
+
+function getD1PlaytypeFrequency(row, prefix) {
+  const direct = Number(row?.[`${prefix}_freq`]);
+  if (Number.isFinite(direct)) return direct;
+  const poss = Number(row?.[`${prefix}_poss`]);
+  const totalPoss = Number(row?.total_poss);
+  if (Number.isFinite(poss) && Number.isFinite(totalPoss) && totalPoss > 0) return (poss / totalPoss) * 100;
+  if (prefix === "halfcourt") {
+    const halfcourtPoss = Number(row?.halfcourt_poss);
+    if (Number.isFinite(halfcourtPoss) && Number.isFinite(totalPoss) && totalPoss > 0) return (halfcourtPoss / totalPoss) * 100;
+  }
+  return Number.NaN;
+}
+
+function buildWeightedPercentileDistribution(items) {
+  const sorted = items
+    .map((item) => ({
+      value: Number(item?.value),
+      weight: Number.isFinite(item?.weight) && item.weight > 0 ? item.weight : 1,
+    }))
+    .filter((item) => Number.isFinite(item.value) && item.weight > 0)
+    .sort((left, right) => left.value - right.value);
+  const values = new Array(sorted.length);
+  const cumulativeWeights = new Array(sorted.length);
+  let totalWeight = 0;
+  sorted.forEach((item, index) => {
+    values[index] = item.value;
+    totalWeight += item.weight;
+    cumulativeWeights[index] = totalWeight;
+  });
+  return { values, cumulativeWeights, totalWeight };
+}
+
+function percentileFromDistribution(distribution, value) {
+  if (Array.isArray(distribution)) {
+    if (!distribution.length) return null;
+    if (typeof distribution[0] === "number") return percentileFromSorted(distribution, value);
+    return percentileFromWeightedDistribution(buildWeightedPercentileDistribution(distribution), value);
+  }
+  return percentileFromWeightedDistribution(distribution, value);
+}
+
+function percentileFromWeightedDistribution(distribution, value) {
+  const values = distribution?.values || [];
+  const cumulativeWeights = distribution?.cumulativeWeights || [];
+  const totalWeight = distribution?.totalWeight || cumulativeWeights[cumulativeWeights.length - 1] || 0;
+  if (!values.length || !(totalWeight > 0)) return null;
+  const first = lowerBound(values, value);
+  const last = upperBound(values, value) - 1;
+  if (last < 0) return 0;
+  const lowerWeight = first > 0 ? cumulativeWeights[first - 1] : 0;
+  const upperWeight = last >= 0 ? cumulativeWeights[last] : 0;
+  return ((lowerWeight + upperWeight) / 2) / totalWeight;
+}
+
+function lowerBound(values, target) {
+  let lo = 0;
+  let hi = values.length;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (values[mid] < target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function upperBound(values, target) {
+  let lo = 0;
+  let hi = values.length;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (values[mid] <= target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 function shouldSkipPercentileColor(row, column) {
@@ -4969,18 +6053,26 @@ function renderFinderBar(dataset, state) {
   if (!elements.finderTitle || !elements.finderQuery || !elements.yearQuickSelect) return;
   const selectedYears = Array.from(state.years).sort(compareYears);
   const singleYear = selectedYears.length === 1 ? selectedYears[0] : "all";
+  const years = getAvailableYears(dataset);
   elements.yearQuickSelect.innerHTML = [
     '<option value="all">All years</option>',
-    ...dataset.meta.years.map((year) => `<option value="${escapeAttribute(year)}"${singleYear === year ? " selected" : ""}>${escapeHtml(year)}</option>`),
+    ...years.map((year) => `<option value="${escapeAttribute(year)}"${singleYear === year ? " selected" : ""}>${escapeHtml(year)}</option>`),
   ].join("");
   const yearLabel = singleYear === "all" ? "All Years" : singleYear;
   elements.finderTitle.textContent = `${yearLabel} ${dataset.navLabel} Player Finder`;
   elements.finderQuery.textContent = buildFinderQueryText(dataset, state);
 
-  elements.yearQuickSelect.onchange = () => {
+  elements.yearQuickSelect.onchange = async () => {
     const value = elements.yearQuickSelect.value;
-    state.years = value === "all" ? new Set(dataset.meta.years) : new Set([value]);
-    renderCurrentDataset();
+    const targetYears = value === "all" ? years : [value];
+    try {
+      await ensureDatasetYearsLoaded(dataset, targetYears);
+      state.years = value === "all" ? new Set(targetYears) : new Set([value]);
+      renderCurrentDataset();
+    } catch (error) {
+      elements.statusPill.textContent = `${dataset.navLabel} load failed`;
+      elements.resultsSubtitle.textContent = getStringValue(error?.message || error);
+    }
   };
 }
 
@@ -5098,6 +6190,7 @@ function enhanceRowForDataset(row, datasetId) {
   if (datasetId === "d2") enhanceD2Row(out);
   if (datasetId === "naia") enhanceCollegeRow(out, datasetId);
   if (datasetId === "juco") enhanceCollegeRow(out, datasetId);
+  if (datasetId === "grassroots") enhanceCollegeRow(out, datasetId);
   if (datasetId === "fiba") enhanceFibaRow(out);
   if (datasetId === "nba") enhanceNbaRow(out);
   normalizePercentLikeColumns(out, datasetId);
@@ -5130,7 +6223,7 @@ function enhanceCommonRow(row, datasetId) {
 
   if (typeof row.team_name === "string") {
     row.team_full = row.team_full || row.team_name;
-    row.team_name = simplifySchoolName(row.team_name, datasetId);
+    if (datasetId !== "grassroots") row.team_name = simplifySchoolName(row.team_name, datasetId);
   }
 
   if (!Number.isFinite(row.height_in) && Number.isFinite(row.inches)) row.height_in = row.inches;
@@ -5175,6 +6268,7 @@ function enhanceCommonRow(row, datasetId) {
     row.stocks = row.stl + row.blk;
   }
 
+  row.player_search_text = Array.from(new Set([row.player_name, row.player, row.player_search_text].map((value) => getStringValue(value).trim()).filter(Boolean))).join(" ");
   row.team_search_text = Array.from(new Set([row.team_name, row.team_full, row.team_alias, row.team_alias_all].map((value) => getStringValue(value).trim()).filter(Boolean))).join(" ");
   row.coach_search_text = getStringValue(row.coach).trim();
 }
@@ -5182,11 +6276,17 @@ function enhanceCommonRow(row, datasetId) {
 function enhanceD1Row(row) {
   normalizeD1PlaytypeColumns(row);
   normalizeD1TruePlaytypeFrequencies(row);
-  if (Number.isFinite(row.transition_freq)) {
-    row.halfcourt_freq = roundNumber(100 - row.transition_freq, 1);
-  } else if (Number.isFinite(row.total_poss) && Number.isFinite(row.transition_poss) && row.total_poss > 0) {
+  if (!Number.isFinite(row.transition_poss) && Number.isFinite(row.total_poss) && Number.isFinite(row.transition_freq) && row.total_poss > 0) {
+    row.transition_poss = roundNumber((row.total_poss * row.transition_freq) / 100, 1);
+  }
+  if (!Number.isFinite(row.halfcourt_poss) && Number.isFinite(row.total_poss) && Number.isFinite(row.transition_poss)) {
+    row.halfcourt_poss = roundNumber(Math.max(0, row.total_poss - row.transition_poss), 1);
+  }
+  if (!Number.isFinite(row.transition_freq) && Number.isFinite(row.total_poss) && Number.isFinite(row.transition_poss) && row.total_poss > 0) {
     row.transition_freq = roundNumber((row.transition_poss / row.total_poss) * 100, 1);
-    row.halfcourt_freq = roundNumber(100 - row.transition_freq, 1);
+  }
+  if (!Number.isFinite(row.halfcourt_freq) && Number.isFinite(row.total_poss) && Number.isFinite(row.halfcourt_poss) && row.total_poss > 0) {
+    row.halfcourt_freq = roundNumber((row.halfcourt_poss / row.total_poss) * 100, 1);
   }
   if (row.mid_made == null && Number.isFinite(row.long2_made)) row.mid_made = row.long2_made;
   if (row.mid_att == null && Number.isFinite(row.long2_att)) row.mid_att = row.long2_att;
@@ -5282,6 +6382,12 @@ function enhanceCollegeRow(row, datasetId) {
   row.two_pa_per40 = per40Value(row["2pa"] ?? row.two_pa ?? row["2pa_total"], row.min);
   row.ftr = ratioIfPossible(row.fta, row.fga);
   row.three_pr = ratioIfPossible(row.tpa ?? row["3pa"] ?? row.three_pa, row.fga);
+  if (datasetId === "grassroots") {
+    row.ftm_fga = ratioIfPossible(row.ftm, row.fga);
+    if (Number.isFinite(row.three_pr) && Number.isFinite(row.ftm_fga)) {
+      row.three_pr_plus_ftm_fga = roundNumber(row.three_pr + row.ftm_fga, 3);
+    }
+  }
   row.three_pa_per100 = possPer100Value(row.tpa ?? row["3pa"] ?? row.three_pa, row);
   row.ortg = row.ortg ?? ortgEstimate(row);
   populateAstTo(row);
@@ -5354,6 +6460,41 @@ function populateImpactMetrics(row) {
   if (ppr !== "") row.ppr = ppr;
   const fic = calculateFic(row);
   if (fic !== "") row.fic = fic;
+}
+
+function getDefenseRatePercentileColumns(datasetId = "") {
+  return DEFENSE_RATE_PERCENTILE_COLUMNS[datasetId] || [];
+}
+
+function populateDefenseRatePercentiles(rows, datasetId = "") {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  const pairs = getDefenseRatePercentileColumns(datasetId);
+  if (!pairs.length) return rows;
+
+  pairs.forEach(({ source, percentile }) => {
+    const values = rows
+      .map((row) => Number(row?.[source]))
+      .filter((value) => Number.isFinite(value))
+      .sort((left, right) => left - right);
+
+    if (!values.length) {
+      rows.forEach((row) => {
+        if (Object.prototype.hasOwnProperty.call(row || {}, percentile)) row[percentile] = "";
+      });
+      return;
+    }
+
+    rows.forEach((row) => {
+      const value = Number(row?.[source]);
+      if (!Number.isFinite(value)) {
+        row[percentile] = "";
+        return;
+      }
+      row[percentile] = roundNumber(percentileFromSorted(values, value) * 100, 1);
+    });
+  });
+
+  return rows;
 }
 
 function normalizeSeasonValue(value) {
@@ -5457,7 +6598,7 @@ function scaleRateColumns(row, columns, datasetId = "") {
 
 function scalePercentRatioColumns(row) {
   Object.keys(row || {}).forEach((column) => {
-    if (!/(^ftr$|_ftr$|^three_pr$|_three_pr$)/i.test(column)) return;
+    if (!/(^ftr$|_ftr$|^three_pr$|_three_pr$|^ftm_fga$|_ftm_fga$|^three_pr_plus_ftm_fga$|_three_pr_plus_ftm_fga$)/i.test(column)) return;
     if (typeof row[column] !== "number" || !Number.isFinite(row[column])) return;
     if (Math.abs(row[column]) <= 1.5) row[column] = row[column] * 100;
   });
@@ -5616,7 +6757,10 @@ function normalizeD1TruePlaytypeFrequencies(row) {
   if (!(total > 0)) return;
   possColumns.forEach((column) => {
     const value = Number.isFinite(row[column]) ? row[column] : 0;
-    row[column.replace(/_poss$/, "_freq")] = roundNumber((value / total) * 100, 1);
+    const freqColumn = column.replace(/_poss$/, "_freq");
+    if (row._careerAggregate || !Number.isFinite(row[freqColumn])) {
+      row[freqColumn] = roundNumber((value / total) * 100, 1);
+    }
   });
 }
 
@@ -6154,6 +7298,7 @@ function formatValue(dataset, column, value, row) {
   if (typeof value !== "number") return String(value);
   if (!Number.isFinite(value)) return "";
   if (column === "draft_pick" && row?._draftPickBlank) return "";
+  if (isZeroAttemptTwoPointRow(row, column)) return "";
   if (column === "rank") return String(value);
   if (/^(season|year|rookie_year)$/i.test(column) && Number.isInteger(value)) return String(value);
   if (column === "age") return value.toFixed(1);
@@ -6161,6 +7306,7 @@ function formatValue(dataset, column, value, row) {
   if (/_poss$/i.test(column)) return value.toFixed(1);
   if (/(_att$|_made$|_miss$)/i.test(column)) return String(Math.round(value));
   if (column === "ast_to") return value.toFixed(2);
+  if (column === "blk_pf" || column === "stocks_pf") return value.toFixed(2);
   if (/ppp$/i.test(column)) return value.toFixed(3);
   if (/^(fic|ppr)$/i.test(column)) return value.toFixed(1);
   if (isRatioDisplayPercentColumn(dataset, column)) return (Math.abs(value) <= 1.5 ? value * 100 : value).toFixed(1);
@@ -6190,7 +7336,7 @@ function isRatioDisplayPercentColumn(dataset, column) {
 
 function isPercentRatioColumn(column) {
   const baseColumn = stripCompanionPrefix(column);
-  return /(^ftr$|_ftr$|^three_pr$|_three_pr$)/.test(baseColumn);
+  return /(^ftr$|_ftr$|^three_pr$|_three_pr$|^ftm_fga$|_ftm_fga$|^three_pr_plus_ftm_fga$|_three_pr_plus_ftm_fga$)/.test(baseColumn);
 }
 
 function isLeftAligned(dataset, column) {
@@ -6198,7 +7344,7 @@ function isLeftAligned(dataset, column) {
 }
 
 function isWrapColumn(dataset, column) {
-  return column === dataset?.playerColumn || column === dataset?.teamColumn || column === "coach" || column === "competition_label";
+  return column === dataset?.playerColumn || column === dataset?.teamColumn || column === "coach" || column === "competition_label" || column === "event_name";
 }
 
 function isD1PlaytypeColumn(column) {
