@@ -1176,12 +1176,13 @@ const DATASETS = {
       { id: "setting", label: "Setting", column: "setting", options: GRASSROOTS_SETTING_OPTIONS },
       { id: "age_range", label: "Age", column: "age_range", options: [{ value: "all", label: "All Ages" }, { value: "17U", label: "17U" }, { value: "16U", label: "16U" }, { value: "15U", label: "15U" }] },
       { id: "class_year", label: "Class", column: "class_year" },
+      { id: "event_name", label: "Event Name", column: "event_name" },
     ]),
     multiFilters: [
       { id: "circuit", label: "Circuit", column: "circuit", sort: GRASSROOTS_CIRCUIT_ORDER },
       { id: "pos", label: "Pos", column: "pos", sort: ["PG", "G", "SG", "G/F", "F", "SF", "PF", "C"] },
     ],
-    defaultVisible: ["rank", "season", "age_range", "setting", "circuit", "player_name", "team_name", "pos", "class_year", "height_in", "weight_lb", "gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "fg_pct", "2p_pct", "tp_pct", "three_pr", "three_pr_plus_ftm_fga", "tpm_pg", "tpa_pg", "ftm_fga", "usg_pct", "ram", "c_ram", "psp", "atr", "dsi", "blk_pf", "stocks_pf", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40"],
+    defaultVisible: ["rank", "season", "age_range", "setting", "circuit", "event_name", "player_name", "team_name", "pos", "class_year", "height_in", "weight_lb", "gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "fg_pct", "2p_pct", "tp_pct", "three_pr", "three_pr_plus_ftm_fga", "tpm_pg", "tpa_pg", "ftm_fga", "usg_pct", "ram", "c_ram", "psp", "atr", "dsi", "blk_pf", "stocks_pf", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40"],
     labels: {
       rank: "",
       season: "Year",
@@ -1190,7 +1191,7 @@ const DATASETS = {
       level: "Level",
       setting: "Setting",
       circuit: "Circuit",
-      event_name: "Event",
+      event_name: "Event Name",
       player_name: "Player",
       team_name: "Team",
       pos: "Pos",
@@ -4648,7 +4649,15 @@ function renderExtraFilters(dataset, state) {
   elements.multiSelectFilters.innerHTML = (dataset.multiFilters || [])
     .map((filter) => {
       const selected = state.multiSelects[filter.id] || new Set();
-      const pills = getMultiFilterOptions(dataset, filter, state)
+      const options = getMultiFilterOptions(dataset, filter, state);
+      if (filter.id === "circuit") {
+        const selectOptions = options
+          .map((option) => `<option value="${escapeAttribute(option)}"${selected.has(option) ? " selected" : ""}>${escapeHtml(option)}</option>`)
+          .join("");
+        const size = Math.min(Math.max(options.length, 4), 10);
+        return `<div class="field-stack field-stack--compact field-stack--inline"><label class="field-label field-label--inline" for="multi-${escapeAttribute(filter.id)}">${escapeHtml(filter.label)}</label><select class="form-control" id="multi-${escapeAttribute(filter.id)}" data-multi-filter-select="${escapeAttribute(filter.id)}" multiple size="${size}">${selectOptions}</select></div>`;
+      }
+      const pills = options
         .map((option) => `<button class="pill-toggle ${selected.has(option) ? "is-active" : ""}" type="button" data-multi-filter="${escapeAttribute(filter.id)}" data-multi-value="${escapeAttribute(option)}">${escapeHtml(option)}</button>`)
         .join("");
       return `<div class="multi-pill-group"><div class="multi-pill-group__label">${escapeHtml(filter.label)}</div><div class="pill-grid">${pills}</div></div>`;
@@ -4709,6 +4718,16 @@ function renderExtraFilters(dataset, state) {
       renderCurrentDataset();
     });
   });
+
+  elements.multiSelectFilters.querySelectorAll("[data-multi-filter-select]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const filterId = select.dataset.multiFilterSelect;
+      if (!filterId) return;
+      const selected = new Set(Array.from(select.selectedOptions || []).map((option) => option.value).filter(Boolean));
+      state.multiSelects[filterId] = selected;
+      renderCurrentDataset();
+    });
+  });
 }
 
 function getSingleFilterOptions(dataset, filter, state) {
@@ -4724,7 +4743,10 @@ function getSingleFilterOptions(dataset, filter, state) {
       ...conferences.map((conference) => ({ value: `conf:${conference}`, label: conference })),
     ];
   }
-  const values = Array.from(new Set(dataset.rows.map((row) => getStringValue(row[filter.column])).filter((value) => value && value !== "Unknown"))).sort(compareFilterValues);
+  const sourceRows = filter.id === "event_name"
+    ? getRawFilterContextRows(dataset, state, { ignoreSingleFilterId: filter.id, skipSort: true })
+    : dataset.rows;
+  const values = Array.from(new Set(sourceRows.map((row) => getStringValue(row[filter.column])).filter((value) => value && value !== "Unknown"))).sort(compareFilterValues);
   return [{ value: "all", label: "All" }, ...values.map((value) => ({ value, label: value }))];
 }
 
@@ -5324,6 +5346,7 @@ function aggregateCareerRows(dataset, rows) {
   const defaultWeights = new Array(rows.length);
   const playerSearchValues = new Set();
   const teamSearchValues = new Map();
+  const eventValues = new Map();
   const circuitValues = new Map();
   const settingValues = new Map();
   const coachSearchValues = new Set();
@@ -5345,6 +5368,8 @@ function aggregateCareerRows(dataset, rows) {
       }
     }
     if (dataset.id === "grassroots") {
+      const eventText = getStringValue(row.event_name).trim();
+      if (eventText) eventValues.set(normalizeKey(eventText), eventText);
       const circuitText = getStringValue(row.circuit).trim();
       if (circuitText) circuitValues.set(normalizeKey(circuitText), circuitText);
       const settingText = getStringValue(row.setting || getGrassrootsSettingForCircuit(row.circuit)).trim();
@@ -5363,6 +5388,7 @@ function aggregateCareerRows(dataset, rows) {
   const plans = getCareerAggregationPlans(dataset);
   const aggregate = latest ? Object.create(latest) : {};
   const mergedTeams = sortGrassrootsDisplayValues(teamSearchValues.values(), []);
+  const mergedEvents = sortGrassrootsDisplayValues(eventValues.values(), []);
   const mergedCircuits = sortGrassrootsDisplayValues(circuitValues.values(), GRASSROOTS_CIRCUIT_ORDER);
   const mergedSettings = sortGrassrootsDisplayValues(settingValues.values(), ["HS", "AAU"]);
   const preferredPlayerName = dataset.id === "grassroots" ? getPreferredStatusName(rows) : "";
@@ -5439,6 +5465,7 @@ function aggregateCareerRows(dataset, rows) {
   aggregate[dataset.yearColumn] = latest[dataset.yearColumn];
   aggregate[dataset.teamColumn] = dataset.id === "grassroots" ? mergedTeams.join(" / ") : latest[dataset.teamColumn];
   if (dataset.id === "grassroots") {
+    if (mergedEvents.length) aggregate.event_name = mergedEvents.join(" / ");
     if (mergedCircuits.length) aggregate.circuit = mergedCircuits.join(" / ");
     if (mergedSettings.length) aggregate.setting = mergedSettings.join(" / ");
     aggregate.team_full = aggregate[dataset.teamColumn];
