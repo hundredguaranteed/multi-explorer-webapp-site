@@ -6474,6 +6474,23 @@ function enhanceCollegeRow(row, datasetId) {
     row.region = getStringValue(row.region).replace(/\.0$/, "");
     row.level = normalizeJucoDivision(row.level);
   }
+  if (datasetId === "grassroots") {
+    const threePm = Math.max(0, firstFinite(row.tpm, row["3pm"], row.three_pm, 0));
+    if (!Number.isFinite(row.tpm)) row.tpm = threePm;
+    const inferredTwoPm = firstFinite(
+      row["2pm"],
+      row.two_pm,
+      Number.isFinite(row.fgm) ? Math.max(0, row.fgm - threePm) : Number.NaN
+    );
+    const twoPm = Number.isFinite(inferredTwoPm) ? Math.max(0, inferredTwoPm) : Number.NaN;
+    if (Number.isFinite(twoPm)) {
+      row["2pm"] = twoPm;
+      row.two_pm = twoPm;
+    }
+    const rawFtm = firstFinite(row.ftm, Number.NaN);
+    const derivedFtm = Number.isFinite(row.pts) ? Math.max(0, row.pts - (2 * twoPm) - (3 * threePm)) : Number.NaN;
+    row.ftm = Number.isFinite(derivedFtm) ? derivedFtm : (Number.isFinite(rawFtm) ? Math.max(0, rawFtm) : 0);
+  }
   scaleRateColumns(row, ["fg_pct", "2p_pct", "tp_pct", "ft_pct", "efg_pct", "ts_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "stl_pct", "blk_pct", "tov_pct", "usg_pct"], datasetId);
   populateDerivedShooting(row, {
     threeMadeKeys: ["tpm", "3pm", "three_pm"],
@@ -6504,18 +6521,13 @@ function enhanceCollegeRow(row, datasetId) {
   row.ftr = ratioIfPossible(row.fta, row.fga);
   row.three_pr = ratioIfPossible(row.tpa ?? row["3pa"] ?? row.three_pa, row.fga);
   if (datasetId === "grassroots") {
-    const rawFtm = firstFinite(row.ftm, Number.NaN);
-    if (Number.isFinite(rawFtm)) {
-      row.ftm = Math.abs(rawFtm);
-      const ftmPerGame = perGameValue(row.ftm, row.gp);
-      if (ftmPerGame !== "") row.ftm_pg = ftmPerGame;
-      else if (Number.isFinite(row.ftm_pg)) row.ftm_pg = Math.abs(row.ftm_pg);
-    }
-    row.ftm_fga = ratioIfPossible(row.ftm, row.fga);
-    if (Number.isFinite(row.three_pr) && Number.isFinite(row.ftm_fga)) {
-      row.three_pr = Math.max(0, row.three_pr);
-      row.ftm_fga = Math.max(0, row.ftm_fga);
-      row.three_pr_plus_ftm_fga = roundNumber(row.three_pr + row.ftm_fga, 3);
+    row.ftm_pg = perGameValue(row.ftm, row.gp);
+    const ftmFga = ratioIfPossible(row.ftm, row.fga);
+    row.ftm_fga = Number.isFinite(ftmFga) ? Math.max(0, ftmFga) : "";
+    const threePr = Number.isFinite(row.three_pr) ? Math.max(0, row.three_pr) : Number.NaN;
+    if (Number.isFinite(threePr)) row.three_pr = threePr;
+    if (Number.isFinite(threePr) && Number.isFinite(row.ftm_fga)) {
+      row.three_pr_plus_ftm_fga = roundNumber(threePr + row.ftm_fga, 3);
     }
   }
   row.three_pa_per100 = possPer100Value(row.tpa ?? row["3pa"] ?? row.three_pa, row);
