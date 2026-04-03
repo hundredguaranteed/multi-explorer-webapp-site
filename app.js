@@ -17,7 +17,7 @@ const MINUTES_DEFAULT = 400;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 8000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260402-grassroots-v15";
+const APP_BUILD_VERSION = "20260402-player-career-v19";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const SHARED_SINGLE_FILTERS = [
   {
@@ -843,6 +843,8 @@ function buildPlayerCareerConfig() {
     chunkTemplate: `data/vendor/player_career_chunks/{chunk}.js?v=${SCRIPT_CACHE_BUST}`,
     chunkOrderGlobalName: "PLAYER_CAREER_CHUNK_ORDER",
     chunkStoreGlobalName: "PLAYER_CAREER_CSV_CHUNKS",
+    yearManifestScript: `data/vendor/player_career_year_manifest.js?v=${SCRIPT_CACHE_BUST}`,
+    yearChunkTemplate: `data/vendor/player_career_year_chunks/{season}.js?v=${SCRIPT_CACHE_BUST}`,
     globalName: "PLAYER_CAREER_ALL_CSV",
     yearColumn: "season",
     playerColumn: "player_name",
@@ -851,7 +853,7 @@ function buildPlayerCareerConfig() {
     searchColumns: ["player_name", "team_name", "team_full", "competition_level", "source_dataset", "profile_levels", "career_path", "league", "realgm_player_id"],
     sortBy: "min",
     sortDir: "desc",
-    defaultAllYears: true,
+    defaultAllYears: false,
     demoColumns,
     demoFilterColumns: ["height_in", "weight_lb", "age", "gp", "min", "mpg", "draft_pick"],
     groups: [
@@ -1732,7 +1734,7 @@ function wireGlobalEvents() {
     }
   });
 
-  elements.selectLatestYearBtn.addEventListener("click", () => {
+  elements.selectLatestYearBtn.addEventListener("click", async () => {
     const state = getCurrentUiState();
     const dataset = getCurrentDataset();
     if (!state || !dataset) return;
@@ -1741,7 +1743,12 @@ function wireGlobalEvents() {
       const years = getGrassrootsCareerYears(dataset, state).slice().sort(compareYears);
       state.years = new Set(years.length ? [years[0]] : []);
     } else {
-      state.years = new Set(dataset.meta.latestYear ? [dataset.meta.latestYear] : []);
+      const availableYears = getAvailableYears(dataset);
+      const latestYear = availableYears.length ? availableYears[0] : dataset.meta.latestYear;
+      if (latestYear) {
+        await ensureDatasetYearsLoaded(dataset, [latestYear]);
+      }
+      state.years = new Set(latestYear ? [latestYear] : []);
     }
     resetUiCaches(state);
     renderCurrentDataset();
@@ -2213,12 +2220,30 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
   if (options.requireHydrated && supportsDeferredHydration(config)) {
     await Promise.all((config.deferredExtraScripts || []).map((src) => loadScriptOnce(src)));
   }
+  let usePlayerCareerChunks = datasetId === "player_career" && Boolean(config.yearManifestScript && config.yearChunkTemplate);
   let useGrassrootsChunks = datasetId === "grassroots" && Boolean(config.yearChunkTemplate);
   let useMobileLite = datasetId === "d1" && isCompactViewport() && !options.requireHydrated && config.mobileDataScriptTemplate;
   let rows;
   let availableYears = [];
   try {
-    if (useGrassrootsChunks) {
+    if (usePlayerCareerChunks) {
+      if (config.yearManifestScript) {
+        await loadScriptOnce(config.yearManifestScript);
+      }
+      availableYears = getPlayerCareerAvailableYears(config);
+      const initialYears = getPlayerCareerInitialYears(config);
+      const yearsToLoad = initialYears.length ? initialYears : availableYears;
+      if (!yearsToLoad.length) {
+        throw new Error("Player/Career year manifest did not provide any seasons");
+      }
+      rows = [];
+      const initialDataset = { id: datasetId, rows, _loadedYears: new Set() };
+      await loadPlayerCareerRowsForYears(initialDataset, config, yearsToLoad, options);
+      rows = initialDataset.rows;
+      availableYears = availableYears.length
+        ? availableYears
+        : Array.from(new Set(rows.map((row) => getStringValue(row[config.yearColumn])).filter(Boolean))).sort(compareYears);
+    } else if (useGrassrootsChunks) {
       if (config.yearManifestScript) {
         await loadScriptOnce(config.yearManifestScript);
       }
@@ -2252,8 +2277,12 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
       rows = parseDatasetRows(csvText, datasetId, config, options);
     }
   } catch (error) {
-    if (!useGrassrootsChunks && !useMobileLite) throw error;
-    if (useGrassrootsChunks) {
+    if (usePlayerCareerChunks) {
+      console.warn("Player/Career year chunk load failed; falling back to the legacy payload.", error);
+      usePlayerCareerChunks = false;
+      const csvText = await loadDatasetCsvPayload(config);
+      rows = parseDatasetRows(csvText, datasetId, config, options);
+    } else if (useGrassrootsChunks) {
       rows = [];
       const fallbackDataset = { id: datasetId, rows, _loadedYears: new Set() };
       if (config.yearManifestScript) {
@@ -2278,12 +2307,17 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
   const deferredHydrationMode = supportsDeferredHydration(config) && !options.requireHydrated
     ? (config.deferredHydrationMode || "full")
     : "";
+  const playerCareerHydrationPending = false;
   const grassrootsHydrationPending = useGrassrootsChunks && Array.isArray(availableYears) && availableYears.length
     ? availableYears.some((season) => !loadedYears.has(getStringValue(season)))
     : false;
-  const deferHydration = Boolean(deferredHydrationMode) || grassrootsHydrationPending;
+  const deferHydration = Boolean(deferredHydrationMode) || grassrootsHydrationPending || playerCareerHydrationPending;
   const dataset = { ...config, rows, meta, _hydrated: !deferHydration, _hydrationPending: deferHydration };
   dataset._loadedYears = loadedYears;
+  if (usePlayerCareerChunks) {
+    dataset._playerCareerChunked = true;
+    dataset.availableYears = availableYears.length ? availableYears : meta.years;
+  }
   if (useGrassrootsChunks) {
     dataset._grassrootsChunked = true;
     dataset.availableYears = availableYears.length ? availableYears : meta.years;
@@ -2293,7 +2327,12 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
   }
   appState.datasetCache[datasetId] = dataset;
   if (options.requireHydrated) {
-    if (useGrassrootsChunks) {
+    if (usePlayerCareerChunks) {
+      const hydratedYears = (Array.isArray(dataset.availableYears) && dataset.availableYears.length)
+        ? dataset.availableYears
+        : (Array.isArray(availableYears) && availableYears.length ? availableYears : meta.years);
+      await ensureDatasetYearsLoaded(dataset, hydratedYears, options);
+    } else if (useGrassrootsChunks) {
       const hydratedYears = (Array.isArray(dataset.availableYears) && dataset.availableYears.length)
         ? dataset.availableYears
         : (Array.isArray(availableYears) && availableYears.length ? availableYears : meta.years);
@@ -2491,6 +2530,28 @@ function getGrassrootsInitialYears(config) {
   if (!years.length) return [];
   if (Array.isArray(manifest?.initialYears) && manifest.initialYears.length) return manifest.initialYears;
   return years.slice(-1);
+}
+
+function getPlayerCareerManifest() {
+  return window.PLAYER_CAREER_YEAR_MANIFEST || null;
+}
+
+function getPlayerCareerAvailableYears(config) {
+  const manifestYears = getPlayerCareerManifest()?.years;
+  if (Array.isArray(manifestYears) && manifestYears.length) return manifestYears;
+  return Array.isArray(config?.availableYears) ? config.availableYears : [];
+}
+
+function getPlayerCareerInitialYears(config) {
+  const manifest = getPlayerCareerManifest();
+  const years = getPlayerCareerAvailableYears(config);
+  if (!years.length) return [];
+  if (Array.isArray(manifest?.initialYears) && manifest.initialYears.length) return manifest.initialYears;
+  return years.slice(0, 1);
+}
+
+function getPlayerCareerYearChunkPath(config, season) {
+  return buildYearChunkPath(config?.yearChunkTemplate, season);
 }
 
 function getGrassrootsCareerYears(dataset, state) {
@@ -2866,6 +2927,53 @@ function syncGrassrootsCareerYears(dataset, state, active) {
   }
 }
 
+async function loadPlayerCareerRowsForYears(dataset, config, years, options = {}) {
+  const targetYears = Array.from(new Set((years || []).map((season) => getStringValue(season).trim()).filter(Boolean)));
+  if (!dataset || !targetYears.length) return dataset;
+  if (!dataset._playerCareerRowLoads) dataset._playerCareerRowLoads = new Map();
+  if (!dataset._loadedYears) dataset._loadedYears = new Set();
+
+  const rowsToAppend = [];
+  const pendingYears = targetYears.filter((season) => !dataset._loadedYears.has(season));
+  if (!pendingYears.length) return dataset;
+
+  pendingYears.forEach((season) => {
+    if (dataset._playerCareerRowLoads.has(season)) return;
+    const promise = (async () => {
+      const src = getPlayerCareerYearChunkPath(config, season);
+      if (!src) throw new Error(`Missing Player/Career chunk for ${season}`);
+      await loadScriptOnce(src);
+      const chunkMap = window.PLAYER_CAREER_YEAR_CSV_CHUNKS || {};
+      const csvText = chunkMap[season];
+      if (!csvText) throw new Error(`Missing Player/Career rows for ${season}`);
+      return parseDatasetRows(csvText, dataset.id, config, options);
+    })();
+    dataset._playerCareerRowLoads.set(season, promise);
+  });
+
+  const loadedChunks = await Promise.all(pendingYears.map(async (season) => ({
+    season,
+    rows: await dataset._playerCareerRowLoads.get(season),
+  })));
+
+  loadedChunks.sort((left, right) => compareYears(left.season, right.season));
+  loadedChunks.forEach(({ season, rows }) => {
+    rowsToAppend.push(...rows);
+    dataset._loadedYears.add(season);
+    dataset._playerCareerRowLoads.delete(season);
+  });
+
+  if (!rowsToAppend.length) return dataset;
+  await new Promise((resolve) => window.setTimeout(resolve, 0));
+  dataset.rows = finalizeDatasetRows(dataset.rows.concat(rowsToAppend), config);
+  dataset.meta = buildDatasetMeta(dataset.rows, config);
+  dataset._rowVersion = (dataset._rowVersion || 0) + 1;
+  invalidateDatasetDerivedCaches(dataset.id);
+  dataset._hydrationPending = false;
+  dataset._hydrated = true;
+  return dataset;
+}
+
 async function loadGrassrootsRowsForYears(dataset, config, years, options = {}) {
   const targetYears = Array.from(new Set((years || []).map((season) => getStringValue(season).trim()).filter(Boolean)));
   if (!targetYears.length) return dataset;
@@ -3005,6 +3113,11 @@ async function ensureDatasetYearsLoaded(dataset, years, options = {}) {
   if (!dataset || !targetYears.length) return dataset;
   const missingYears = targetYears.filter((season) => !getLoadedYearSet(dataset).has(season));
   if (!missingYears.length) return dataset;
+  if (dataset.id === "player_career" && dataset._playerCareerChunked) {
+    elements.statusPill.textContent = `Loading ${dataset.navLabel} ${missingYears.join(" / ")}`;
+    await loadPlayerCareerRowsForYears(dataset, DATASETS.player_career, missingYears, options);
+    return dataset;
+  }
   if (dataset.id === "grassroots" && dataset._grassrootsChunked) {
     elements.statusPill.textContent = `Loading ${dataset.navLabel} ${missingYears.join(" / ")}`;
     await loadGrassrootsRowsForYears(dataset, DATASETS.grassroots, missingYears, options);
@@ -5966,7 +6079,8 @@ function getCareerFilteredRows(dataset, state, rows) {
     getStringValue(state.sortBlankMode),
   ].join("||");
   if (cache.careerFilteredRowsKey === key) return cache.careerFilteredRows;
-  let filtered = getFilterContextRows(dataset, state, { rows, ignoreYears: true });
+  const ignoreYears = shouldIgnoreCareerYearFilter(dataset, state);
+  let filtered = getFilterContextRows(dataset, state, { rows, ignoreYears });
   if (dataset?.id === "grassroots" && state?.extraSelects?.view_mode === "career") {
     const availableYears = getAvailableYears(dataset).map((year) => getStringValue(year).trim()).filter(Boolean);
     const selectedYears = Array.from(state?.years || []).map((year) => getStringValue(year).trim()).filter(Boolean);
@@ -5986,7 +6100,7 @@ function getCareerFilteredRows(dataset, state, rows) {
 function getFilterContextRows(dataset, state, options = {}) {
   const searchClauses = parseSearchTerms(state.search);
   const sourceRows = options.rows || getDisplayRows(dataset, state);
-  const applyYearFilter = !options.ignoreYears && state.extraSelects.view_mode !== "career";
+  const applyYearFilter = !options.ignoreYears && !shouldIgnoreCareerYearFilter(dataset, state);
   const grassrootsSearchApplied = dataset.id === "grassroots" && searchClauses.length && !options.ignoreSearch;
   const filteredSourceRows = grassrootsSearchApplied
     ? getGrassrootsSearchRows(dataset, searchClauses, sourceRows)
@@ -6114,6 +6228,24 @@ function getGrassrootsCareerYearLabel(dataset, state) {
     && selectedYears.every((year) => availableYears.includes(year));
   if (allSelected) return "All Years";
   return selectedYears.sort(compareYears).join(" / ");
+}
+
+function getCareerYearLabel(dataset, state) {
+  if (dataset?.id === "grassroots" && state?.extraSelects?.view_mode === "career") {
+    return getGrassrootsCareerYearLabel(dataset, state);
+  }
+  const selectedYears = Array.from(state?.years || []).map((year) => getStringValue(year).trim()).filter(Boolean);
+  if (!selectedYears.length) return "All Years";
+  const availableYears = getAvailableYears(dataset).map((year) => getStringValue(year).trim()).filter(Boolean);
+  const allSelected = availableYears.length
+    && selectedYears.length === availableYears.length
+    && selectedYears.every((year) => availableYears.includes(year));
+  if (allSelected) return "All Years";
+  return selectedYears.sort(compareYears).join(" / ");
+}
+
+function shouldIgnoreCareerYearFilter(dataset, state) {
+  return Boolean(dataset?.id === "grassroots" && state?.extraSelects?.view_mode === "career");
 }
 
 function parseSearchTerms(value) {
@@ -6371,7 +6503,7 @@ function buildCareerRows(dataset, state) {
     ignoreSearch: true,
     ignoreDemoFilters: true,
     ignoreNumericFilters: true,
-    ignoreYears: true,
+    ignoreYears: shouldIgnoreCareerYearFilter(dataset, state),
   });
   const grouped = new Map();
   scopedRows.forEach((row) => {
@@ -7778,9 +7910,9 @@ function updateSummary(dataset, state, filtered) {
     return;
   }
   const careerMode = state?.extraSelects?.view_mode === "career";
-  const selectedYears = dataset?.id === "grassroots" && careerMode
-    ? getGrassrootsCareerYearLabel(dataset, state)
-    : (careerMode ? "All Years" : (state.years.size ? Array.from(state.years).sort((a, b) => compareYears(b, a)).join(" / ") : "none"));
+  const selectedYears = careerMode
+    ? getCareerYearLabel(dataset, state)
+    : (state.years.size ? Array.from(state.years).sort((a, b) => compareYears(b, a)).join(" / ") : "none");
   const search = state.search.trim();
   elements.filtersSummary.textContent = `Years: ${selectedYears} | Team: ${state.team === "all" ? "all" : state.team} | Search: ${search || "none"}`;
   elements.resultsCount.textContent = "";
@@ -7792,19 +7924,15 @@ function renderFinderBar(dataset, state) {
   const careerMode = state?.extraSelects?.view_mode === "career";
   const grassrootsCareerMode = dataset?.id === "grassroots" && careerMode;
   const selectedYears = Array.from(state.years).sort(compareYears);
-  const singleYear = grassrootsCareerMode
-    ? (selectedYears.length === 1 ? selectedYears[0] : "all")
-    : (careerMode ? "all" : (selectedYears.length === 1 ? selectedYears[0] : "all"));
+  const singleYear = selectedYears.length === 1 ? selectedYears[0] : "all";
   const years = grassrootsCareerMode ? getGrassrootsCareerYears(dataset, state) : getAvailableYears(dataset);
-  elements.yearQuickSelect.innerHTML = careerMode && !grassrootsCareerMode
-    ? '<option value="all">All years</option>'
-    : [
-      '<option value="all">All years</option>',
-      ...years.map((year) => `<option value="${escapeAttribute(year)}"${singleYear === year ? " selected" : ""}>${escapeHtml(year)}</option>`),
-    ].join("");
-  elements.yearQuickSelect.value = careerMode && !grassrootsCareerMode ? "all" : singleYear;
-  elements.yearQuickSelect.disabled = Boolean(state?._grassrootsLoadingScope) || (careerMode && !grassrootsCareerMode);
-  const yearLabel = grassrootsCareerMode ? (singleYear === "all" ? "All Years" : singleYear) : "All Years";
+  elements.yearQuickSelect.innerHTML = [
+    '<option value="all">All years</option>',
+    ...years.map((year) => `<option value="${escapeAttribute(year)}"${singleYear === year ? " selected" : ""}>${escapeHtml(year)}</option>`),
+  ].join("");
+  elements.yearQuickSelect.value = singleYear;
+  elements.yearQuickSelect.disabled = Boolean(state?._grassrootsLoadingScope);
+  const yearLabel = careerMode ? getCareerYearLabel(dataset, state) : (selectedYears.length === 1 ? selectedYears[0] : "All Years");
   elements.finderTitle.textContent = `${yearLabel} ${dataset.navLabel} Player Finder`;
   elements.finderQuery.textContent = buildFinderQueryText(dataset, state);
 
