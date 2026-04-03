@@ -17,7 +17,7 @@ const MINUTES_DEFAULT = 400;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 8000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260402-player-career-v19";
+const APP_BUILD_VERSION = "20260403-player-career-v20";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const SHARED_SINGLE_FILTERS = [
   {
@@ -8204,6 +8204,7 @@ function enhanceRowForDataset(row, datasetId) {
   if (datasetId === "naia") enhanceCollegeRow(out, datasetId);
   if (datasetId === "juco") enhanceCollegeRow(out, datasetId);
   if (datasetId === "grassroots") enhanceCollegeRow(out, datasetId);
+  if (datasetId === "player_career") enhancePlayerCareerRow(out);
   if (datasetId === "fiba") enhanceFibaRow(out);
   if (datasetId === "nba") enhanceNbaRow(out);
   normalizePercentLikeColumns(out, datasetId);
@@ -8221,7 +8222,7 @@ function enhanceFibaRow(row) {
 }
 
 function enhanceCommonRow(row, datasetId) {
-  if (row.season != null) {
+  if (row.season != null && datasetId !== "player_career") {
     const seasonValue = normalizeSeasonValue(row.season);
     if (seasonValue !== "") row.season = seasonValue;
   }
@@ -8364,6 +8365,63 @@ function enhanceD2Row(row) {
   populateAstTo(row);
   fillMissingRateStats(row, ["orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct"]);
   scalePercentRatioColumns(row);
+  populateImpactMetrics(row);
+}
+
+function enhancePlayerCareerRow(row) {
+  populateDerivedShooting(row, {
+    threeMadeKeys: ["tpm", "3pm", "three_pm"],
+    threeAttKeys: ["tpa", "3pa", "three_pa"],
+    twoMadeKeys: ["2pm", "two_pm"],
+    twoAttKeys: ["2pa", "two_pa", "2pa_total"],
+    twoPctKeys: ["2p_pct", "two_p_pct"],
+    threePctKeys: ["tp_pct", "3p_pct", "three_p_pct"],
+    efgKeys: ["efg_pct"],
+  });
+
+  const twoPm = firstFinite(row["2pm"], row.two_pm, Number.NaN);
+  const threePm = firstFinite(row["3pm"], row.three_pm, row.tpm, Number.NaN);
+  if (!Number.isFinite(row.ftm) && Number.isFinite(row.fta) && Number.isFinite(row.ft_pct) && row.fta > 0) {
+    const ftPct = Math.abs(row.ft_pct) <= 1.5 ? row.ft_pct : row.ft_pct / 100;
+    row.ftm = Math.max(0, Math.round(row.fta * ftPct));
+  }
+  if (!Number.isFinite(row.ftm) && Number.isFinite(row.pts) && Number.isFinite(twoPm) && Number.isFinite(threePm)) {
+    row.ftm = Math.max(0, row.pts - (2 * twoPm) - (3 * threePm));
+  }
+  if (!Number.isFinite(row.pts)) {
+    const inferredPts = weightedPointTotal(twoPm, threePm, row.ftm);
+    if (Number.isFinite(inferredPts)) row.pts = inferredPts;
+  }
+
+  ["pts", "trb", "ast", "tov", "stl", "blk", "stocks", "pf", "ftm"].forEach((column) => {
+    const perGame = perGameValue(row[column], row.gp);
+    if (perGame !== "" && !Number.isFinite(row[`${column}_pg`])) row[`${column}_pg`] = perGame;
+    const per40 = per40Value(row[column], row.min);
+    if (per40 !== "" && !Number.isFinite(row[`${column}_per40`])) row[`${column}_per40`] = per40;
+  });
+
+  const twoPa = firstFinite(row["2pa"], row.two_pa, row["2pa_total"], Number.NaN);
+  const threePa = firstFinite(row["3pa"], row.three_pa, row.tpa, Number.NaN);
+  const twoPaPg = perGameValue(twoPa, row.gp);
+  const threePaPg = perGameValue(threePa, row.gp);
+  const twoPaPer40 = per40Value(twoPa, row.min);
+  const threePaPer40 = per40Value(threePa, row.min);
+  if (twoPaPg !== "" && !Number.isFinite(row.two_pa_pg)) row.two_pa_pg = twoPaPg;
+  if (threePaPg !== "" && !Number.isFinite(row.three_pa_pg)) row.three_pa_pg = threePaPg;
+  if (twoPaPer40 !== "" && !Number.isFinite(row.two_pa_per40)) row.two_pa_per40 = twoPaPer40;
+  if (threePaPer40 !== "" && !Number.isFinite(row.three_pa_per40)) row.three_pa_per40 = threePaPer40;
+
+  if (!Number.isFinite(row.ftr) && Number.isFinite(row.fta) && Number.isFinite(row.fga) && row.fga > 0) {
+    row.ftr = ratioIfPossible(row.fta, row.fga);
+  }
+  if (!Number.isFinite(row.three_pr) && Number.isFinite(threePa) && Number.isFinite(row.fga) && row.fga > 0) {
+    row.three_pr = ratioIfPossible(threePa, row.fga);
+  }
+  if (!Number.isFinite(row.three_pa_per100)) row.three_pa_per100 = possPer100Value(threePa, row);
+  if (!Number.isFinite(row.ortg)) row.ortg = ortgEstimate(row);
+
+  populateAstTo(row);
+  fillMissingRateStats(row, ["orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct"]);
   populateImpactMetrics(row);
 }
 
