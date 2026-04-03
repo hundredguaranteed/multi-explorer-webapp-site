@@ -2716,7 +2716,8 @@ async function ensureGrassrootsScopeRowsLoaded(dataset, state, scope) {
 async function loadGrassrootsScopeRows(dataset, scope, src) {
   if (canUseGrassrootsScopeWorker()) {
     try {
-      return await loadGrassrootsScopeRowsInWorker(scope, src);
+      const rows = await loadGrassrootsScopeRowsInWorker(scope, src);
+      return scope && scope.startsWith("career_") ? dedupeGrassrootsCareerScopeRows(dataset, rows) : rows;
     } catch (error) {
       console.warn(`Grassroots worker load failed for ${scope}; falling back to main thread parsing.`, error);
     }
@@ -2730,7 +2731,8 @@ async function loadGrassrootsScopeRows(dataset, scope, src) {
   const bundleMap = window.GRASSROOTS_SCOPE_CSV_BUNDLES || {};
   const csvText = bundleMap[scope];
   if (!csvText) throw new Error(`Missing grassroots scope rows for ${scope}`);
-  return parseDatasetRows(csvText, dataset.id, dataset, { skipEnhance: true, skipEnrich: true });
+  const rows = parseDatasetRows(csvText, dataset.id, dataset, { skipEnhance: true, skipEnrich: true });
+  return scope && scope.startsWith("career_") ? dedupeGrassrootsCareerScopeRows(dataset, rows) : rows;
 }
 
 function canUseGrassrootsScopeWorker() {
@@ -2878,6 +2880,7 @@ function scheduleGrassrootsScopePrefetch(dataset, scope) {
   };
   if (typeof window.requestIdleCallback === "function") {
     window.requestIdleCallback(run, { timeout: 250 });
+    return;
   }
   window.setTimeout(run, 0);
 }
@@ -5367,9 +5370,6 @@ function renderCurrentDataset() {
   renderFilters(dataset, state);
   renderResultsOnly(dataset, state);
   scheduleDeferredHydration(dataset.id);
-  if (dataset.id === "grassroots" && state.extraSelects.view_mode !== "career") {
-    scheduleGrassrootsScopePrefetch(dataset, "career_overall");
-  }
   if (dataset.id === "grassroots" && state._grassrootsLoadingScope) {
     elements.statusPill.textContent = `Loading ${dataset.navLabel} ${state._grassrootsLoadingScope.replace(/_/g, " ")}`;
   } else {
@@ -6547,13 +6547,20 @@ function getGrassrootsCareerAliasKey(rowsOrRow) {
   const sample = rows
     .slice()
     .sort((left, right) => grassrootsAliasRowScore(right) - grassrootsAliasRowScore(left))[0] || {};
-  const explicitCareerKey = getStringValue(sample.career_player_key).trim();
-  if (explicitCareerKey) return explicitCareerKey;
+  const nameYearKey = getGrassrootsCareerNameYearKey(sample);
+  if (nameYearKey) return nameYearKey;
   return buildGrassrootsCareerKey(sample);
 }
 
+function getGrassrootsCareerNameYearKey(row) {
+  const playerName = normalizeKey(row?.player_name || row?.player);
+  const classYear = getGrassrootsCareerClassYearKey(row?.class_year);
+  if (!playerName && !classYear) return "";
+  return [playerName, classYear].map((value) => String(value ?? "").trim()).join("|");
+}
+
 function buildGrassrootsCareerKey(row) {
-  const playerName = normalizeGrassrootsNameKey(row.player_name || row.player);
+  const playerName = normalizeNameKey(row.player_name || row.player);
   const classYearText = getStringValue(row.class_year).trim();
   const classYearNumeric = classYearText ? Number(classYearText) : Number.NaN;
   const classYear = Number.isFinite(classYearNumeric) && classYearNumeric >= 1000 ? Math.round(classYearNumeric) : "";
@@ -6565,6 +6572,123 @@ function buildGrassrootsCareerKey(row) {
   const weightKey = Number.isFinite(weightNumeric) ? Math.round(weightNumeric / 5) * 5 : "";
   const posKey = normalizePosLabel(row.pos || row.pos_text);
   return [playerName, classYear, heightKey, weightKey, normalizeKey(posKey)].map((value) => String(value ?? "").trim()).join("|");
+}
+
+// Collapse career bundles to one row per displayed player name + class year.
+function dedupeGrassrootsCareerScopeRows(dataset, rows) {
+  if (!dataset || dataset.id !== "grassroots" || !Array.isArray(rows) || rows.length <= 1) return rows;
+
+  const grouped = new Map();
+  rows.forEach((row, index) => {
+    const key = getGrassrootsCareerNameYearKey(row) || `__grassroots_row_${index}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  });
+
+  return Array.from(grouped.values()).map((groupRows) => (groupRows.length > 1 ? aggregateCareerRows(dataset, groupRows) : groupRows[0]));
+}
+
+function buildGrassrootsCareerClusterMeta(row) {
+  return {
+    rows: [row],
+    representative: row,
+    explicitIds: new Set(getExplicitIdentityId(row) ? [getExplicitIdentityId(row)] : []),
+    teamTokens: getGrassrootsCareerTeamTokens(row),
+  };
+}
+
+function mergeGrassrootsCareerClusterMeta(target, source) {
+  if (!target || !source) return target;
+  target.rows.push(...source.rows);
+  if (grassrootsAliasRowScore(source.representative) > grassrootsAliasRowScore(target.representative)) {
+    target.representative = source.representative;
+  }
+  source.explicitIds.forEach((value) => target.explicitIds.add(value));
+  source.teamTokens.forEach((value) => target.teamTokens.add(value));
+  return target;
+}
+
+function canMergeGrassrootsCareerClusters(left, right) {
+  if (!left || !right) return false;
+  const leftIds = Array.from(left.explicitIds || []).filter(Boolean);
+  const rightIds = Array.from(right.explicitIds || []).filter(Boolean);
+  if (leftIds.length && rightIds.length && !leftIds.some((value) => rightIds.includes(value))) return false;
+
+  const leftRow = left.representative || left.rows?.[0] || {};
+  const rightRow = right.representative || right.rows?.[0] || {};
+  const leftFamily = getGrassrootsPosFamily(leftRow);
+  const rightFamily = getGrassrootsPosFamily(rightRow);
+  const teamOverlap = hasGrassrootsCareerTokenOverlap(left.teamTokens, right.teamTokens);
+  if (!areGrassrootsPosFamiliesCompatible(leftFamily, rightFamily, teamOverlap)) return false;
+
+  const leftHeight = getGrassrootsCareerInches(leftRow);
+  const rightHeight = getGrassrootsCareerInches(rightRow);
+  const leftWeight = getGrassrootsCareerWeight(leftRow);
+  const rightWeight = getGrassrootsCareerWeight(rightRow);
+  const hasHeightPair = Number.isFinite(leftHeight) && Number.isFinite(rightHeight);
+  const hasWeightPair = Number.isFinite(leftWeight) && Number.isFinite(rightWeight);
+
+  if (teamOverlap) {
+    if (hasHeightPair && Math.abs(leftHeight - rightHeight) > 3) return false;
+    if (hasWeightPair && Math.abs(leftWeight - rightWeight) > 40) return false;
+    return true;
+  }
+
+  if (!hasHeightPair) return false;
+  if (Math.abs(leftHeight - rightHeight) > 3) return false;
+  if (hasWeightPair && Math.abs(leftWeight - rightWeight) > 30) return false;
+  return true;
+}
+
+function areGrassrootsPosFamiliesCompatible(leftFamily, rightFamily, teamOverlap) {
+  if (!leftFamily || !rightFamily || leftFamily === rightFamily) return true;
+  if (leftFamily === "C" || rightFamily === "C") return false;
+  return true;
+}
+
+function getGrassrootsCareerClassYearKey(value) {
+  const text = getStringValue(value).trim();
+  if (!text) return "";
+  const numeric = Number(text);
+  if (Number.isFinite(numeric) && numeric >= 1000) return String(Math.round(numeric));
+  return normalizeKey(text);
+}
+
+function getGrassrootsCareerInches(row) {
+  const value = firstFinite(row?.height_in, row?.inches, Number.NaN);
+  return Number.isFinite(value) && value > 0 ? value : Number.NaN;
+}
+
+function getGrassrootsCareerWeight(row) {
+  const value = firstFinite(row?.weight_lb, row?.weight, Number.NaN);
+  return Number.isFinite(value) && value > 0 ? value : Number.NaN;
+}
+
+function getGrassrootsCareerTeamTokens(row) {
+  const tokens = new Set();
+  [row?.team_aliases, row?.team_search_text, row?.team_full, row?.team_name, row?.team].forEach((value) => {
+    splitGrassrootsCareerTokens(value).forEach((token) => tokens.add(token));
+  });
+  return tokens;
+}
+
+function splitGrassrootsCareerTokens(value) {
+  return String(value ?? "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\band\b/gi, "/")
+    .split(/[\/,&|+]/)
+    .map((part) => normalizeKey(part))
+    .filter((part) => part && part.length >= 3 && part !== "unknown");
+}
+
+function hasGrassrootsCareerTokenOverlap(leftTokens, rightTokens) {
+  if (!leftTokens?.size || !rightTokens?.size) return false;
+  const smaller = leftTokens.size <= rightTokens.size ? leftTokens : rightTokens;
+  const larger = smaller === leftTokens ? rightTokens : leftTokens;
+  for (const token of smaller) {
+    if (larger.has(token)) return true;
+  }
+  return false;
 }
 
 function getGrassrootsSettingForCircuit(circuit) {
@@ -7263,6 +7387,9 @@ function canMergeCareerGroups(left, right) {
   if (left.explicitIds.length && right.explicitIds.length) {
     return left.explicitIds.some((id) => right.explicitIds.includes(id));
   }
+  const leftGrassroots = Array.isArray(left.rows) && left.rows.length && Object.prototype.hasOwnProperty.call(left.rows[0] || {}, "circuit");
+  const rightGrassroots = Array.isArray(right.rows) && right.rows.length && Object.prototype.hasOwnProperty.call(right.rows[0] || {}, "circuit");
+  if (leftGrassroots || rightGrassroots) return true;
   if (left.dobs.length && right.dobs.length && !left.dobs.some((dob) => right.dobs.includes(dob))) return false;
   if (left.draftPicks.length && right.draftPicks.length && !left.draftPicks.some((pick) => right.draftPicks.includes(pick))) return false;
   if (left.rookieYears.length && right.rookieYears.length && !left.rookieYears.some((year) => right.rookieYears.includes(year))) return false;
@@ -7270,9 +7397,6 @@ function canMergeCareerGroups(left, right) {
     const compatibleHeight = left.heights.some((height) => right.heights.some((other) => Math.abs(height - other) <= 1));
     if (!compatibleHeight) return false;
   }
-  const grassrootsRows = (Array.isArray(left.rows) && left.rows.length && Object.prototype.hasOwnProperty.call(left.rows[0] || {}, "circuit"))
-    || (Array.isArray(right.rows) && right.rows.length && Object.prototype.hasOwnProperty.call(right.rows[0] || {}, "circuit"));
-  if (grassrootsRows) return true;
   if (left.maxYear >= right.minYear && right.maxYear >= left.minYear) return false;
   const gap = left.maxYear < right.minYear ? right.minYear - left.maxYear : left.minYear - right.maxYear;
   const hasExtraIdentity = (left.dobs.length && right.dobs.length)
@@ -8014,7 +8138,7 @@ function dedupeDatasetRows(rows, datasetId) {
   rows.forEach((row) => {
     const season = getStringValue(row.season);
     const playerKey = datasetId === "grassroots"
-      ? normalizeKey(row.career_player_key || row.player_cluster_key || buildGrassrootsCareerKey(row) || row.player_name || row.player)
+      ? normalizeKey(getGrassrootsCareerNameYearKey(row) || row.player_name || row.player)
       : normalizeNameKey(row.player_name || row.player);
     const teamKey = datasetId === "grassroots"
       ? normalizeKey(row.team_full || row.team_name || row.team_alias || row.team || "")
