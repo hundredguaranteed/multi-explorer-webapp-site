@@ -3,16 +3,11 @@ const path = require("path");
 const vm = require("vm");
 
 const ROOT = __dirname;
-const SOURCE_DIR = path.join(ROOT, "data", "vendor", "player_career_chunks");
+const SOURCE_FILE = path.join(ROOT, "data", "vendor", "player_career_all_seasons.js");
 const OUTPUT_DIR = path.join(ROOT, "data", "vendor", "player_career_year_chunks");
 const MANIFEST_PATH = path.join(ROOT, "data", "vendor", "player_career_year_manifest.js");
-const PART_FILES = [
-  "part-001.js",
-  "part-002.js",
-  "part-003.js",
-  "part-004.js",
-  "part-005.js",
-];
+const GLOBAL_NAME = "PLAYER_CAREER_ALL_CSV";
+const MIN_YEAR = 1998;
 
 function parseCsv(text) {
   const rows = [];
@@ -69,68 +64,70 @@ function serializeCsvRow(row) {
   return row.map(csvEscape).join(",");
 }
 
-function extractChunkText(filePath) {
-  const source = fs.readFileSync(filePath, "utf8");
+function loadAllRows() {
+  const source = fs.readFileSync(SOURCE_FILE, "utf8");
   const sandbox = { window: {} };
-  vm.runInNewContext(source, sandbox, { filename: path.basename(filePath) });
-  const chunkMap = sandbox.window.PLAYER_CAREER_CSV_CHUNKS || {};
-  const keys = Object.keys(chunkMap);
-  if (keys.length !== 1) {
-    throw new Error(`Expected one chunk in ${filePath}, found ${keys.length}`);
+  vm.runInNewContext(source, sandbox, { filename: path.basename(SOURCE_FILE) });
+  const csvText = String(sandbox.window[GLOBAL_NAME] ?? "");
+  return parseCsv(csvText);
+}
+
+function canonicalSeasonLabel(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const match = text.match(/(\d{4})\s*[-/]\s*(\d{2,4})/);
+  if (match) {
+    const endPart = match[2];
+    return String(Number(endPart.length === 2 ? `20${endPart}` : endPart));
   }
-  return String(chunkMap[keys[0]] ?? "");
+  const years = text.match(/\d{4}/g);
+  if (years?.length) return String(Number(years[years.length - 1]));
+  const numeric = Number(text);
+  return Number.isFinite(numeric) ? String(Math.round(numeric)) : text;
 }
 
 function compareSeasonStrings(left, right) {
-  const leftYear = Number(left);
-  const rightYear = Number(right);
-  if (Number.isFinite(leftYear) && Number.isFinite(rightYear) && leftYear !== rightYear) {
-    return rightYear - leftYear;
-  }
-  return String(right).localeCompare(String(left), undefined, { numeric: true, sensitivity: "base" });
+  return Number(right) - Number(left);
 }
 
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
-const bySeason = new Map();
-let header = null;
-
-for (const fileName of PART_FILES) {
-  const filePath = path.join(SOURCE_DIR, fileName);
-  const csvText = extractChunkText(filePath);
-  const rows = parseCsv(csvText);
-  if (!rows.length) continue;
-
-  if (!header) {
-    header = rows[0].map((cell) => String(cell).trim());
-  }
-
-  const seasonIndex = header.indexOf("season");
-  if (seasonIndex < 0) {
-    throw new Error("player_career CSV is missing a season column");
-  }
-
-  const firstRow = rows[0].map((cell) => String(cell).trim());
-  const startIndex = firstRow.length === header.length && firstRow[0] === header[0] ? 1 : 0;
-
-  for (const row of rows.slice(startIndex)) {
-    const season = String(row[seasonIndex] ?? "").trim();
-    if (!season) continue;
-    if (!bySeason.has(season)) bySeason.set(season, []);
-    bySeason.get(season).push(serializeCsvRow(row));
-  }
+const rows = loadAllRows();
+if (!rows.length) {
+  throw new Error("Unable to read player_career bundle");
 }
 
-if (!header) {
-  throw new Error("Unable to read player_career header");
+const header = rows[0].map((cell) => String(cell).trim());
+const seasonIndex = header.indexOf("season");
+if (seasonIndex < 0) {
+  throw new Error("player_career CSV is missing a season column");
+}
+
+const bySeason = new Map();
+for (const inputRow of rows.slice(1)) {
+  const row = inputRow.slice();
+  const season = canonicalSeasonLabel(row[seasonIndex]);
+  const seasonYear = Number(season);
+  if (!season || !Number.isFinite(seasonYear) || seasonYear < MIN_YEAR) continue;
+  row[seasonIndex] = season;
+  if (!bySeason.has(season)) bySeason.set(season, []);
+  bySeason.get(season).push(serializeCsvRow(row));
 }
 
 const seasons = Array.from(bySeason.keys()).sort(compareSeasonStrings);
 const counts = Object.fromEntries(seasons.map((season) => [season, bySeason.get(season).length]));
+const expectedChunkFiles = new Set(seasons.map((season) => `${season}.js`));
+for (const entry of fs.readdirSync(OUTPUT_DIR, { withFileTypes: true })) {
+  if (!entry.isFile() || !entry.name.endsWith(".js")) continue;
+  if (expectedChunkFiles.has(entry.name)) continue;
+  fs.rmSync(path.join(OUTPUT_DIR, entry.name));
+}
 const manifest = {
   years: seasons,
   initialYears: seasons.length ? [seasons[0]] : [],
   counts,
+  latestYear: seasons[0] || "",
+  minYear: MIN_YEAR,
 };
 
 const manifestSource = [
@@ -143,8 +140,7 @@ fs.writeFileSync(MANIFEST_PATH, manifestSource, "utf8");
 
 const headerRow = header.map(csvEscape).join(",");
 for (const season of seasons) {
-  const rows = bySeason.get(season) || [];
-  const csvRows = [headerRow, ...rows].join("\r\n") + "\r\n";
+  const csvRows = [headerRow, ...(bySeason.get(season) || [])].join("\r\n") + "\r\n";
   const chunkSource = [
     "window.PLAYER_CAREER_YEAR_CSV_CHUNKS = window.PLAYER_CAREER_YEAR_CSV_CHUNKS || {};",
     `window.PLAYER_CAREER_YEAR_CSV_CHUNKS[${JSON.stringify(season)}] = ${JSON.stringify(csvRows)};`,
