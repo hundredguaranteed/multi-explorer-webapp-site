@@ -265,7 +265,17 @@ a,
 }
 
 .multi-pill-group .pill-toggle {
-  flex: 0 0 42px;
+  flex: 0 0 56px;
+  white-space: normal;
+  line-height: 1.02;
+  font-size: 8.5px;
+}
+
+.multi-pill-group[data-filter-id="circuit"] .pill-toggle {
+  flex-basis: 132px;
+  min-width: 132px;
+  font-size: 7.5px;
+  line-height: 1.05;
 }
 
 .embedded-demo-controls {
@@ -300,6 +310,10 @@ a,
 .demo-toggle-button.is-active,
 .group-cycle-button.is-active {
   background: var(--active-fill);
+}
+
+.pill-toggle.is-unloaded {
+  opacity: 0.65;
 }
 
 .demo-range-grid {
@@ -403,6 +417,7 @@ a,
   width: min(var(--table-frame-width, var(--table-max-width)), 100%);
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
+  contain: layout paint;
 }
 
 #statsTable {
@@ -434,6 +449,13 @@ a,
   overflow: visible;
   word-break: break-word;
   line-height: 1.05;
+}
+
+#statsTable th.cell-small-text,
+#statsTable td.cell-small-text {
+  font-size: 6.25px;
+  line-height: 1;
+  letter-spacing: -0.15px;
 }
 
 #statsTable th {
@@ -721,6 +743,11 @@ a,
 
   .multi-pill-group .pill-toggle {
     flex: 1 1 calc(33.333% - 5px);
+  }
+
+  .multi-pill-group[data-filter-id="circuit"] .pill-toggle {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
   }
 
   .demo-range-item,
