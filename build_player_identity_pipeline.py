@@ -279,6 +279,7 @@ US_STATE_ABBREVIATIONS = {
     "wyoming": "WY",
 }
 US_STATE_CODES = set(US_STATE_ABBREVIATIONS.values())
+TEAM_STATE_CODE_TO_NAME = {code.lower(): name for name, code in US_STATE_ABBREVIATIONS.items()}
 
 
 def main() -> None:
@@ -1038,11 +1039,15 @@ def annotate_grassroots_identity_row(row: dict[str, object]) -> dict[str, object
     out["_rookie_year_value"] = None
     out["_canonical_player_id"] = ""
     out["_realgm_player_id"] = ""
-    out["_identity_group_key"] = build_grassroots_fallback_canonical_id(out)
+    out["_identity_group_key"] = get_grassroots_identity_group_key(out)
     return out
 
 
 def get_grassroots_identity_group_key(row: dict[str, object]) -> str:
+    name_key = normalize_name_key(row.get("_player_name") or row.get("player_name"))
+    class_year = canonical_end_year(row.get("class_year"))
+    if name_key and class_year:
+        return f"grgrp|{name_key.replace(' ', '_')}|{class_year}"
     return clean_text(row.get("career_player_key")) or build_grassroots_fallback_canonical_id(row)
 
 
@@ -2413,12 +2418,36 @@ def strip_state_tokens(value: object) -> str:
     return " ".join(token for token in tokens if token not in TEAM_STATE_TOKENS)
 
 
+def expand_school_key_variants(value: object) -> list[str]:
+    base = normalize_key(value)
+    if not base:
+        return []
+    tokens = [token for token in base.split() if token]
+    if not tokens:
+        return []
+    variants = {" ".join(tokens)}
+    for index, token in enumerate(tokens):
+        replacement = TEAM_STATE_CODE_TO_NAME.get(token)
+        if replacement:
+            expanded = list(tokens)
+            expanded[index] = replacement
+            variants.add(" ".join(expanded))
+    if tokens[-1] == "st":
+        variants.add(" ".join([*tokens[:-1], "state"]))
+    return sorted(variant for variant in variants if variant)
+
+
 def build_school_keys(value: object) -> list[str]:
     raw = clean_text(value)
     if not raw:
         return []
     candidates = {raw, re.sub(r"\([^)]*\)", " ", raw).strip(), simplify_school_name(raw), strip_state_tokens(raw)}
-    keys = {normalize_key(candidate) for candidate in candidates if normalize_key(candidate)}
+    keys = set()
+    for candidate in candidates:
+        normalized = normalize_key(candidate)
+        if normalized:
+            keys.add(normalized)
+        keys.update(expand_school_key_variants(candidate))
     return sorted(keys)
 
 
@@ -2610,6 +2639,13 @@ def runtime_key(dataset_id: str, season: object, team: object, player: object, c
 def fill_per_game_and_per40(row: dict[str, object]) -> None:
     gp = first_number(row.get("gp"))
     minutes = first_number(row.get("min"))
+    mpg = first_number(row.get("mpg"))
+    if (gp is None or gp <= 0) and minutes is not None and mpg is not None and mpg > 0:
+        gp = round_number(minutes / mpg, 3)
+        row["gp"] = gp
+    if (minutes is None or minutes <= 0) and gp is not None and gp > 0 and mpg is not None and mpg > 0:
+        minutes = round_number(gp * mpg, 3)
+        row["min"] = minutes
     if first_number(row.get("mpg")) is None and minutes is not None and gp and gp > 0:
         row["mpg"] = round_number(minutes / gp, 3)
     row["pts_pg"] = first_number(row.get("pts_pg"), divide_numbers(row.get("pts"), gp))

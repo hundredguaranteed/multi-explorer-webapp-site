@@ -17,7 +17,7 @@ const MINUTES_DEFAULT = 400;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 8000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260403-player-career-v21";
+const APP_BUILD_VERSION = "20260403-player-career-v22";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const SHARED_SINGLE_FILTERS = [
   {
@@ -849,8 +849,8 @@ function buildPlayerCareerConfig() {
     yearColumn: "season",
     playerColumn: "player_name",
     teamColumn: "team_name",
-    lockedColumns: ["rank", "season", "player_name", "competition_level", "team_name"],
-    searchColumns: ["player_name", "team_name", "team_full", "competition_level", "profile_levels", "career_path", "league", "realgm_player_id"],
+    lockedColumns: ["rank", "season", "player_name", "competition_level"],
+    searchColumns: ["player_name", "player_search_text", "team_name", "team_full", "team_search_text"],
     sortBy: "min",
     sortDir: "desc",
     defaultAllYears: false,
@@ -861,8 +861,8 @@ function buildPlayerCareerConfig() {
       {
         id: "identity",
         label: "Identity",
-        columns: ["competition_level", "profile_levels", "career_path", "league", "team_full", "pos", "class_year", "height_in", "weight_lb", "age", "dob", "draft_pick", "rookie_year"],
-        defaultColumns: ["competition_level", "profile_levels", "pos", "class_year", "height_in", "draft_pick"],
+        columns: ["competition_level", "profile_levels", "career_path", "league", "team_name", "team_full", "pos", "class_year", "height_in", "weight_lb", "age", "dob", "draft_pick", "rookie_year"],
+        defaultColumns: ["competition_level", "profile_levels", "team_name", "pos", "class_year", "height_in", "draft_pick"],
       },
       {
         id: "summary",
@@ -1698,8 +1698,12 @@ function wireGlobalEvents() {
     const dataset = getCurrentDataset();
     if (!state || !dataset) return;
     const changed = applySearchInputValue(dataset, state, elements.searchInput.value);
-    if (!changed) return;
-    if (changed.filtersChanged) {
+    const playerCareerYearsChanged = syncPlayerCareerSearchYears(dataset, state);
+    if (parseSearchTerms(state.search).length) {
+      schedulePlayerCareerSearchPrefetch(dataset, state);
+    }
+    if (!changed && !playerCareerYearsChanged) return;
+    if (changed?.filtersChanged || playerCareerYearsChanged) {
       renderCurrentDataset();
       return;
     }
@@ -2562,7 +2566,7 @@ function getGrassrootsCareerYears(dataset, state) {
     ? scopeRows
     : (Array.isArray(dataset?.rows) ? dataset.rows : []);
   return Array.from(new Set(sourceRows
-    .map((row) => Number(row?.class_year))
+    .map((row) => normalizeSeasonValue(row?.season))
     .filter((year) => Number.isFinite(year) && year >= 1000)
     .map((year) => String(Math.round(year)))))
     .sort(compareYears);
@@ -2929,6 +2933,71 @@ function syncGrassrootsCareerYears(dataset, state, active) {
   if (state._grassrootsPlayerYears) {
     state.years = new Set(state._grassrootsPlayerYears);
   }
+}
+
+function syncPlayerCareerSearchYears(dataset, state) {
+  if (dataset?.id !== "player_career" || !state) return false;
+  const allYears = getAvailableYears(dataset).map((year) => getStringValue(year).trim()).filter(Boolean);
+  if (!allYears.length) return false;
+  const searchActive = parseSearchTerms(state.search).length > 0;
+  const currentYears = new Set(Array.from(state.years || []).map((year) => getStringValue(year).trim()).filter(Boolean));
+  if (searchActive) {
+    if (!state._playerCareerPlayerYears) state._playerCareerPlayerYears = new Set(currentYears.size ? currentYears : [allYears[0]]);
+    const nextYears = new Set(allYears);
+    if (setsMatch(currentYears, nextYears)) return false;
+    state.years = nextYears;
+    resetUiCaches(state);
+    return true;
+  }
+  if (!state._playerCareerPlayerYears) return false;
+  const restoredYears = Array.from(state._playerCareerPlayerYears)
+    .map((year) => getStringValue(year).trim())
+    .filter((year) => year && allYears.includes(year));
+  state._playerCareerPlayerYears = null;
+  const nextYears = new Set(restoredYears.length ? restoredYears : [allYears[0]]);
+  if (setsMatch(currentYears, nextYears)) return false;
+  state.years = nextYears;
+  resetUiCaches(state);
+  return true;
+}
+
+function schedulePlayerCareerSearchPrefetch(dataset, state) {
+  if (dataset?.id !== "player_career" || !dataset._playerCareerChunked || !state) return;
+  const searchKey = parseSearchTerms(state.search).join("||");
+  if (!searchKey) return;
+  const missingYears = getAvailableYears(dataset)
+    .map((year) => getStringValue(year).trim())
+    .filter((year) => year && !getLoadedYearSet(dataset).has(year));
+  if (!missingYears.length) return;
+  const loadKey = `${searchKey}|${missingYears.join("|")}`;
+  if (dataset._playerCareerSearchPrefetchKey === loadKey) return;
+  dataset._playerCareerSearchPrefetchKey = loadKey;
+  Promise.resolve().then(async () => {
+    try {
+      await ensureDatasetYearsLoaded(dataset, missingYears);
+    } catch (error) {
+      console.warn("Player/Career search prefetch failed.", error);
+      return;
+    } finally {
+      if (dataset._playerCareerSearchPrefetchKey === loadKey) {
+        dataset._playerCareerSearchPrefetchKey = "";
+      }
+    }
+    if (appState.currentId !== dataset.id) return;
+    const currentState = getCurrentUiState();
+    if (!currentState) return;
+    if (parseSearchTerms(currentState.search).join("||") !== searchKey) return;
+    renderCurrentDataset();
+  });
+}
+
+function setsMatch(left, right) {
+  if (!left && !right) return true;
+  if (!left || !right || left.size !== right.size) return false;
+  for (const value of left) {
+    if (!right.has(value)) return false;
+  }
+  return true;
 }
 
 async function loadPlayerCareerRowsForYears(dataset, config, years, options = {}) {
@@ -5437,13 +5506,11 @@ function renderFilters(dataset, state) {
   elements.searchInput.disabled = Boolean(dataset.id === "grassroots" && state._grassrootsLoadingScope);
   const searchLabel = document.querySelector('label[for="searchInput"]');
   if (searchLabel) {
-    if (dataset.id === "d1") searchLabel.textContent = "Player / Team / Coach";
-    else if (dataset.id === "grassroots") searchLabel.textContent = "Player / Team / Event / State";
-    else searchLabel.textContent = "Player / Team";
+    searchLabel.textContent = "Player";
   }
   elements.searchInput.placeholder = dataset.id === "grassroots"
-    ? "Player, team, or event; use && for OR"
-    : (dataset.id === "d1" ? "Use &&, comma, or semicolon for OR" : "Start typing");
+    ? "Player name; use && for OR"
+    : "Player name";
 }
 
 function renderYearPills(dataset, state) {
@@ -5742,6 +5809,13 @@ function compareGrassrootsEventValues(left, right) {
   const rightSeason = extractLeadingYear(rightText);
   if (leftSeason !== rightSeason) return rightSeason - leftSeason;
   return compareFilterValues(leftBase || leftText, rightBase || rightText);
+}
+
+function sortGrassrootsEventValues(values) {
+  return Array.from(values || [])
+    .map((value) => getStringValue(value).trim())
+    .filter(Boolean)
+    .sort(compareGrassrootsEventValues);
 }
 
 function getGrassrootsEventSortBase(text) {
@@ -6336,7 +6410,7 @@ function matchesSearchPhrase(haystack, phrase) {
     while (cursor < haystackTokens.length) {
       const haystackToken = haystackTokens[cursor];
       cursor += 1;
-      if (haystackToken === phraseToken || haystackToken.startsWith(phraseToken) || phraseToken.startsWith(haystackToken)) {
+      if (haystackToken === phraseToken || haystackToken.startsWith(phraseToken)) {
         found = true;
         break;
       }
@@ -6386,15 +6460,7 @@ function getGrassrootsSearchIndexForRows(dataset, rows) {
     [
       row.player_name,
       row.player_search_text,
-      row.team_name,
-      row.team_search_text,
-      row.event_name,
-      row.event_group,
-      row.circuit,
-      row.setting,
-      row.state,
-      row.class_year,
-      row.age_range,
+      row.player_aliases,
     ].forEach((value) => addSearchValue(value, rowIndex));
   });
 
@@ -6409,19 +6475,6 @@ function getGrassrootsRowSearchHaystack(row) {
       row.player_name,
       row.player_search_text,
       row.player_aliases,
-      row.team_name,
-      row.team_full,
-      row.team_search_text,
-      row.team_aliases,
-      row.event_name,
-      row.event_group,
-      row.event_aliases,
-      row.circuit,
-      row.setting,
-      row.state,
-      row.team_state,
-      row.class_year,
-      row.age_range,
     ].map((value) => normalizeGrassrootsSearchValue(value)).filter(Boolean).join(" ");
   }
   return row._grassrootsSearchHaystack;
@@ -6495,12 +6548,12 @@ function scheduleGrassrootsSearchWarmup(dataset, rows, cacheKey) {
 
 function getRowSearchHaystack(dataset, row) {
   if (!row) return "";
-  if (!dataset?._searchCacheColumnsKey) dataset._searchCacheColumnsKey = (dataset?.searchColumns || []).join("|");
+  if (!dataset?._searchCacheColumnsKey) dataset._searchCacheColumnsKey = ["player_name", "player", "player_search_text", "player_aliases"].join("|");
   const searchKey = dataset?._searchCacheColumnsKey || "";
   if (row._searchCacheKey !== searchKey) {
     row._searchCacheKey = searchKey;
-    row._searchHaystack = (dataset?.searchColumns || [])
-      .map((column) => normalizeSearchPhrase(row[column]))
+    row._searchHaystack = [row?.[dataset?.playerColumn], row?.player_name, row?.player, row?.player_search_text, row?.player_aliases]
+      .map((value) => normalizeSearchPhrase(value))
       .filter(Boolean)
       .join(" ");
   }
@@ -7666,6 +7719,11 @@ function getColumnWidth(column, dataset) {
   if (column === "rank") return 18;
   if (baseColumn === dataset.yearColumn || baseColumn === "season") return 48;
   if (baseColumn === "age_range") return 52;
+  if (dataset.id === "player_career" && baseColumn === dataset.teamColumn) return 118;
+  if (dataset.id === "player_career" && baseColumn === "team_full") return 136;
+  if (dataset.id === "player_career" && baseColumn === "profile_levels") return 108;
+  if (dataset.id === "player_career" && baseColumn === "career_path") return 188;
+  if (dataset.id === "player_career" && baseColumn === "league") return 92;
   if (dataset.id === "grassroots" && baseColumn === "event_name") return 96;
   if (baseColumn === "event_group") return 220;
   if (baseColumn === "event_raw_name") return 260;
@@ -7765,6 +7823,9 @@ function renderHeaderCell(dataset, state, column) {
   if (dataset.id === "grassroots" && ["team_name", "team_full", "event_name", "event_group", "event_raw_name", "circuit"].includes(column)) {
     classes.push("cell-small-text");
   }
+  if (dataset.id === "player_career" && ["team_name", "team_full", "profile_levels"].includes(column)) {
+    classes.push("cell-compact-text");
+  }
   if (isD1PlaytypeColumn(column) || /^ncaa_|^nba_/i.test(column) || label.length >= 11) classes.push("cell-header-small");
   return `<th class="${classes.join(" ")}"${sortable ? ` data-sort="${escapeAttribute(column)}"` : ""}>${escapeHtml(label)}</th>`;
 }
@@ -7783,6 +7844,9 @@ function renderBodyCell(dataset, state, column, row, index, colorScale) {
   if (isWrapColumn(dataset, column)) classes.push("cell-wrap");
   if (dataset.id === "grassroots" && ["team_name", "team_full", "event_name", "event_group", "event_raw_name", "circuit"].includes(column)) {
     classes.push("cell-small-text");
+  }
+  if (dataset.id === "player_career" && ["team_name", "team_full", "profile_levels"].includes(column)) {
+    classes.push("cell-compact-text");
   }
   if (typeof rawValue === "number" && rawValue < 0) classes.push("negative");
   const style = getCellStyle(dataset, state, column, rawValue, colorScale, row);
@@ -8374,6 +8438,12 @@ function enhanceCommonRow(row, datasetId) {
   if (!Number.isFinite(row.weight_lb) && Number.isFinite(row.weight)) row.weight_lb = row.weight;
   if (!Number.isFinite(row.weight) && Number.isFinite(row.weight_lb)) row.weight = row.weight_lb;
 
+  if ((!Number.isFinite(row.gp) || row.gp <= 0) && Number.isFinite(row.min) && Number.isFinite(row.mpg) && row.mpg > 0) {
+    row.gp = roundNumber(row.min / row.mpg, 3);
+  }
+  if ((!Number.isFinite(row.min) || row.min <= 0) && Number.isFinite(row.gp) && row.gp > 0 && Number.isFinite(row.mpg) && row.mpg > 0) {
+    row.min = roundNumber(row.gp * row.mpg, 3);
+  }
   if (!Number.isFinite(row.mpg) && Number.isFinite(row.min_per_g)) row.mpg = row.min_per_g;
   if (!Number.isFinite(row.mpg) && Number.isFinite(row.min) && Number.isFinite(row.gp) && row.gp > 0) {
     row.mpg = roundNumber(row.min / row.gp, 2);
@@ -9658,13 +9728,25 @@ function isIntegerCountColumn(column) {
 }
 
 function isLeftAligned(dataset, column) {
-  return false;
+  return column === dataset?.playerColumn
+    || column === dataset?.teamColumn
+    || column === "team_full"
+    || column === "profile_levels"
+    || column === "career_path"
+    || column === "coach"
+    || column === "competition_label"
+    || column === "event_name"
+    || column === "event_group"
+    || column === "event_raw_name"
+    || column === "circuit";
 }
 
 function isWrapColumn(dataset, column) {
   return column === dataset?.playerColumn
     || column === dataset?.teamColumn
     || column === "team_full"
+    || column === "profile_levels"
+    || column === "career_path"
     || column === "coach"
     || column === "competition_label"
     || column === "event_name"

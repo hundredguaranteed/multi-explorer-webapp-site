@@ -458,6 +458,13 @@ a,
   letter-spacing: -0.15px;
 }
 
+#statsTable th.cell-compact-text,
+#statsTable td.cell-compact-text {
+  font-size: 7px;
+  line-height: 1.02;
+  letter-spacing: -0.08px;
+}
+
 #statsTable th {
   border-bottom: 1px solid #8a8a8a;
   font-weight: 700;
