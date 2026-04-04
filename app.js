@@ -17,7 +17,7 @@ const MINUTES_DEFAULT = 400;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 8000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260403-ui-responsive-v25";
+const APP_BUILD_VERSION = "20260404-tab-validation-v26";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const SHARED_SINGLE_FILTERS = [
   {
@@ -1742,6 +1742,9 @@ const appState = {
   datasetCache: {},
   uiState: {},
   searchRenderTimer: 0,
+  filterRenderTimer: 0,
+  filterRenderColumns: new Set(),
+  adaptiveTeamTextFrame: 0,
   grassrootsScopePrefetches: new Set(),
   grassrootsScopeWorkerUrl: "",
 };
@@ -1765,6 +1768,7 @@ function renderNav() {
 }
 
 function wireGlobalEvents() {
+  window.addEventListener("resize", scheduleAdaptiveTeamTextSizing);
   elements.searchInput.addEventListener("input", () => {
     const state = getCurrentUiState();
     const dataset = getCurrentDataset();
@@ -1881,13 +1885,9 @@ function wireGlobalEvents() {
     const maxColumn = target.dataset.statMax;
     const column = minColumn || maxColumn;
     if (!column || !state.numericFilters[column]) return;
-    if (inputHasValue(target.value)) {
-      await ensureDeferredColumnsReady(dataset, state, [column]);
-      if (appState.currentId !== dataset.id) return;
-    }
     if (minColumn) state.numericFilters[column].min = target.value;
     if (maxColumn) state.numericFilters[column].max = target.value;
-    renderResultsOnly(dataset, state);
+    scheduleFilterResultsRender(dataset, state, [column]);
   });
 
   elements.loadMoreBtn.addEventListener("click", async () => {
@@ -5504,6 +5504,33 @@ function scheduleSearchResultsRender(dataset, state) {
   }, SEARCH_RENDER_DEBOUNCE_MS);
 }
 
+function scheduleFilterResultsRender(dataset, state, deferredColumns = []) {
+  if (!dataset || !state) return;
+  if (appState.filterRenderTimer) window.clearTimeout(appState.filterRenderTimer);
+  deferredColumns.forEach((column) => {
+    if (column) appState.filterRenderColumns.add(column);
+  });
+  const datasetId = dataset.id;
+  appState.filterRenderTimer = window.setTimeout(async () => {
+    appState.filterRenderTimer = 0;
+    if (appState.currentId !== datasetId) {
+      appState.filterRenderColumns.clear();
+      return;
+    }
+    const queuedColumns = Array.from(appState.filterRenderColumns)
+      .filter((column) => {
+        const filter = state.numericFilters?.[column];
+        return filter && (inputHasValue(filter.min) || inputHasValue(filter.max));
+      });
+    appState.filterRenderColumns.clear();
+    if (queuedColumns.length) {
+      await ensureDeferredColumnsReady(dataset, state, queuedColumns);
+      if (appState.currentId !== datasetId) return;
+    }
+    renderResultsOnly(dataset, state);
+  }, SEARCH_RENDER_DEBOUNCE_MS);
+}
+
 function applySearchInputValue(dataset, state, rawValue) {
   const parsed = parseSearchDirectives(dataset, rawValue, state);
   const nextSearch = parsed.search;
@@ -6075,7 +6102,7 @@ function renderDemoRangeFilters(dataset, state) {
       const column = input.dataset.demoMin;
       if (!column || !state.demoFilters[column]) return;
       state.demoFilters[column].min = input.value;
-      renderResultsOnly(dataset, state);
+      scheduleFilterResultsRender(dataset, state);
     });
   });
 
@@ -6084,7 +6111,7 @@ function renderDemoRangeFilters(dataset, state) {
       const column = input.dataset.demoMax;
       if (!column || !state.demoFilters[column]) return;
       state.demoFilters[column].max = input.value;
-      renderResultsOnly(dataset, state);
+      scheduleFilterResultsRender(dataset, state);
     });
   });
 }
@@ -7510,6 +7537,17 @@ function aggregateCareerRows(dataset, rows) {
   return enhanceRowForDataset(aggregate, dataset.id);
 }
 
+function pickPreferredText(values) {
+  const counts = new Map();
+  (values || []).forEach((value) => {
+    const text = getStringValue(value).trim();
+    if (!text) return;
+    counts.set(text, (counts.get(text) || 0) + 1);
+  });
+  return Array.from(counts.entries())
+    .sort((left, right) => (right[1] - left[1]) || (right[0].length - left[0].length) || left[0].localeCompare(right[0]))[0]?.[0] || "";
+}
+
 function mergeCareerRowGroups(dataset, groups) {
   const buckets = new Map();
   groups.forEach((rows) => {
@@ -7788,6 +7826,26 @@ function renderTable(dataset, state, filtered, renderContext = {}) {
   }
 
   updateLoadMoreButton(filtered.length, rowsToRender.length);
+  scheduleAdaptiveTeamTextSizing();
+}
+
+function scheduleAdaptiveTeamTextSizing() {
+  if (appState.adaptiveTeamTextFrame) window.cancelAnimationFrame(appState.adaptiveTeamTextFrame);
+  appState.adaptiveTeamTextFrame = window.requestAnimationFrame(() => {
+    appState.adaptiveTeamTextFrame = 0;
+    syncAdaptiveTeamTextSizing();
+  });
+}
+
+function syncAdaptiveTeamTextSizing() {
+  const table = elements.statsTable;
+  if (!table) return;
+  table.querySelectorAll("td.cell-team-text").forEach((cell) => {
+    cell.classList.remove("cell-team-overflow");
+    if (cell.scrollWidth > cell.clientWidth + 1) {
+      cell.classList.add("cell-team-overflow");
+    }
+  });
 }
 
 function getColumnWidth(column, dataset) {
@@ -7796,10 +7854,10 @@ function getColumnWidth(column, dataset) {
   if (baseColumn === dataset.yearColumn || baseColumn === "season") return 48;
   if (baseColumn === "age_range") return 52;
   if (isTeamDisplayColumn(dataset, column)) {
-    if (baseColumn === "team_full" || baseColumn === "current_team" || baseColumn === "pre_draft_team") return 136;
-    if (dataset.id === "grassroots") return 108;
-    if (dataset.id === "player_career") return 124;
-    return 116;
+    if (baseColumn === "team_full" || baseColumn === "current_team" || baseColumn === "pre_draft_team") return 122;
+    if (dataset.id === "grassroots") return 96;
+    if (dataset.id === "player_career") return 108;
+    return 102;
   }
   if (dataset.id === "player_career" && baseColumn === "profile_levels") return 108;
   if (dataset.id === "player_career" && baseColumn === "career_path") return 188;
@@ -8620,6 +8678,7 @@ function enhanceD2Row(row) {
     twoPctKeys: ["two_p_pct"],
     threePctKeys: ["3p_pct"],
     efgKeys: ["efg_pct"],
+    blankAttemptsMeanZero: true,
   });
   row.three_pa_per40 = per40Value(row["3pa"], row.min);
   row.two_pa_per40 = per40Value(row.two_pa, row.min);
@@ -8638,6 +8697,7 @@ function enhanceD2Row(row) {
   row.three_pa_per100 = d2Per100Value(row["3pa"], row);
   row.ortg = ortgEstimate(row);
   populateAstTo(row);
+  populateDefensiveRateStats(row);
   fillMissingRateStats(row, ["orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct"]);
   scalePercentRatioColumns(row);
   populateImpactMetrics(row);
@@ -8652,6 +8712,7 @@ function enhancePlayerCareerRow(row) {
     twoPctKeys: ["2p_pct", "two_p_pct"],
     threePctKeys: ["tp_pct", "3p_pct", "three_p_pct"],
     efgKeys: ["efg_pct"],
+    blankAttemptsMeanZero: !/^realgm_/i.test(getStringValue(row.source_dataset)),
   });
 
   const twoPm = firstFinite(row["2pm"], row.two_pm, Number.NaN);
@@ -8703,6 +8764,7 @@ function enhancePlayerCareerRow(row) {
   if (!Number.isFinite(row.ortg)) row.ortg = ortgEstimate(row);
 
   populateAstTo(row);
+  populateDefensiveRateStats(row);
   fillMissingRateStats(row, ["orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct"]);
   populateImpactMetrics(row);
 }
@@ -8769,6 +8831,7 @@ function enhanceCollegeRow(row, datasetId) {
     twoPctKeys: ["2p_pct", "two_p_pct"],
     threePctKeys: ["tp_pct", "3p_pct", "three_p_pct"],
     efgKeys: ["efg_pct"],
+    blankAttemptsMeanZero: datasetId !== "grassroots",
   });
   ["pts", "trb", "ast", "tov", "stl", "blk", "stocks"].forEach((column) => {
     const perGame = perGameValue(row[column], row.gp);
@@ -8828,6 +8891,7 @@ function enhanceCollegeRow(row, datasetId) {
   row.three_pa_per100 = possPer100Value(row.tpa ?? row["3pa"] ?? row.three_pa, row);
   row.ortg = row.ortg ?? ortgEstimate(row);
   populateAstTo(row);
+  populateDefensiveRateStats(row);
   fillMissingRateStats(row, ["orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct"]);
   scalePercentRatioColumns(row);
   if (datasetId === "grassroots" && Number.isFinite(row.three_pr) && Number.isFinite(row.ftm_fga)) {
@@ -9238,25 +9302,107 @@ function normalizeJucoDivision(value) {
 }
 
 function populateDerivedShooting(row, config) {
-  let threePm = firstFinite(...config.threeMadeKeys.map((key) => row[key]), Number.NaN);
-  let threePa = firstFinite(...config.threeAttKeys.map((key) => row[key]), Number.NaN);
+  const blankAttemptsMeanZero = !!config?.blankAttemptsMeanZero;
   let twoPm = firstFinite(...config.twoMadeKeys.map((key) => row[key]), Number.NaN);
   let twoPa = firstFinite(...config.twoAttKeys.map((key) => row[key]), Number.NaN);
-  const fgm = firstFinite(row.fgm, addIfFinite(twoPm, threePm), Number.NaN);
-  const fga = firstFinite(row.fga, addIfFinite(twoPa, threePa), Number.NaN);
-  const ftrRatio = ratioValueFromMaybePercent(firstFinite(row.ftr, row.fta_rate, Number.NaN));
+  let threePm = firstFinite(...config.threeMadeKeys.map((key) => row[key]), Number.NaN);
+  let threePa = firstFinite(...config.threeAttKeys.map((key) => row[key]), Number.NaN);
+  let fga = firstFinite(row.fga, row.fga_75, addIfFinite(twoPa, threePa), Number.NaN);
+
+  let threePrRatio = ratioValueFromMaybePercent(firstFinite(row.three_pr, row.tpa_rate, Number.NaN));
+  if (!Number.isFinite(threePrRatio)) threePrRatio = firstFinite(ratioIfPossible(row.fg3a_75, row.fga_75), Number.NaN);
+  if (!Number.isFinite(threePa) && Number.isFinite(fga) && Number.isFinite(threePrRatio)) {
+    threePa = roundNumber(fga * threePrRatio, 3);
+  }
+  if (!Number.isFinite(twoPa) && Number.isFinite(fga) && Number.isFinite(threePa)) {
+    twoPa = roundNumber(Math.max(0, fga - threePa), 3);
+  }
+
+  const twoPctRatio = ratioValueFromMaybePercent(firstFinite(...config.twoPctKeys.map((key) => row[key]), row.fg2pct, Number.NaN));
+  const threePctRatio = ratioValueFromMaybePercent(firstFinite(...config.threePctKeys.map((key) => row[key]), row.fg3pct, Number.NaN));
+  if (!Number.isFinite(threePm) && Number.isFinite(threePa) && Number.isFinite(threePctRatio)) {
+    threePm = roundNumber(threePa * threePctRatio, 3);
+  }
+  if (!Number.isFinite(threePm) && Number.isFinite(threePa) && threePa <= 0) {
+    threePm = 0;
+  }
+
+  const fgPctRatio = ratioValueFromMaybePercent(firstFinite(row.fg_pct, row.fgpct, Number.NaN));
+  let fgm = firstFinite(row.fgm, addIfFinite(twoPm, threePm), Number.NaN);
+  if (!Number.isFinite(fgm) && Number.isFinite(fga) && Number.isFinite(fgPctRatio)) {
+    fgm = roundNumber(fga * fgPctRatio, 3);
+  }
+  if (!Number.isFinite(fgm) && Number.isFinite(fga) && fga <= 0) {
+    fgm = 0;
+  }
+  if (!Number.isFinite(twoPm) && Number.isFinite(fgm) && Number.isFinite(threePm)) {
+    twoPm = roundNumber(Math.max(0, fgm - threePm), 3);
+  }
+  if (!Number.isFinite(twoPm) && Number.isFinite(twoPa) && Number.isFinite(twoPctRatio)) {
+    twoPm = roundNumber(twoPa * twoPctRatio, 3);
+  }
+  if (!Number.isFinite(twoPm) && Number.isFinite(twoPa) && twoPa <= 0) {
+    twoPm = 0;
+  }
+  if (!Number.isFinite(threePm) && Number.isFinite(fgm) && Number.isFinite(twoPm)) {
+    threePm = roundNumber(Math.max(0, fgm - twoPm), 3);
+  }
+  if (!Number.isFinite(fga) && Number.isFinite(twoPa) && Number.isFinite(threePa)) {
+    fga = roundNumber(twoPa + threePa, 3);
+  }
+
+  let ftrRatio = ratioValueFromMaybePercent(firstFinite(row.ftr, row.fta_rate, Number.NaN));
+  if (!Number.isFinite(ftrRatio)) {
+    ftrRatio = firstFinite(ratioIfPossible(row.fta, row.fga), ratioIfPossible(row.fta_75, row.fga_75), Number.NaN);
+  }
+  if (!Number.isFinite(ftrRatio) && Number.isFinite(fga) && fga <= 0) {
+    ftrRatio = 0;
+  }
+  if ((row.ftr == null || row.ftr === "") && Number.isFinite(ftrRatio)) row.ftr = roundNumber(ftrRatio, 3);
+  if ((row.three_pr == null || row.three_pr === "") && Number.isFinite(threePrRatio)) row.three_pr = roundNumber(threePrRatio, 3);
+
   if (!Number.isFinite(row.fta) && Number.isFinite(fga) && Number.isFinite(ftrRatio) && fga >= 0) {
     row.fta = roundNumber(fga * ftrRatio, 3);
+  }
+  if (!Number.isFinite(row.fta) && Number.isFinite(row.fta_75)) {
+    row.fta = roundNumber(row.fta_75, 3);
   }
   const ftPctRatio = ratioValueFromMaybePercent(firstFinite(row.ft_pct, row.ftpct, Number.NaN));
   if (!Number.isFinite(row.ftm) && Number.isFinite(row.fta) && Number.isFinite(ftPctRatio) && row.fta >= 0) {
     row.ftm = roundNumber(row.fta * ftPctRatio, 3);
   }
-  if (!Number.isFinite(threePm) && Number.isFinite(fga)) threePm = 0;
-  if (!Number.isFinite(threePa) && Number.isFinite(fga)) threePa = 0;
-  if (!Number.isFinite(twoPm)) twoPm = firstFinite(subtractIfFinite(fgm, threePm), Number.NaN);
-  if (!Number.isFinite(twoPa)) twoPa = firstFinite(subtractIfFinite(fga, threePa), Number.NaN);
+  if (!Number.isFinite(row.ftm) && Number.isFinite(row.fta) && row.fta <= 0) {
+    row.ftm = 0;
+  }
 
+  let points = firstFinite(row.pts, Number.NaN);
+  if (!Number.isFinite(row.ftm) && Number.isFinite(points) && Number.isFinite(twoPm) && Number.isFinite(threePm)) {
+    row.ftm = roundNumber(Math.max(0, points - (2 * twoPm) - (3 * threePm)), 3);
+  }
+  if (!Number.isFinite(row.fta) && blankAttemptsMeanZero && Number.isFinite(row.ftm) && row.ftm <= 0 && !Number.isFinite(ftPctRatio)) {
+    row.fta = 0;
+  }
+  if (blankAttemptsMeanZero) {
+    if (!Number.isFinite(threePa) && !Number.isFinite(threePctRatio) && !Number.isFinite(threePm) && Number.isFinite(fga)) threePa = 0;
+    if (!Number.isFinite(threePm) && Number.isFinite(threePa) && threePa <= 0) threePm = 0;
+    if (!Number.isFinite(twoPa) && !Number.isFinite(twoPctRatio) && Number.isFinite(fga) && Number.isFinite(threePa)) {
+      twoPa = roundNumber(Math.max(0, fga - threePa), 3);
+    }
+    if (!Number.isFinite(twoPm) && Number.isFinite(twoPa) && twoPa <= 0) twoPm = 0;
+    if (!Number.isFinite(row.fta) && !Number.isFinite(ftPctRatio) && !Number.isFinite(row.ftm) && Number.isFinite(fga)) row.fta = 0;
+    if (!Number.isFinite(row.ftm) && Number.isFinite(row.fta) && row.fta <= 0) row.ftm = 0;
+  }
+
+  points = firstFinite(row.pts, weightedPointTotal(twoPm, threePm, row.ftm), Number.NaN);
+  if (Number.isFinite(points) && Math.abs(points) < 0.001) {
+    if (!Number.isFinite(threePm) && Number.isFinite(threePa)) threePm = 0;
+    if (!Number.isFinite(twoPm) && Number.isFinite(twoPa)) twoPm = 0;
+    if (!Number.isFinite(fgm) && Number.isFinite(fga)) fgm = 0;
+    if (!Number.isFinite(row.ftm) && Number.isFinite(row.fta)) row.ftm = 0;
+    if (!Number.isFinite(row.fta) && blankAttemptsMeanZero) row.fta = 0;
+  }
+
+  fgm = firstFinite(row.fgm, addIfFinite(twoPm, threePm), fgm, Number.NaN);
   if (Number.isFinite(threePm)) {
     config.threeMadeKeys.forEach((key) => {
       if (row[key] == null || row[key] === "") row[key] = threePm;
@@ -9287,7 +9433,6 @@ function populateDerivedShooting(row, config) {
   const threePct = zeroSafePercent(threePm, threePa);
   const efgPct = zeroSafeEfgPct(fgm, threePm, fga);
   const ftPct = zeroSafePercent(row.ftm, row.fta);
-  const points = firstFinite(row.pts, weightedPointTotal(twoPm, threePm, row.ftm), Number.NaN);
   const tsPct = zeroSafeTsPct(points, fga, row.fta);
   if ((row.fg_pct == null || row.fg_pct === "") && fgPct !== "") row.fg_pct = fgPct;
   config.twoPctKeys.forEach((key) => {
@@ -9302,6 +9447,39 @@ function populateDerivedShooting(row, config) {
   if ((row.ft_pct == null || row.ft_pct === "") && ftPct !== "") row.ft_pct = ftPct;
   if ((row.pts == null || row.pts === "") && Number.isFinite(points)) row.pts = points;
   if ((row.ts_pct == null || row.ts_pct === "") && tsPct !== "") row.ts_pct = tsPct;
+}
+
+function populateDefensiveRateStats(row) {
+  const minutes = getMinutesValue(row);
+  const teamMinutes = getTeamMinutesBasis(row);
+  if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isFinite(teamMinutes) || teamMinutes <= 0) return;
+
+  const stealPct = firstFinite(row.stl_pct, row.stlpct, Number.NaN);
+  if (!Number.isFinite(stealPct) && Number.isFinite(row.stl) && Number.isFinite(row.opp_poss) && row.opp_poss > 0) {
+    const computed = roundNumber((row.stl * ((teamMinutes / 5) / minutes) / row.opp_poss) * 100, 1);
+    if (Number.isFinite(computed)) {
+      row.stl_pct = computed;
+      if (!Number.isFinite(row.stlpct)) row.stlpct = computed;
+    }
+  }
+
+  const blockPct = firstFinite(row.blk_pct, row.blkpct, Number.NaN);
+  const defendedTwos = subtractIfFinite(row.opp_fga, row.opp_3pa);
+  if (!Number.isFinite(blockPct) && Number.isFinite(row.blk) && Number.isFinite(defendedTwos) && defendedTwos > 0) {
+    const computed = roundNumber((row.blk * ((teamMinutes / 5) / minutes) / defendedTwos) * 100, 1);
+    if (Number.isFinite(computed)) {
+      row.blk_pct = computed;
+      if (!Number.isFinite(row.blkpct)) row.blkpct = computed;
+    }
+  }
+}
+
+function getTeamMinutesBasis(row) {
+  const teamMinutes = firstFinite(row.team_minutes, Number.NaN);
+  if (Number.isFinite(teamMinutes) && teamMinutes > 0) return teamMinutes;
+  const gp = getGamesValue(row);
+  if (Number.isFinite(gp) && gp > 0) return gp * 200;
+  return Number.NaN;
 }
 
 function subtractIfFinite(left, right) {
@@ -9933,7 +10111,6 @@ function formatValue(dataset, column, value, row) {
   if (typeof value !== "number") return String(value);
   if (!Number.isFinite(value)) return "";
   if (column === "draft_pick" && row?._draftPickBlank) return "";
-  if (isZeroAttemptTwoPointRow(row, column)) return "";
   if (column === "rank") return String(value);
   if (/^(season|year|rookie_year)$/i.test(column) && Number.isInteger(value)) return String(value);
   if (column === "age") return value.toFixed(1);
@@ -9988,9 +10165,7 @@ function isTeamDisplayColumn(dataset, column) {
 }
 
 function isLeftAligned(dataset, column) {
-  return column === dataset?.playerColumn
-    || isTeamDisplayColumn(dataset, column)
-    || column === "profile_levels"
+  return column === "profile_levels"
     || column === "career_path"
     || column === "coach"
     || column === "competition_label"

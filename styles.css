@@ -467,12 +467,15 @@ a,
 
 #statsTable th.cell-team-text,
 #statsTable td.cell-team-text {
-  font-size: 6.45px;
-  line-height: 1.02;
-  letter-spacing: -0.1px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+#statsTable td.cell-team-overflow {
+  font-size: 7px;
+  line-height: 1.02;
+  letter-spacing: -0.08px;
 }
 
 #statsTable th {

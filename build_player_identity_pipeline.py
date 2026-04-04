@@ -1763,6 +1763,7 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
     }
     append_player_career_passthrough_fields(out, row)
     apply_player_career_shooting_derivations(out)
+    apply_player_career_defensive_rate_derivations(out)
     fill_per_game_and_per40(out)
     return out
 
@@ -2503,6 +2504,36 @@ def normalize_ratio_field(value: object) -> float | str:
     return round_number(numeric, 3) if numeric is not None else ""
 
 
+def get_team_minutes_basis(row: dict[str, object]) -> float | None:
+    team_minutes = first_number(row.get("team_minutes"))
+    if team_minutes is not None and math.isfinite(team_minutes) and team_minutes > 0:
+        return team_minutes
+    gp_value = first_number(row.get("gp"), row.get("g"))
+    if gp_value is not None and math.isfinite(gp_value) and gp_value > 0:
+        return gp_value * 200.0
+    return None
+
+
+def apply_player_career_defensive_rate_derivations(row: dict[str, object]) -> None:
+    minutes_value = first_number(row.get("min"), row.get("mp"))
+    team_minutes = get_team_minutes_basis(row)
+    if minutes_value is None or team_minutes is None or minutes_value <= 0 or team_minutes <= 0:
+        return
+
+    steal_pct = first_number(row.get("stl_pct"))
+    stl_value = first_number(row.get("stl"))
+    opp_poss = first_number(row.get("opp_poss"))
+    if steal_pct is None and stl_value is not None and opp_poss is not None and opp_poss > 0:
+        row["stl_pct"] = round_number((stl_value * ((team_minutes / 5.0) / minutes_value) / opp_poss) * 100.0, 3)
+
+    block_pct = first_number(row.get("blk_pct"))
+    blk_value = first_number(row.get("blk"))
+    opp_fga = first_number(row.get("opp_fga"))
+    opp_3pa = first_number(row.get("opp_3pa"))
+    if block_pct is None and blk_value is not None and opp_fga is not None and opp_3pa is not None and (opp_fga - opp_3pa) > 0:
+        row["blk_pct"] = round_number((blk_value * ((team_minutes / 5.0) / minutes_value) / (opp_fga - opp_3pa)) * 100.0, 3)
+
+
 def apply_player_career_shooting_derivations(row: dict[str, object]) -> None:
     two_pm = first_number(row.get("two_pm"), row.get("2pm"))
     two_pa = first_number(row.get("two_pa"), row.get("2pa"))
@@ -2527,12 +2558,16 @@ def apply_player_career_shooting_derivations(row: dict[str, object]) -> None:
     if three_pm is None and three_pa == 0:
         three_pm = 0.0
     fgm = first_number(row.get("fgm"), add_numbers(two_pm, three_pm))
+    if three_pm is None and fgm is not None and two_pm is not None:
+        three_pm = max(0.0, fgm - two_pm)
     if two_pm is None and fgm is not None and three_pm is not None:
         two_pm = max(0.0, fgm - three_pm)
     if two_pm is None and two_pa is not None and two_pct_ratio is not None:
         two_pm = two_pa * two_pct_ratio
     if two_pm is None and two_pa == 0:
         two_pm = 0.0
+    if three_pm is None and fgm is not None and two_pm is not None:
+        three_pm = max(0.0, fgm - two_pm)
     fgm = first_number(row.get("fgm"), add_numbers(two_pm, three_pm))
     if first_number(row.get("fgm")) is None and fgm is not None:
         row["fgm"] = round_number(fgm, 3)
@@ -2573,6 +2608,14 @@ def apply_player_career_shooting_derivations(row: dict[str, object]) -> None:
         row["ftm"] = round_number(first_number(row.get("fta")) * ft_pct_ratio, 3)
     if first_number(row.get("ftm")) is None and first_number(row.get("fta")) == 0:
         row["ftm"] = 0
+    if first_number(row.get("fta")) is None and first_number(row.get("ftm")) == 0 and ft_pct_ratio is None:
+        row["fta"] = 0
+
+    points_value = first_number(row.get("pts"))
+    if first_number(row.get("ftm")) is None and points_value is not None and two_pm is not None and three_pm is not None:
+        row["ftm"] = round_number(max(0.0, points_value - (two_pm * 2.0) - (three_pm * 3.0)), 3)
+    if first_number(row.get("fta")) is None and first_number(row.get("ftm")) == 0:
+        row["fta"] = 0
 
     if first_number(row.get("pts")) is None:
         inferred_points = weighted_point_total(row.get("two_pm"), row.get("three_pm"), row.get("ftm"))
