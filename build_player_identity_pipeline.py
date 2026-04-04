@@ -32,6 +32,28 @@ GRASSROOTS_YEAR_CHUNK_DIR = ROOT / "data" / "vendor" / "grassroots_year_chunks"
 
 SHOT_PROFILE_COLUMNS = ["rim_made", "rim_att", "rim_pct", "mid_made", "mid_att", "mid_pct", "rim_source_gp"]
 
+PLAYER_CAREER_PASSTHROUGH_SKIP_COLUMNS = {
+    "player", "player_name", "player_id", "pid", "id",
+    "team_id", "team_name", "team_full", "team_alias", "team_alias_all",
+    "season", "league", "level",
+    "canonical_player_id", "player_profile_key", "source_player_id", "realgm_player_id",
+    "realgm_summary_url", "profile_match_source", "profile_career_path", "profile_levels",
+    "dob", "height_in", "inches", "height", "weight", "weight_lb", "weight_text", "age",
+    "pos", "pos_text", "class_year", "draft_pick", "rookie_year",
+    "gp", "g", "min", "mp", "mpg", "pts", "trb", "reb", "orb", "drb", "ast", "stl", "blk", "tov", "pf",
+    "fgm", "fga", "fg_att", "2pm", "2pa", "3pm", "3pa", "tpm", "tpa", "ftm", "fta",
+    "fga_75", "fta_75", "fg3a_75",
+    "fg_pct", "2p_pct", "3p_pct", "tp_pct", "ft_pct", "ftpct", "efg", "efg_pct", "ts_pct", "tspct",
+    "fg2pct", "fg3pct", "fgpct_rim", "fgpct_mid",
+    "ftr", "three_pr", "fta_rate", "tpa_rate",
+    "orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct",
+    "orbpct", "drbpct", "trbpct", "astpct", "topct", "stlpct", "blkpct", "usg",
+    "rim_made", "rim_att", "rim_pct", "mid_made", "mid_att", "mid_pct",
+    "ast_to", "stocks", "stocks_pg", "stocks_per40",
+    "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "tov_pg",
+    "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40",
+}
+
 SITE_DATASETS = {
     "d1": {
         "path": ROOT / "data" / "d1_enriched_all_seasons.js",
@@ -1654,6 +1676,8 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "player_id": clean_text(row.get("_canonical_player_id")),
         "canonical_player_id": clean_text(row.get("_canonical_player_id")),
         "realgm_player_id": clean_text(row.get("realgm_player_id")),
+        "source_player_id": clean_text(row.get("_source_player_id") or row.get("source_player_id") or row.get("player_id")),
+        "player_profile_key": clean_text(row.get("player_profile_key")),
         "player_name": player_name,
         "season": season_label,
         "source_dataset": display_source_dataset(dataset_id),
@@ -1665,6 +1689,12 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "profile_levels": clean_text(profile.get("profile_levels")) or profile_level_for_dataset(dataset_id),
         "profile_match_source": clean_text(row.get("profile_match_source")),
         "realgm_summary_url": clean_text(profile.get("summary_url")) or clean_text(row.get("realgm_summary_url")),
+        "nationality": clean_text(row.get("nationality")) or clean_text(profile.get("nationality")),
+        "hometown": clean_text(row.get("hometown")) or clean_text(profile.get("hometown")),
+        "high_school": clean_text(row.get("high_school")) or clean_text(profile.get("high_school")),
+        "pre_draft_team": clean_text(profile.get("pre_draft_team")),
+        "current_team": clean_text(profile.get("current_team")),
+        "current_nba_status": clean_text(profile.get("current_nba_status")),
         "dob": clean_text(row.get("dob")) or clean_text(profile.get("born_iso")) or clean_text(realgm_overlay.get("dob")),
         "height_in": first_number(row.get("height_in"), row.get("inches"), profile.get("height_in")),
         "weight_lb": first_number(row.get("weight_lb"), row.get("weight"), profile.get("weight_lb")),
@@ -1731,9 +1761,22 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "usg_pct": first_non_blank(normalize_site_percent_value(dataset_id, "usg_pct", first_non_blank(row.get("usg_pct"), row.get("usg"))), realgm_overlay.get("usg_pct")),
         "ast_to": first_number(row.get("ast_to")),
     }
+    append_player_career_passthrough_fields(out, row)
     apply_player_career_shooting_derivations(out)
     fill_per_game_and_per40(out)
     return out
+
+
+def append_player_career_passthrough_fields(out: dict[str, object], row: dict[str, object]) -> None:
+    for column, value in row.items():
+        column_key = clean_text(column)
+        if not column_key or column_key.startswith("_"):
+            continue
+        if column_key in PLAYER_CAREER_PASSTHROUGH_SKIP_COLUMNS:
+            continue
+        if column_key in out:
+            continue
+        out[column_key] = value
 
 
 def player_career_rows_look_duplicate(existing_row: dict[str, object], candidate_row: dict[str, object]) -> bool:
@@ -1797,6 +1840,8 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "player_id": canonical_id,
         "canonical_player_id": canonical_id,
         "realgm_player_id": clean_text(profile.get("realgm_player_id")),
+        "source_player_id": "",
+        "player_profile_key": "",
         "player_name": clean_display_name(season_row.get("player_name")) or clean_text(profile.get("player_name")),
         "season": canonical_season_label(season_row.get("season")),
         "source_dataset": display_source_dataset(source_name),
@@ -1808,6 +1853,12 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "profile_levels": clean_text(profile.get("profile_levels")),
         "profile_match_source": "realgm_only",
         "realgm_summary_url": clean_text(profile.get("summary_url")),
+        "nationality": clean_text(profile.get("nationality")),
+        "hometown": clean_text(profile.get("hometown")),
+        "high_school": clean_text(profile.get("high_school")),
+        "pre_draft_team": clean_text(profile.get("pre_draft_team")),
+        "current_team": clean_text(profile.get("current_team")),
+        "current_nba_status": clean_text(profile.get("current_nba_status")),
         "dob": clean_text(profile.get("born_iso")) or parse_date_to_iso(player_info.get("born")),
         "height_in": profile.get("height_in") or parse_height_to_inches(player_info.get("height")),
         "weight_lb": profile.get("weight_lb") or parse_weight_to_lb(player_info.get("weight")),
@@ -1905,8 +1956,9 @@ def write_rewritten_site_bundles(site_data: dict[str, dict[str, object]]) -> Non
 
 def write_player_career_bundle(rows: list[dict[str, object]]) -> None:
     preferred_columns = [
-        "player_id", "canonical_player_id", "realgm_player_id", "player_name", "season", "source_dataset", "competition_level",
+        "player_id", "canonical_player_id", "realgm_player_id", "source_player_id", "player_profile_key", "player_name", "season", "source_dataset", "competition_level",
         "team_name", "team_full", "league", "career_path", "profile_levels", "profile_match_source", "realgm_summary_url",
+        "nationality", "hometown", "high_school", "pre_draft_team", "current_team", "current_nba_status",
         "dob", "height_in", "weight_lb", "age", "pos", "class_year", "draft_pick", "rookie_year",
         "gp", "min", "mpg", "pts", "pts_pg", "trb", "trb_pg", "orb", "drb", "ast", "ast_pg", "stl", "stl_pg",
         "blk", "blk_pg", "tov", "tov_pg", "pf", "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
@@ -2456,12 +2508,44 @@ def apply_player_career_shooting_derivations(row: dict[str, object]) -> None:
     two_pa = first_number(row.get("two_pa"), row.get("2pa"))
     three_pm = first_number(row.get("three_pm"), row.get("3pm"), row.get("tpm"))
     three_pa = first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa"))
+    fga = first_number(row.get("fga"), row.get("fga_75"), add_numbers(two_pa, three_pa))
+    if three_pa is None:
+        three_pa = first_number(row.get("fg3a_75"))
+    if three_pa is None and fga is not None:
+        three_pr_ratio = ratio_value(row.get("three_pr"))
+        if three_pr_ratio is None:
+            three_pr_ratio = first_number(divide_numbers(row.get("fg3a_75"), row.get("fga_75")))
+        if three_pr_ratio is not None:
+            three_pa = fga * three_pr_ratio
+    if two_pa is None and fga is not None and three_pa is not None:
+        two_pa = max(0.0, fga - three_pa)
+
+    two_pct_ratio = ratio_value(row.get("two_p_pct"))
+    three_pct_ratio = ratio_value(row.get("three_p_pct"))
+    if three_pm is None and three_pa is not None and three_pct_ratio is not None:
+        three_pm = three_pa * three_pct_ratio
+    if three_pm is None and three_pa == 0:
+        three_pm = 0.0
     fgm = first_number(row.get("fgm"), add_numbers(two_pm, three_pm))
-    fga = first_number(row.get("fga"), add_numbers(two_pa, three_pa))
+    if two_pm is None and fgm is not None and three_pm is not None:
+        two_pm = max(0.0, fgm - three_pm)
+    if two_pm is None and two_pa is not None and two_pct_ratio is not None:
+        two_pm = two_pa * two_pct_ratio
+    if two_pm is None and two_pa == 0:
+        two_pm = 0.0
+    fgm = first_number(row.get("fgm"), add_numbers(two_pm, three_pm))
     if first_number(row.get("fgm")) is None and fgm is not None:
         row["fgm"] = round_number(fgm, 3)
     if first_number(row.get("fga")) is None and fga is not None:
         row["fga"] = round_number(fga, 3)
+    if first_number(row.get("two_pa")) is None and two_pa is not None:
+        row["two_pa"] = round_number(two_pa, 3)
+    if first_number(row.get("three_pa")) is None and three_pa is not None:
+        row["three_pa"] = round_number(three_pa, 3)
+    if first_number(row.get("two_pm")) is None and two_pm is not None:
+        row["two_pm"] = round_number(two_pm, 3)
+    if first_number(row.get("three_pm")) is None and three_pm is not None:
+        row["three_pm"] = round_number(three_pm, 3)
 
     ftr_ratio = ratio_value(row.get("ftr"))
     if ftr_ratio is None:
@@ -2482,9 +2566,13 @@ def apply_player_career_shooting_derivations(row: dict[str, object]) -> None:
     total_fga = first_number(row.get("fga"))
     if first_number(row.get("fta")) is None and total_fga is not None and ftr_ratio is not None:
         row["fta"] = round_number(total_fga * ftr_ratio, 3)
+    if first_number(row.get("fta")) is None and first_number(row.get("fta_75")) is not None:
+        row["fta"] = round_number(first_number(row.get("fta_75")), 3)
     ft_pct_ratio = ratio_value(row.get("ft_pct"))
     if first_number(row.get("ftm")) is None and first_number(row.get("fta")) is not None and ft_pct_ratio is not None:
         row["ftm"] = round_number(first_number(row.get("fta")) * ft_pct_ratio, 3)
+    if first_number(row.get("ftm")) is None and first_number(row.get("fta")) == 0:
+        row["ftm"] = 0
 
     if first_number(row.get("pts")) is None:
         inferred_points = weighted_point_total(row.get("two_pm"), row.get("three_pm"), row.get("ftm"))
@@ -2493,12 +2581,21 @@ def apply_player_career_shooting_derivations(row: dict[str, object]) -> None:
 
     if first_number(row.get("fg_pct")) is None and first_number(row.get("fgm")) is not None and first_number(row.get("fga")) is not None:
         row["fg_pct"] = round_number(zero_safe_percent(first_number(row.get("fgm")), first_number(row.get("fga"))), 3)
+    if first_number(row.get("fg_pct")) is None and first_number(row.get("two_pa")) is not None and first_number(row.get("three_pa")) is not None and two_pct_ratio is not None and three_pct_ratio is not None and total_fga is not None and total_fga > 0:
+        derived_fgm = ((first_number(row.get("two_pa")) * two_pct_ratio) + (first_number(row.get("three_pa")) * three_pct_ratio))
+        row["fg_pct"] = round_number((derived_fgm / total_fga) * 100.0, 3)
     if first_number(row.get("two_p_pct")) is None and first_number(row.get("two_pm")) is not None and first_number(row.get("two_pa")) is not None:
         row["two_p_pct"] = round_number(zero_safe_percent(first_number(row.get("two_pm")), first_number(row.get("two_pa"))), 3)
+    if first_number(row.get("two_p_pct")) is None and first_number(row.get("two_pa")) == 0:
+        row["two_p_pct"] = 0
     if first_number(row.get("three_p_pct")) is None and first_number(row.get("three_pm")) is not None and first_number(row.get("three_pa")) is not None:
         row["three_p_pct"] = round_number(zero_safe_percent(first_number(row.get("three_pm")), first_number(row.get("three_pa"))), 3)
+    if first_number(row.get("three_p_pct")) is None and first_number(row.get("three_pa")) == 0:
+        row["three_p_pct"] = 0
     if first_number(row.get("ft_pct")) is None and first_number(row.get("ftm")) is not None and first_number(row.get("fta")) is not None:
         row["ft_pct"] = round_number(zero_safe_percent(first_number(row.get("ftm")), first_number(row.get("fta"))), 3)
+    if first_number(row.get("ft_pct")) is None and first_number(row.get("fta")) == 0:
+        row["ft_pct"] = 0
     if first_number(row.get("efg_pct")) is None:
         efg_pct = zero_safe_efg_pct(row.get("fgm"), row.get("three_pm"), row.get("fga"))
         if efg_pct is not None:

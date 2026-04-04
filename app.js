@@ -17,7 +17,7 @@ const MINUTES_DEFAULT = 400;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 8000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260403-grassroots-career-v23";
+const APP_BUILD_VERSION = "20260403-player-career-fullstat-v24";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const SHARED_SINGLE_FILTERS = [
   {
@@ -861,7 +861,7 @@ function buildPlayerCareerConfig() {
       {
         id: "identity",
         label: "Identity",
-        columns: ["competition_level", "profile_levels", "career_path", "league", "team_name", "team_full", "pos", "class_year", "height_in", "weight_lb", "age", "dob", "draft_pick", "rookie_year"],
+        columns: ["competition_level", "profile_levels", "career_path", "league", "team_name", "team_full", "nationality", "hometown", "high_school", "pre_draft_team", "current_team", "current_nba_status", "pos", "class_year", "height_in", "weight_lb", "age", "dob", "draft_pick", "rookie_year", "source_player_id", "player_profile_key", "realgm_player_id", "canonical_player_id"],
         defaultColumns: ["competition_level", "profile_levels", "team_name", "pos", "class_year", "height_in", "draft_pick"],
       },
       {
@@ -909,6 +909,12 @@ function buildPlayerCareerConfig() {
       profile_levels: "Path",
       career_path: "Career",
       league: "League",
+      nationality: "Nation",
+      hometown: "Hometown",
+      high_school: "HS",
+      pre_draft_team: "Pre-Draft",
+      current_team: "Current Team",
+      current_nba_status: "NBA Status",
       pos: "Pos",
       class_year: "Class",
       height_in: "HT",
@@ -917,6 +923,10 @@ function buildPlayerCareerConfig() {
       dob: "DOB",
       draft_pick: "Pick",
       rookie_year: "Rookie",
+      source_player_id: "Source ID",
+      player_profile_key: "Profile Key",
+      realgm_player_id: "RealGM ID",
+      canonical_player_id: "Player ID",
       gp: "GP",
       min: "MIN",
       mpg: "MPG",
@@ -976,6 +986,68 @@ function buildPlayerCareerConfig() {
       ...LOWER_TIER_SHOT_PROFILE_LABELS,
     },
   };
+}
+
+function isPlayerCareerPlaytypeExtraColumn(column) {
+  const baseColumn = stripCompanionPrefix(column);
+  return D1_PLAYTYPE_FAMILY_PREFIXES.some((prefix) => baseColumn === prefix || baseColumn.startsWith(`${prefix}_`))
+    || baseColumn === "transition"
+    || /^transition_/.test(baseColumn)
+    || /^runner_/.test(baseColumn)
+    || /^drive_/.test(baseColumn);
+}
+
+function buildPlayerCareerExtraGroups(availableColumns, groupedColumns) {
+  const remaining = (availableColumns || []).filter((column) => column && column !== "rank" && !groupedColumns.has(column));
+  if (!remaining.length) return [];
+
+  const groupDefs = [
+    {
+      id: "identity_plus",
+      label: "Identity+",
+      match: (column) => /^(source_player_id|player_profile_key|nationality|hometown|high_school|pre_draft_team|current_team|current_nba_status|competition_key|competition_label|edition_id|team_code|seasontype|conference|division|region|level|team_id)$/i.test(stripCompanionPrefix(column)),
+    },
+    {
+      id: "playtype_plus",
+      label: "Playtype+",
+      match: (column) => isPlayerCareerPlaytypeExtraColumn(column),
+    },
+    {
+      id: "shooting_plus",
+      label: "Shooting+",
+      match: (column) => /(^fga_75$|^fta_75$|^fg3a_75$|^fga_rim_75$|^fga_mid_75$|rim_|mid_|dunk_|two_p_|three_p_|fgpct_|fg2pct$|fg3pct$|ftpct$|tspct$|^efg$|_ast_pct$|rim_mid_ratio|three_p_per100|three_pa_per100|three_pa_per40|two_pa_per40|ftm_fga|three_pr_plus_ftm_fga)/i.test(stripCompanionPrefix(column)),
+    },
+    {
+      id: "advanced_plus",
+      label: "Advanced+",
+      match: (column) => /(_pct$|pct$|rate$|freq$|share$|percentile$|_per100$|_per75$|_75$|_ppp$|impact|spi|wins_added|bpm|epm|porpag|adjoe|adrtg|ortg|drtg|usg|ast_to|plus_minus|eff|ewins|^per$|^ppr$|^fic$)/i.test(stripCompanionPrefix(column)),
+    },
+    {
+      id: "tracking_plus",
+      label: "Tracking+",
+      match: (column) => /(_poss$|^start$|^roster_games$|^plus_minus_pg$|^eff_pg$|_per_g$|^min_per_g$)/i.test(stripCompanionPrefix(column)),
+    },
+    {
+      id: "more_plus",
+      label: "More",
+      match: () => true,
+    },
+  ];
+
+  const groups = [];
+  const assigned = new Set();
+  groupDefs.forEach((groupDef) => {
+    const columns = remaining.filter((column) => !assigned.has(column) && groupDef.match(column));
+    if (!columns.length) return;
+    columns.forEach((column) => assigned.add(column));
+    groups.push({
+      id: groupDef.id,
+      label: groupDef.label,
+      columns,
+      defaultColumns: [],
+    });
+  });
+  return groups;
 }
 
 const DATASETS = {
@@ -2575,17 +2647,59 @@ function getGrassrootsMissingYears(dataset) {
   return availableYears.filter((season) => !loadedYears.has(getStringValue(season)));
 }
 
-function getGrassrootsDisplayScope(dataset, state) {
-  if (dataset?.id !== "grassroots") return "";
-  const settingKey = normalizeKey(state?.extraSelects?.setting);
-  const viewMode = getStringValue(state?.extraSelects?.view_mode || "player");
-  if (viewMode !== "career") {
-    if (settingKey === normalizeKey("single_year")) return "single_year";
-    return "";
+function getGrassrootsRequestedYears(dataset, state) {
+  const availableYears = getGrassrootsCareerYears(dataset, state).map((season) => getStringValue(season).trim()).filter(Boolean);
+  const selectedYears = Array.from(state?.years || []).map((season) => getStringValue(season).trim()).filter(Boolean);
+  if (!selectedYears.length) return availableYears;
+  const availableSet = new Set(availableYears);
+  return selectedYears.filter((season) => availableSet.has(season));
+}
+
+function getGrassrootsMissingSelectedYears(dataset, state) {
+  const loadedYears = getLoadedYearSet(dataset);
+  return getGrassrootsRequestedYears(dataset, state).filter((season) => !loadedYears.has(getStringValue(season)));
+}
+
+function maybeStartGrassrootsCareerYearLoad(dataset, state) {
+  if (dataset?.id !== "grassroots" || state?.extraSelects?.view_mode !== "career" || !dataset?._grassrootsChunked) return false;
+  const missingYears = getGrassrootsMissingSelectedYears(dataset, state).sort(compareYears);
+  const loadKey = missingYears.join("|");
+  if (!missingYears.length) {
+    if (state._grassrootsLoadingYearsKey) {
+      state._grassrootsLoadingYearsKey = "";
+      resetUiCaches(state);
+    }
+    state._grassrootsFailedYearsKey = "";
+    return false;
   }
-  if (settingKey === normalizeKey("HS")) return "career_hs";
-  if (settingKey === normalizeKey("AAU")) return "career_aau";
-  return "career_overall";
+  if (state._grassrootsFailedYearsKey === loadKey) return false;
+  if (state._grassrootsLoadingYearsKey === loadKey) return true;
+  state._grassrootsLoadingYearsKey = loadKey;
+  Promise.resolve().then(async () => {
+    try {
+      await ensureDatasetYearsLoaded(dataset, missingYears);
+      state._grassrootsFailedYearsKey = "";
+    } catch (error) {
+      state._grassrootsFailedYearsKey = loadKey;
+      if (appState.currentId === dataset.id) {
+        elements.statusPill.textContent = `${dataset.navLabel} load failed`;
+        elements.resultsSubtitle.textContent = getStringValue(error?.message || error);
+      }
+    } finally {
+      if (state._grassrootsLoadingYearsKey === loadKey) {
+        state._grassrootsLoadingYearsKey = "";
+      }
+      resetUiCaches(state);
+      if (appState.currentId === dataset.id) {
+        renderCurrentDataset();
+      }
+    }
+  });
+  return true;
+}
+
+function getGrassrootsDisplayScope(dataset, state) {
+  return "";
 }
 
 function getGrassrootsScopeScriptPath(config, scope) {
@@ -5441,18 +5555,14 @@ function renderCurrentDataset() {
   const dataset = getCurrentDataset();
   const state = getCurrentUiState();
   if (!dataset || !state) return;
-  if (dataset.id === "grassroots") {
-    const scope = getGrassrootsDisplayScope(dataset, state);
-    if (scope && !dataset._grassrootsScopeRows?.has(scope) && state._grassrootsLoadingScope !== scope) {
-      startGrassrootsScopeLoad(dataset, state, scope);
-      return;
-    }
-  }
+  if (dataset.id === "grassroots") maybeStartGrassrootsCareerYearLoad(dataset, state);
 
   renderFilters(dataset, state);
   renderResultsOnly(dataset, state);
   scheduleDeferredHydration(dataset.id);
-  if (dataset.id === "grassroots" && state._grassrootsLoadingScope) {
+  if (dataset.id === "grassroots" && state._grassrootsLoadingYearsKey) {
+    elements.statusPill.textContent = `Loading ${dataset.navLabel} ${formatSelectedYearSummary(state._grassrootsLoadingYearsKey.split("|").filter(Boolean))}`;
+  } else if (dataset.id === "grassroots" && state._grassrootsLoadingScope) {
     elements.statusPill.textContent = `Loading ${dataset.navLabel} ${state._grassrootsLoadingScope.replace(/_/g, " ")}`;
   } else {
     elements.statusPill.textContent = `${dataset.navLabel} ready`;
@@ -6189,17 +6299,6 @@ function getCareerFilteredRows(dataset, state, rows) {
     ignoreSingleFilters: true,
     ignoreMultiFilters: true,
   });
-  if (dataset?.id === "grassroots" && state?.extraSelects?.view_mode === "career") {
-    const availableYears = getAvailableYears(dataset).map((year) => getStringValue(year).trim()).filter(Boolean);
-    const selectedYears = Array.from(state?.years || []).map((year) => getStringValue(year).trim()).filter(Boolean);
-    const allSelected = availableYears.length
-      && selectedYears.length === availableYears.length
-      && selectedYears.every((year) => availableYears.includes(year));
-    if (!allSelected && selectedYears.length) {
-      const selectedYearSet = new Set(selectedYears);
-      filtered = filtered.filter((row) => selectedYearSet.has(getStringValue(row.class_year)));
-    }
-  }
   cache.careerFilteredRowsKey = key;
   cache.careerFilteredRows = filtered;
   return filtered;
@@ -6394,7 +6493,7 @@ function getCareerYearLabel(dataset, state) {
 }
 
 function shouldIgnoreCareerYearFilter(dataset, state) {
-  return Boolean(dataset?.id === "grassroots" && state?.extraSelects?.view_mode === "career");
+  return false;
 }
 
 function parseSearchTerms(value) {
@@ -6636,16 +6735,8 @@ function getDisplayRows(dataset, state) {
   if (cache.displayRowsKey === key) return cache.displayRows;
   let rows = dataset.rows;
   if (dataset?.id === "grassroots") {
-    const scope = getGrassrootsDisplayScope(dataset, state);
-    if (scope) {
-      const scopeRows = dataset._grassrootsScopeRows?.get(scope);
-      if (scopeRows) {
-        rows = scopeRows;
-      } else if (state?._grassrootsLoadingScope === scope) {
-        rows = [];
-      } else {
-        rows = [];
-      }
+    if (state?.extraSelects?.view_mode === "career") {
+      rows = getGrassrootsMissingSelectedYears(dataset, state).length ? [] : buildCareerRows(dataset, state);
     }
   } else if (state.extraSelects.view_mode === "career") {
     rows = buildCareerRows(dataset, state);
@@ -8219,6 +8310,13 @@ function hexToRgb(hex) {
 }
 
 function updateSummary(dataset, state, filtered) {
+  if (dataset?.id === "grassroots" && state?._grassrootsLoadingYearsKey) {
+    const loadingLabel = formatSelectedYearSummary(state._grassrootsLoadingYearsKey.split("|").filter(Boolean));
+    elements.filtersSummary.textContent = `Loading Years: ${loadingLabel}`;
+    elements.resultsCount.textContent = "";
+    elements.resultsSubtitle.textContent = `Loading ${loadingLabel}...`;
+    return;
+  }
   if (dataset?.id === "grassroots" && state?._grassrootsLoadingScope) {
     const loadingLabel = state._grassrootsLoadingScope.replace(/_/g, " ");
     elements.filtersSummary.textContent = `Loading ${loadingLabel} career data...`;
@@ -8248,7 +8346,7 @@ function renderFinderBar(dataset, state) {
     ...years.map((year) => `<option value="${escapeAttribute(year)}"${singleYear === year ? " selected" : ""}>${escapeHtml(formatYearValueLabel(year))}</option>`),
   ].join("");
   elements.yearQuickSelect.value = singleYear;
-  elements.yearQuickSelect.disabled = Boolean(state?._grassrootsLoadingScope);
+  elements.yearQuickSelect.disabled = Boolean(state?._grassrootsLoadingScope || state?._grassrootsLoadingYearsKey);
   const yearLabel = careerMode ? getCareerYearLabel(dataset, state) : (selectedYears.length === 1 ? formatYearValueLabel(selectedYears[0]) : "All Years");
   elements.finderTitle.textContent = `${yearLabel} ${dataset.navLabel} Player Finder`;
   elements.finderQuery.textContent = buildFinderQueryText(dataset, state);
@@ -9527,7 +9625,7 @@ function buildDatasetMeta(rows, config) {
   const available = new Set([...columns, ...deferredColumns]);
   const demoColumns = [...new Set([...(config.lockedColumns || []), ...(config.demoColumns || [])])]
     .filter((column) => column === "rank" || available.has(column));
-  const groups = config.groups
+  let groups = config.groups
     .map((group) => {
       const columnsForGroup = group.columns.filter((column) => available.has(column));
       const defaultColumns = (group.defaultColumns || group.columns.filter((column) => config.defaultVisible.includes(column)))
@@ -9535,6 +9633,10 @@ function buildDatasetMeta(rows, config) {
       return { ...group, columns: columnsForGroup, defaultColumns };
     })
     .filter((group) => group.columns.length);
+  if (config?.id === "player_career") {
+    const groupedColumnSet = new Set([...demoColumns, ...groups.flatMap((group) => group.columns)]);
+    groups = groups.concat(buildPlayerCareerExtraGroups(columns, groupedColumnSet));
+  }
   const statColumns = groups.flatMap((group) => group.columns);
   const allColumns = [...new Set([...demoColumns, ...statColumns])];
   const numericColumns = [...new Set([
@@ -9699,6 +9801,144 @@ function extractLeadingYear(value) {
   return match ? Number(match[0]) : 0;
 }
 
+function formatAutoDisplayLabelToken(token) {
+  const normalized = getStringValue(token).trim().toLowerCase();
+  if (!normalized) return "";
+  return {
+    pts: "PTS",
+    trb: "TRB",
+    reb: "REB",
+    orb: "ORB",
+    drb: "DRB",
+    ast: "AST",
+    stl: "STL",
+    blk: "BLK",
+    tov: "TOV",
+    pf: "PF",
+    fgm: "FGM",
+    fga: "FGA",
+    ftm: "FTM",
+    fta: "FTA",
+    two_p: "2P",
+    three_p: "3P",
+    two_pm: "2PM",
+    two_pa: "2PA",
+    three_pm: "3PM",
+    three_pa: "3PA",
+    "2pm": "2PM",
+    "2pa": "2PA",
+    "2p": "2P",
+    "3pm": "3PM",
+    "3pa": "3PA",
+    "3p": "3P",
+    tp: "3P",
+    ftr: "FTr",
+    efg: "eFG",
+    tspct: "TS",
+    ts: "TS",
+    fg2pct: "2P",
+    fg3pct: "3P",
+    fgpct: "FG",
+    ftpct: "FT",
+    orbpct: "ORB",
+    drbpct: "DRB",
+    trbpct: "TRB",
+    astpct: "AST",
+    topct: "TOV",
+    stlpct: "STL",
+    blkpct: "BLK",
+    ppp: "PPP",
+    poss: "Poss",
+    freq: "Freq",
+    usg: "USG",
+    off: "Off",
+    def: "Def",
+    tot: "Tot",
+    epm: "EPM",
+    bpm: "BPM",
+    obpm: "OBPM",
+    dbpm: "DBPM",
+    per: "PER",
+    ppr: "PPR",
+    fic: "FIC",
+    adjoe: "AdjO",
+    adrtg: "AdjD",
+    ortg: "ORtg",
+    drtg: "DRtg",
+    porpag: "PRPG",
+    dporpag: "dPRPG",
+    spi: "SPI",
+    ncaa: "NCAA",
+    d1: "D1",
+    nba: "NBA",
+    realgm: "RealGM",
+    id: "ID",
+    hs: "HS",
+    gp: "GP",
+    mpg: "MPG",
+    min: "MIN",
+    mp: "MIN",
+  }[normalized] || normalized.split(/[\s-]+/).map((part) => part ? (part.charAt(0).toUpperCase() + part.slice(1)) : "").join(" ");
+}
+
+function buildAutoDisplayLabel(column) {
+  const baseColumn = stripCompanionPrefix(column);
+  const override = {
+    "2p_pct": "2P%",
+    "3p_pct": "3P%",
+    tp_pct: "3P%",
+    fg2pct: "2P%",
+    fg3pct: "3P%",
+    tspct: "TS%",
+    efg: "eFG%",
+    ftpct: "FT%",
+    orbpct: "ORB%",
+    drbpct: "DRB%",
+    trbpct: "TRB%",
+    astpct: "AST%",
+    topct: "TOV%",
+    stlpct: "STL%",
+    blkpct: "BLK%",
+    tpa_rate: "3Pr",
+    fta_rate: "FTr",
+    min_per_g: "MPG",
+    pts_per_g: "PTS/G",
+    orb_per_g: "ORB/G",
+    drb_per_g: "DRB/G",
+    trb_per_g: "TRB/G",
+    ast_per_g: "AST/G",
+    tov_per_g: "TOV/G",
+    stl_per_g: "STL/G",
+    blk_per_g: "BLK/G",
+    pf_per_g: "PF/G",
+    plus_minus: "+/-",
+    plus_minus_pg: "+/-/G",
+  }[baseColumn];
+  if (override) return override;
+  let match = baseColumn.match(/^(.*)_(?:pg|per_g)$/i);
+  if (match) return `${formatAutoDisplayLabelToken(match[1])}/G`;
+  match = baseColumn.match(/^(.*)_per40$/i);
+  if (match) return `${formatAutoDisplayLabelToken(match[1])}/40`;
+  match = baseColumn.match(/^(.*)_per100$/i);
+  if (match) return `${formatAutoDisplayLabelToken(match[1])}/100`;
+  match = baseColumn.match(/^(.*)_75$/i);
+  if (match) return `${formatAutoDisplayLabelToken(match[1])}/75`;
+  match = baseColumn.match(/^(.*)_pct$/i);
+  if (match) return `${formatAutoDisplayLabelToken(match[1])}%`;
+  match = baseColumn.match(/^(.*)_att$/i);
+  if (match) return `${formatAutoDisplayLabelToken(match[1])} Att`;
+  match = baseColumn.match(/^(.*)_made$/i);
+  if (match) return `${formatAutoDisplayLabelToken(match[1])} Made`;
+  match = baseColumn.match(/^(.*)_poss$/i);
+  if (match) return `${formatAutoDisplayLabelToken(match[1])} Poss`;
+  return baseColumn
+    .split("_")
+    .map((token) => formatAutoDisplayLabelToken(token))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function displayLabel(dataset, column) {
   if (!column) return "";
   let label = "";
@@ -9706,8 +9946,8 @@ function displayLabel(dataset, column) {
   else if (column === "bmi") label = "BMI";
   else if (column === "wingspan") label = "WS";
   else if (column === "exp") label = "Exp";
-  else label = column.replace(/_/g, " ").replace(/\b\w/g, (match) => match.toUpperCase());
-  return label.replace(/\bFTr\b/g, "FTR");
+  else label = buildAutoDisplayLabel(column);
+  return label;
 }
 
 function formatValue(dataset, column, value, row) {
