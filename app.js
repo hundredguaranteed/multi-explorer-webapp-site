@@ -17,7 +17,7 @@ const MINUTES_DEFAULT = 400;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 8000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260403-player-career-v22";
+const APP_BUILD_VERSION = "20260403-grassroots-career-v23";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const SHARED_SINGLE_FILTERS = [
   {
@@ -2561,15 +2561,7 @@ function getPlayerCareerYearChunkPath(config, season) {
 
 function getGrassrootsCareerYears(dataset, state) {
   if (dataset?.id !== "grassroots" || state?.extraSelects?.view_mode !== "career") return getAvailableYears(dataset);
-  const scopeRows = getGrassrootsActiveScopeRows(dataset, state);
-  const sourceRows = Array.isArray(scopeRows) && scopeRows.length
-    ? scopeRows
-    : (Array.isArray(dataset?.rows) ? dataset.rows : []);
-  return Array.from(new Set(sourceRows
-    .map((row) => normalizeSeasonValue(row?.season))
-    .filter((year) => Number.isFinite(year) && year >= 1000)
-    .map((year) => String(Math.round(year)))))
-    .sort(compareYears);
+  return getAvailableYears(dataset);
 }
 
 function getGrassrootsYearChunkPath(config, season) {
@@ -2611,7 +2603,7 @@ function getGrassrootsActiveScopeRows(dataset, state) {
   if (dataset?.id !== "grassroots") return Array.isArray(dataset?.rows) ? dataset.rows : [];
   const scope = getGrassrootsDisplayScope(dataset, state);
   if (!scope) return Array.isArray(dataset?.rows) ? dataset.rows : [];
-  return dataset?._grassrootsScopeRows?.get(scope) || (Array.isArray(dataset?.rows) ? dataset.rows : []);
+  return dataset?._grassrootsScopeRows?.get(scope) || [];
 }
 
 function getGrassrootsViewSnapshots(dataset) {
@@ -2651,6 +2643,8 @@ function snapshotGrassrootsUiState(state) {
 
 function restoreGrassrootsUiState(dataset, snapshot, viewMode) {
   const state = createInitialUiState(dataset);
+  const availableYears = getAvailableYears(dataset).map((year) => getStringValue(year).trim()).filter(Boolean);
+  const initialCareerYears = getGrassrootsInitialYears(dataset).map((year) => getStringValue(year).trim()).filter(Boolean);
   state.extraSelects.view_mode = viewMode;
   if (snapshot) {
     state.search = getStringValue(snapshot.search || "");
@@ -2673,8 +2667,19 @@ function restoreGrassrootsUiState(dataset, snapshot, viewMode) {
       Number.isFinite(snapshot.groupCycles?.[group.id]) ? snapshot.groupCycles[group.id] : 0,
     ]));
     state.visibleCount = Number.isFinite(snapshot.visibleCount) ? snapshot.visibleCount : LOAD_STEP;
+    if (viewMode === "career") {
+      const selectedYears = Array.from(state.years || []).map((year) => getStringValue(year).trim()).filter((year) => year && availableYears.includes(year));
+      const selectedLooksLikeBrokenLatestOnly = initialCareerYears.length
+        && selectedYears.length === initialCareerYears.length
+        && selectedYears.every((year) => initialCareerYears.includes(year));
+      state.years = new Set(
+        selectedYears.length && !selectedLooksLikeBrokenLatestOnly
+          ? selectedYears
+          : availableYears
+      );
+    }
   } else if (viewMode === "career") {
-    state.years = new Set();
+    state.years = new Set(availableYears);
   }
   resetUiCaches(state);
   return state;
@@ -5436,6 +5441,13 @@ function renderCurrentDataset() {
   const dataset = getCurrentDataset();
   const state = getCurrentUiState();
   if (!dataset || !state) return;
+  if (dataset.id === "grassroots") {
+    const scope = getGrassrootsDisplayScope(dataset, state);
+    if (scope && !dataset._grassrootsScopeRows?.has(scope) && state._grassrootsLoadingScope !== scope) {
+      startGrassrootsScopeLoad(dataset, state, scope);
+      return;
+    }
+  }
 
   renderFilters(dataset, state);
   renderResultsOnly(dataset, state);
@@ -6632,7 +6644,7 @@ function getDisplayRows(dataset, state) {
       } else if (state?._grassrootsLoadingScope === scope) {
         rows = [];
       } else {
-        rows = dataset.rows;
+        rows = [];
       }
     }
   } else if (state.extraSelects.view_mode === "career") {
@@ -8589,6 +8601,7 @@ function enhancePlayerCareerRow(row) {
 
   const twoPa = firstFinite(row["2pa"], row.two_pa, row["2pa_total"], Number.NaN);
   const threePa = firstFinite(row["3pa"], row.three_pa, row.tpa, Number.NaN);
+  const fgaBasis = firstFinite(row.fga, row.fga_75, Number.NaN);
   const twoPaPg = perGameValue(twoPa, row.gp);
   const threePaPg = perGameValue(threePa, row.gp);
   const twoPaPer40 = per40Value(twoPa, row.min);
@@ -8601,8 +8614,14 @@ function enhancePlayerCareerRow(row) {
   if (!Number.isFinite(row.ftr) && Number.isFinite(row.fta) && Number.isFinite(row.fga) && row.fga > 0) {
     row.ftr = ratioIfPossible(row.fta, row.fga);
   }
+  if (!Number.isFinite(row.ftr) && Number.isFinite(row.fta_75) && Number.isFinite(fgaBasis) && fgaBasis > 0) {
+    row.ftr = ratioIfPossible(row.fta_75, fgaBasis);
+  }
   if (!Number.isFinite(row.three_pr) && Number.isFinite(threePa) && Number.isFinite(row.fga) && row.fga > 0) {
     row.three_pr = ratioIfPossible(threePa, row.fga);
+  }
+  if (!Number.isFinite(row.three_pr) && Number.isFinite(row.fg3a_75) && Number.isFinite(fgaBasis) && fgaBasis > 0) {
+    row.three_pr = ratioIfPossible(row.fg3a_75, fgaBasis);
   }
   if (!Number.isFinite(row.three_pa_per100)) row.three_pa_per100 = possPer100Value(threePa, row);
   if (!Number.isFinite(row.ortg)) row.ortg = ortgEstimate(row);
@@ -8947,7 +8966,7 @@ function scalePercentRatioColumns(row) {
   Object.keys(row || {}).forEach((column) => {
     if (!/(^ftr$|_ftr$|^three_pr$|_three_pr$|^ftm_fga$|_ftm_fga$|^three_pr_plus_ftm_fga$|_three_pr_plus_ftm_fga$)/i.test(column)) return;
     if (typeof row[column] !== "number" || !Number.isFinite(row[column])) return;
-    row[column] = row[column] * 100;
+    if (Math.abs(row[column]) <= 1.5) row[column] = row[column] * 100;
   });
   if (row && typeof row === "object") {
     if (Object.prototype.hasOwnProperty.call(row, "_percentRatiosScaled")) {
@@ -9149,6 +9168,14 @@ function populateDerivedShooting(row, config) {
   let twoPa = firstFinite(...config.twoAttKeys.map((key) => row[key]), Number.NaN);
   const fgm = firstFinite(row.fgm, addIfFinite(twoPm, threePm), Number.NaN);
   const fga = firstFinite(row.fga, addIfFinite(twoPa, threePa), Number.NaN);
+  const ftrRatio = ratioValueFromMaybePercent(firstFinite(row.ftr, row.fta_rate, Number.NaN));
+  if (!Number.isFinite(row.fta) && Number.isFinite(fga) && Number.isFinite(ftrRatio) && fga >= 0) {
+    row.fta = roundNumber(fga * ftrRatio, 3);
+  }
+  const ftPctRatio = ratioValueFromMaybePercent(firstFinite(row.ft_pct, row.ftpct, Number.NaN));
+  if (!Number.isFinite(row.ftm) && Number.isFinite(row.fta) && Number.isFinite(ftPctRatio) && row.fta >= 0) {
+    row.ftm = roundNumber(row.fta * ftPctRatio, 3);
+  }
   if (!Number.isFinite(threePm) && Number.isFinite(fga)) threePm = 0;
   if (!Number.isFinite(threePa) && Number.isFinite(fga)) threePa = 0;
   if (!Number.isFinite(twoPm)) twoPm = firstFinite(subtractIfFinite(fgm, threePm), Number.NaN);
@@ -9179,12 +9206,14 @@ function populateDerivedShooting(row, config) {
   if (Number.isFinite(fgm) && !Number.isFinite(row.fgm)) row.fgm = fgm;
   if (Number.isFinite(fga) && !Number.isFinite(row.fga)) row.fga = fga;
 
+  const fgPct = zeroSafePercent(fgm, fga);
   const twoPct = zeroSafePercent(twoPm, twoPa);
   const threePct = zeroSafePercent(threePm, threePa);
   const efgPct = zeroSafeEfgPct(fgm, threePm, fga);
   const ftPct = zeroSafePercent(row.ftm, row.fta);
   const points = firstFinite(row.pts, weightedPointTotal(twoPm, threePm, row.ftm), Number.NaN);
   const tsPct = zeroSafeTsPct(points, fga, row.fta);
+  if ((row.fg_pct == null || row.fg_pct === "") && fgPct !== "") row.fg_pct = fgPct;
   config.twoPctKeys.forEach((key) => {
     if ((row[key] == null || row[key] === "") && twoPct !== "") row[key] = twoPct;
   });
@@ -9195,6 +9224,7 @@ function populateDerivedShooting(row, config) {
     if ((row[key] == null || row[key] === "") && efgPct !== "") row[key] = efgPct;
   });
   if ((row.ft_pct == null || row.ft_pct === "") && ftPct !== "") row.ft_pct = ftPct;
+  if ((row.pts == null || row.pts === "") && Number.isFinite(points)) row.pts = points;
   if ((row.ts_pct == null || row.ts_pct === "") && tsPct !== "") row.ts_pct = tsPct;
 }
 
@@ -9251,6 +9281,11 @@ function percentOfPossessions(value, poss) {
 function ratioIfPossible(numerator, denominator) {
   if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return "";
   return roundNumber(numerator / denominator, 3);
+}
+
+function ratioValueFromMaybePercent(value) {
+  if (!Number.isFinite(value)) return Number.NaN;
+  return Math.abs(value) <= 1.5 ? value : (value / 100);
 }
 
 function per40Value(value, minutes) {

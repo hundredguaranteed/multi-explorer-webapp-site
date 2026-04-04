@@ -1612,6 +1612,7 @@ def build_player_career_rows(
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     seen_site_keys = set()
+    site_rows_by_player_season: defaultdict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
     max_site_year = 0
 
     source_row_groups = [(dataset_id, bundle["rows"]) for dataset_id, bundle in site_data.items()]
@@ -1626,10 +1627,14 @@ def build_player_career_rows(
                 continue
             profile = player_profiles.get(canonical_id, {})
             out = standardize_site_row_for_player_career(dataset_id, row, profile)
+            key = player_career_source_key(out)
+            if key in seen_site_keys:
+                continue
             rows.append(out)
-            seen_site_keys.add(player_career_source_key(out))
+            seen_site_keys.add(key)
+            site_rows_by_player_season[(canonical_id, clean_text(out.get("season")))].append(out)
 
-    realgm_rows = build_realgm_only_rows(player_profiles, seen_site_keys)
+    realgm_rows = build_realgm_only_rows(player_profiles, seen_site_keys, site_rows_by_player_season)
     rows.extend(realgm_rows)
     return [
         row for row in rows
@@ -1643,6 +1648,8 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
     team_name = clean_text(row.get("_team_name"))
     season_label = canonical_season_label(row.get("season"))
     realgm_overlay = build_realgm_overlay_for_site_row(dataset_id, row, profile)
+    ftr_value = first_non_blank(row.get("ftr"), row.get("fta_rate"))
+    three_pr_value = first_non_blank(row.get("three_pr"), row.get("tpa_rate"))
     out = {
         "player_id": clean_text(row.get("_canonical_player_id")),
         "canonical_player_id": clean_text(row.get("_canonical_player_id")),
@@ -1679,19 +1686,24 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "tov": first_number(row.get("tov"), realgm_overlay.get("tov")),
         "pf": first_number(row.get("pf")),
         "fgm": first_number(row.get("fgm")),
-        "fga": first_number(row.get("fga")),
-        "two_pm": first_number(row.get("two_pm"), row.get("2pm")),
-        "two_pa": first_number(row.get("two_pa"), row.get("2pa")),
-        "three_pm": first_number(row.get("three_pm"), row.get("3pm"), row.get("tpm")),
-        "three_pa": first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa")),
+        "fga": first_number(row.get("fga"), row.get("fg_att")),
+        "two_pm": first_number(row.get("two_pm"), row.get("2pm"), row.get("two_p_made")),
+        "two_pa": first_number(row.get("two_pa"), row.get("2pa"), row.get("two_p_att")),
+        "three_pm": first_number(row.get("three_pm"), row.get("3pm"), row.get("tpm"), row.get("three_p_made")),
+        "three_pa": first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa"), row.get("three_p_att")),
         "ftm": first_number(row.get("ftm")),
         "fta": first_number(row.get("fta")),
+        "fga_75": first_number(row.get("fga_75")),
+        "fta_75": first_number(row.get("fta_75")),
+        "fg3a_75": first_number(row.get("fg3a_75")),
         "fg_pct": first_non_blank(normalize_site_percent_value(dataset_id, "fg_pct", row.get("fg_pct")), realgm_overlay.get("fg_pct")),
         "two_p_pct": first_non_blank(normalize_site_percent_value(dataset_id, "two_p_pct", first_non_blank(row.get("two_p_pct"), row.get("2p_pct"), row.get("fg2pct"))), realgm_overlay.get("two_p_pct")),
         "three_p_pct": first_non_blank(normalize_site_percent_value(dataset_id, "three_p_pct", first_non_blank(row.get("3p_pct"), row.get("tp_pct"), row.get("fg3pct"))), realgm_overlay.get("three_p_pct")),
         "ft_pct": first_non_blank(normalize_site_percent_value(dataset_id, "ft_pct", first_non_blank(row.get("ft_pct"), row.get("ftpct"))), realgm_overlay.get("ft_pct")),
         "efg_pct": first_non_blank(normalize_site_percent_value(dataset_id, "efg_pct", first_non_blank(row.get("efg_pct"), row.get("efg"))), realgm_overlay.get("efg_pct")),
         "ts_pct": first_non_blank(normalize_site_percent_value(dataset_id, "ts_pct", first_non_blank(row.get("ts_pct"), row.get("tspct"))), realgm_overlay.get("ts_pct")),
+        "ftr": normalize_ratio_field(ftr_value),
+        "three_pr": normalize_ratio_field(three_pr_value),
         "rim_made": first_number(row.get("rim_made")),
         "rim_att": first_number(row.get("rim_att")),
         "rim_pct": normalize_site_percent_value(dataset_id, "rim_pct", first_non_blank(row.get("rim_pct"), row.get("fgpct_rim"))),
@@ -1719,11 +1731,35 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "usg_pct": first_non_blank(normalize_site_percent_value(dataset_id, "usg_pct", first_non_blank(row.get("usg_pct"), row.get("usg"))), realgm_overlay.get("usg_pct")),
         "ast_to": first_number(row.get("ast_to")),
     }
+    apply_player_career_shooting_derivations(out)
     fill_per_game_and_per40(out)
     return out
 
 
-def build_realgm_only_rows(player_profiles: dict[str, dict[str, object]], seen_site_keys: set[str]) -> list[dict[str, object]]:
+def player_career_rows_look_duplicate(existing_row: dict[str, object], candidate_row: dict[str, object]) -> bool:
+    existing_team_keys = build_school_keys(existing_row.get("team_name"))
+    candidate_team_keys = build_school_keys(candidate_row.get("team_name"))
+    if score_team_key_sets(existing_team_keys, candidate_team_keys) >= 0.66:
+        return True
+    gp_gap = abs_numeric_gap(existing_row.get("gp"), candidate_row.get("gp"))
+    if not math.isfinite(gp_gap) or gp_gap > 0.25:
+        return False
+    min_gap = abs_numeric_gap(existing_row.get("min"), candidate_row.get("min"))
+    if not math.isfinite(min_gap) or min_gap > 3.0:
+        return False
+    close_stats = 0
+    for column, tolerance in (("pts", 3.0), ("trb", 1.5), ("ast", 1.5), ("stl", 1.0), ("blk", 1.0), ("tov", 1.0)):
+        gap = abs_numeric_gap(existing_row.get(column), candidate_row.get(column))
+        if math.isfinite(gap) and gap <= tolerance:
+            close_stats += 1
+    return close_stats >= 3
+
+
+def build_realgm_only_rows(
+    player_profiles: dict[str, dict[str, object]],
+    seen_site_keys: set[str],
+    site_rows_by_player_season: defaultdict[tuple[str, str], list[dict[str, object]]],
+) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
 
     for canonical_id, profile in player_profiles.items():
@@ -1736,6 +1772,9 @@ def build_realgm_only_rows(player_profiles: dict[str, dict[str, object]], seen_s
                 if not isinstance(season_row, dict):
                     continue
                 out = standardize_realgm_row_for_player_career(source_name, canonical_id, profile, profile, season_row)
+                site_rows = site_rows_by_player_season.get((canonical_id, clean_text(out.get("season"))), [])
+                if any(player_career_rows_look_duplicate(existing_row, out) for existing_row in site_rows):
+                    continue
                 key = player_career_source_key(out)
                 if key in seen_site_keys:
                     continue
@@ -1797,12 +1836,17 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "three_pa": "",
         "ftm": "",
         "fta": "",
+        "fga_75": "",
+        "fta_75": "",
+        "fg3a_75": "",
         "fg_pct": normalize_site_percent_value("realgm", "fg_pct", season_row.get("fg")),
         "two_p_pct": "",
         "three_p_pct": normalize_site_percent_value("realgm", "three_p_pct", season_row.get("3p")),
         "ft_pct": normalize_site_percent_value("realgm", "ft_pct", season_row.get("ft")),
         "efg_pct": "",
         "ts_pct": "",
+        "ftr": "",
+        "three_pr": "",
         "rim_made": "",
         "rim_att": "",
         "rim_pct": "",
@@ -1841,6 +1885,7 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "stl_per40": "",
         "blk_per40": "",
     }
+    apply_player_career_shooting_derivations(out)
     fill_per40_only(out)
     return out
 
@@ -1865,7 +1910,7 @@ def write_player_career_bundle(rows: list[dict[str, object]]) -> None:
         "dob", "height_in", "weight_lb", "age", "pos", "class_year", "draft_pick", "rookie_year",
         "gp", "min", "mpg", "pts", "pts_pg", "trb", "trb_pg", "orb", "drb", "ast", "ast_pg", "stl", "stl_pg",
         "blk", "blk_pg", "tov", "tov_pg", "pf", "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
-        "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "rim_made", "rim_att", "rim_pct",
+        "fga_75", "fta_75", "fg3a_75", "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "rim_made", "rim_att", "rim_pct",
         "mid_made", "mid_att", "mid_pct", "adjoe", "adrtg", "porpag", "dporpag", "bpm", "per", "rgm_per", "off", "def",
         "tot", "ewins", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct", "ast_to",
         "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40",
@@ -2358,10 +2403,122 @@ def zero_safe_percent(made: float | None, attempts: float | None) -> float:
     return (made / attempts) * 100.0
 
 
+def ratio_value(value: object) -> float | None:
+    numeric = first_number(value)
+    if numeric is None or not math.isfinite(numeric):
+        return None
+    return numeric if abs(numeric) <= 1.5 else (numeric / 100.0)
+
+
+def weighted_point_total(two_pm: object, three_pm: object, ftm: object) -> float | None:
+    two_pm_value = first_number(two_pm)
+    three_pm_value = first_number(three_pm)
+    ftm_value = first_number(ftm)
+    if two_pm_value is None and three_pm_value is None and ftm_value is None:
+        return None
+    return (two_pm_value or 0.0) * 2.0 + (three_pm_value or 0.0) * 3.0 + (ftm_value or 0.0)
+
+
+def zero_safe_efg_pct(fgm: object, three_pm: object, fga: object) -> float | None:
+    fga_value = first_number(fga)
+    if fga_value is None or not math.isfinite(fga_value):
+        return None
+    if fga_value <= 0:
+        return 0.0
+    fgm_value = first_number(fgm)
+    if fgm_value is None or not math.isfinite(fgm_value):
+        return None
+    three_pm_value = first_number(three_pm) or 0.0
+    return ((fgm_value + (0.5 * three_pm_value)) / fga_value) * 100.0
+
+
+def zero_safe_ts_pct(points: object, fga: object, fta: object) -> float | None:
+    fga_value = first_number(fga)
+    fta_value = first_number(fta)
+    if fga_value is None or fta_value is None or not math.isfinite(fga_value) or not math.isfinite(fta_value):
+        return None
+    denom = 2.0 * (fga_value + (0.44 * fta_value))
+    if denom <= 0:
+        return 0.0
+    points_value = first_number(points)
+    if points_value is None or not math.isfinite(points_value):
+        return None
+    return (points_value / denom) * 100.0
+
+
+def normalize_ratio_field(value: object) -> float | str:
+    numeric = ratio_value(value)
+    return round_number(numeric, 3) if numeric is not None else ""
+
+
+def apply_player_career_shooting_derivations(row: dict[str, object]) -> None:
+    two_pm = first_number(row.get("two_pm"), row.get("2pm"))
+    two_pa = first_number(row.get("two_pa"), row.get("2pa"))
+    three_pm = first_number(row.get("three_pm"), row.get("3pm"), row.get("tpm"))
+    three_pa = first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa"))
+    fgm = first_number(row.get("fgm"), add_numbers(two_pm, three_pm))
+    fga = first_number(row.get("fga"), add_numbers(two_pa, three_pa))
+    if first_number(row.get("fgm")) is None and fgm is not None:
+        row["fgm"] = round_number(fgm, 3)
+    if first_number(row.get("fga")) is None and fga is not None:
+        row["fga"] = round_number(fga, 3)
+
+    ftr_ratio = ratio_value(row.get("ftr"))
+    if ftr_ratio is None:
+        ftr_ratio = first_number(divide_numbers(row.get("fta"), row.get("fga")), divide_numbers(row.get("fta_75"), row.get("fga_75")))
+    if ftr_ratio is None and first_number(row.get("fga")) == 0:
+        ftr_ratio = 0.0
+    if ftr_ratio is not None:
+        row["ftr"] = round_number(ftr_ratio, 3)
+
+    three_pr_ratio = ratio_value(row.get("three_pr"))
+    if three_pr_ratio is None:
+        three_pr_ratio = first_number(divide_numbers(row.get("three_pa"), row.get("fga")), divide_numbers(row.get("fg3a_75"), row.get("fga_75")))
+    if three_pr_ratio is None and first_number(row.get("fga")) == 0:
+        three_pr_ratio = 0.0
+    if three_pr_ratio is not None:
+        row["three_pr"] = round_number(three_pr_ratio, 3)
+
+    total_fga = first_number(row.get("fga"))
+    if first_number(row.get("fta")) is None and total_fga is not None and ftr_ratio is not None:
+        row["fta"] = round_number(total_fga * ftr_ratio, 3)
+    ft_pct_ratio = ratio_value(row.get("ft_pct"))
+    if first_number(row.get("ftm")) is None and first_number(row.get("fta")) is not None and ft_pct_ratio is not None:
+        row["ftm"] = round_number(first_number(row.get("fta")) * ft_pct_ratio, 3)
+
+    if first_number(row.get("pts")) is None:
+        inferred_points = weighted_point_total(row.get("two_pm"), row.get("three_pm"), row.get("ftm"))
+        if inferred_points is not None:
+            row["pts"] = round_number(inferred_points, 3)
+
+    if first_number(row.get("fg_pct")) is None and first_number(row.get("fgm")) is not None and first_number(row.get("fga")) is not None:
+        row["fg_pct"] = round_number(zero_safe_percent(first_number(row.get("fgm")), first_number(row.get("fga"))), 3)
+    if first_number(row.get("two_p_pct")) is None and first_number(row.get("two_pm")) is not None and first_number(row.get("two_pa")) is not None:
+        row["two_p_pct"] = round_number(zero_safe_percent(first_number(row.get("two_pm")), first_number(row.get("two_pa"))), 3)
+    if first_number(row.get("three_p_pct")) is None and first_number(row.get("three_pm")) is not None and first_number(row.get("three_pa")) is not None:
+        row["three_p_pct"] = round_number(zero_safe_percent(first_number(row.get("three_pm")), first_number(row.get("three_pa"))), 3)
+    if first_number(row.get("ft_pct")) is None and first_number(row.get("ftm")) is not None and first_number(row.get("fta")) is not None:
+        row["ft_pct"] = round_number(zero_safe_percent(first_number(row.get("ftm")), first_number(row.get("fta"))), 3)
+    if first_number(row.get("efg_pct")) is None:
+        efg_pct = zero_safe_efg_pct(row.get("fgm"), row.get("three_pm"), row.get("fga"))
+        if efg_pct is not None:
+            row["efg_pct"] = round_number(efg_pct, 3)
+    if first_number(row.get("ts_pct")) is None:
+        ts_pct = zero_safe_ts_pct(row.get("pts"), row.get("fga"), row.get("fta"))
+        if ts_pct is not None:
+            row["ts_pct"] = round_number(ts_pct, 3)
+
+
 def subtract_numbers(left: float | None, right: float | None) -> float | None:
     if left is None or right is None:
         return None
     return left - right
+
+
+def add_numbers(left: float | None, right: float | None) -> float | None:
+    if left is None and right is None:
+        return None
+    return (left or 0.0) + (right or 0.0)
 
 
 def abs_numeric_gap(left: object, right: object) -> float:
