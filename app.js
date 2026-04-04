@@ -17,7 +17,7 @@ const MINUTES_DEFAULT = 400;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 8000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260403-player-career-fullstat-v24";
+const APP_BUILD_VERSION = "20260403-ui-responsive-v25";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const SHARED_SINGLE_FILTERS = [
   {
@@ -1846,6 +1846,49 @@ function wireGlobalEvents() {
   elements.statAllBtn?.addEventListener("click", () => applyVisibilityMode("stats", "all"));
   elements.statNoneBtn?.addEventListener("click", () => applyVisibilityMode("stats", "none"));
   elements.statClearBtn?.addEventListener("click", () => applyVisibilityMode("stats", "clear"));
+  elements.statGroups?.addEventListener("click", async (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const dataset = getCurrentDataset();
+    const state = getCurrentUiState();
+    if (!dataset || !state) return;
+    const groupButton = target.closest("[data-group-cycle]");
+    if (groupButton) {
+      const groupId = groupButton.dataset.groupCycle;
+      const group = dataset.meta.groups.find((item) => item.id === groupId);
+      if (!group) return;
+      await cycleGroupVisibility(dataset, state, group);
+      return;
+    }
+    const statButton = target.closest("[data-stat-column]");
+    if (!statButton) return;
+    const column = statButton.dataset.statColumn;
+    if (!column) return;
+    if (!state.visibleColumns[column]) {
+      await ensureDeferredColumnsReady(dataset, state, [column], { scope: "visible" });
+      if (appState.currentId !== dataset.id) return;
+    }
+    state.visibleColumns[column] = !state.visibleColumns[column];
+    renderCurrentDataset();
+  });
+  elements.statGroups?.addEventListener("input", async (event) => {
+    const target = event.target instanceof HTMLInputElement ? event.target : null;
+    if (!target) return;
+    const dataset = getCurrentDataset();
+    const state = getCurrentUiState();
+    if (!dataset || !state) return;
+    const minColumn = target.dataset.statMin;
+    const maxColumn = target.dataset.statMax;
+    const column = minColumn || maxColumn;
+    if (!column || !state.numericFilters[column]) return;
+    if (inputHasValue(target.value)) {
+      await ensureDeferredColumnsReady(dataset, state, [column]);
+      if (appState.currentId !== dataset.id) return;
+    }
+    if (minColumn) state.numericFilters[column].min = target.value;
+    if (maxColumn) state.numericFilters[column].max = target.value;
+    renderResultsOnly(dataset, state);
+  });
 
   elements.loadMoreBtn.addEventListener("click", async () => {
     const state = getCurrentUiState();
@@ -6055,92 +6098,22 @@ function getDemoControlColumns(dataset) {
 }
 
 function renderStatGroups(dataset, state) {
-  elements.statGroups.innerHTML = "";
-
-  dataset.meta.groups.forEach((group) => {
-    if (dataset.id === "d1" && group.id === "playtype_analysis") return;
-    const template = elements.statGroupTemplate.content.cloneNode(true);
-    const section = template.querySelector(".stat-group");
-    const header = template.querySelector(".stat-group__header");
-    const body = template.querySelector(".stat-group__body");
-    const groupState = getGroupSelectionState(dataset, group, state);
-    header.innerHTML = `<button class="group-cycle-button ${group.columns.some((column) => state.visibleColumns[column]) ? "is-active" : ""}" type="button" data-group-cycle="${escapeAttribute(group.id)}">${escapeHtml(group.label)} <span class="cycle-note">(${escapeHtml(groupState)})</span></button>`;
-
-    group.columns.forEach((column) => {
-      const row = document.createElement("div");
-      row.className = "filter-row";
-
-      const labelButton = document.createElement("button");
-      labelButton.type = "button";
-      labelButton.className = `pill-toggle filter-row__label ${state.visibleColumns[column] ? "is-active" : ""}`;
-      labelButton.dataset.statColumn = column;
-      labelButton.textContent = displayLabel(dataset, column);
-
-      const minInput = document.createElement("input");
-      minInput.type = "text";
-      minInput.inputMode = "decimal";
-      minInput.autocomplete = "off";
-      minInput.className = "filter-input";
-      minInput.placeholder = "Min";
-      minInput.value = state.numericFilters[column]?.min ?? "";
-
-      const maxInput = document.createElement("input");
-      maxInput.type = "text";
-      maxInput.inputMode = "decimal";
-      maxInput.autocomplete = "off";
-      maxInput.className = "filter-input";
-      maxInput.placeholder = "Max";
-      maxInput.value = state.numericFilters[column]?.max ?? "";
-
-      if (!dataset.meta.numericColumns.includes(column)) {
-        minInput.disabled = true;
-        maxInput.disabled = true;
-      }
-
-      labelButton.addEventListener("click", async () => {
-        if (!state.visibleColumns[column]) {
-          await ensureDeferredColumnsReady(dataset, state, [column], { scope: "visible" });
-          if (appState.currentId !== dataset.id) return;
-        }
-        state.visibleColumns[column] = !state.visibleColumns[column];
-        renderCurrentDataset();
-      });
-
-      minInput.addEventListener("input", async () => {
-        if (!state.numericFilters[column]) return;
-        if (inputHasValue(minInput.value)) {
-          await ensureDeferredColumnsReady(dataset, state, [column]);
-          if (appState.currentId !== dataset.id) return;
-        }
-        state.numericFilters[column].min = minInput.value;
-        renderResultsOnly(dataset, state);
-      });
-
-      maxInput.addEventListener("input", async () => {
-        if (!state.numericFilters[column]) return;
-        if (inputHasValue(maxInput.value)) {
-          await ensureDeferredColumnsReady(dataset, state, [column]);
-          if (appState.currentId !== dataset.id) return;
-        }
-        state.numericFilters[column].max = maxInput.value;
-        renderResultsOnly(dataset, state);
-      });
-
-      row.append(labelButton, minInput, maxInput);
-      body.appendChild(row);
-    });
-
-    elements.statGroups.appendChild(section);
-  });
-
-  elements.statGroups.querySelectorAll("[data-group-cycle]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const groupId = button.dataset.groupCycle;
-      const group = dataset.meta.groups.find((item) => item.id === groupId);
-      if (!group) return;
-      await cycleGroupVisibility(dataset, state, group);
-    });
-  });
+  const numericColumnSet = dataset.meta.numericColumnSet || new Set(dataset.meta.numericColumns || []);
+  elements.statGroups.innerHTML = dataset.meta.groups
+    .filter((group) => !(dataset.id === "d1" && group.id === "playtype_analysis"))
+    .map((group) => {
+      const groupState = getGroupSelectionState(dataset, group, state);
+      const rowsHtml = group.columns
+        .map((column) => {
+          const active = state.visibleColumns[column] ? "is-active" : "";
+          const filter = state.numericFilters[column] || { min: "", max: "" };
+          const disabled = numericColumnSet.has(column) ? "" : " disabled";
+          return `<div class="filter-row"><button class="pill-toggle filter-row__label ${active}" type="button" data-stat-column="${escapeAttribute(column)}">${escapeHtml(displayLabel(dataset, column))}</button><input class="filter-input" type="text" inputmode="decimal" autocomplete="off" placeholder="Min" value="${escapeAttribute(filter.min ?? "")}" data-stat-min="${escapeAttribute(column)}"${disabled}><input class="filter-input" type="text" inputmode="decimal" autocomplete="off" placeholder="Max" value="${escapeAttribute(filter.max ?? "")}" data-stat-max="${escapeAttribute(column)}"${disabled}></div>`;
+        })
+        .join("");
+      return `<section class="stat-group"><div class="stat-group__header"><button class="group-cycle-button ${group.columns.some((column) => state.visibleColumns[column]) ? "is-active" : ""}" type="button" data-group-cycle="${escapeAttribute(group.id)}">${escapeHtml(group.label)} <span class="cycle-note">(${escapeHtml(groupState)})</span></button></div><div class="stat-group__body">${rowsHtml}</div></section>`;
+    })
+    .join("");
 }
 
 function getGroupSelectionState(dataset, group, state) {
@@ -6736,7 +6709,7 @@ function getDisplayRows(dataset, state) {
   let rows = dataset.rows;
   if (dataset?.id === "grassroots") {
     if (state?.extraSelects?.view_mode === "career") {
-      rows = getGrassrootsMissingSelectedYears(dataset, state).length ? [] : buildCareerRows(dataset, state);
+      rows = buildCareerRows(dataset, state);
     }
   } else if (state.extraSelects.view_mode === "career") {
     rows = buildCareerRows(dataset, state);
@@ -7822,8 +7795,12 @@ function getColumnWidth(column, dataset) {
   if (column === "rank") return 18;
   if (baseColumn === dataset.yearColumn || baseColumn === "season") return 48;
   if (baseColumn === "age_range") return 52;
-  if (dataset.id === "player_career" && baseColumn === dataset.teamColumn) return 118;
-  if (dataset.id === "player_career" && baseColumn === "team_full") return 136;
+  if (isTeamDisplayColumn(dataset, column)) {
+    if (baseColumn === "team_full" || baseColumn === "current_team" || baseColumn === "pre_draft_team") return 136;
+    if (dataset.id === "grassroots") return 108;
+    if (dataset.id === "player_career") return 124;
+    return 116;
+  }
   if (dataset.id === "player_career" && baseColumn === "profile_levels") return 108;
   if (dataset.id === "player_career" && baseColumn === "career_path") return 188;
   if (dataset.id === "player_career" && baseColumn === "league") return 92;
@@ -7838,7 +7815,6 @@ function getColumnWidth(column, dataset) {
   if (baseColumn === "blk_pf" || baseColumn === "stl_pf" || baseColumn === "stocks_pf") return 54;
   if (baseColumn === "three_pr_plus_ftm_fga") return 72;
   if (/player/i.test(baseColumn)) return 148;
-  if (dataset.id === "grassroots" && (baseColumn === dataset.teamColumn || /team/i.test(baseColumn))) return 84;
   if (baseColumn === "competition_label") return 94;
   if (/^nationality$|^team_code$/.test(baseColumn)) return 52;
   if (baseColumn === "coach") return 96;
@@ -7923,6 +7899,7 @@ function renderHeaderCell(dataset, state, column) {
   const classes = sortable ? ["is-sortable"] : [];
   const label = displayLabel(dataset, column);
   if (isWrapColumn(dataset, column)) classes.push("cell-wrap");
+  if (isTeamDisplayColumn(dataset, column)) classes.push("cell-team-text");
   if (dataset.id === "grassroots" && ["team_name", "team_full", "event_name", "event_group", "event_raw_name", "circuit"].includes(column)) {
     classes.push("cell-small-text");
   }
@@ -7945,6 +7922,7 @@ function renderBodyCell(dataset, state, column, row, index, colorScale) {
   const classes = [];
   if (isLeftAligned(dataset, column)) classes.push("cell-left");
   if (isWrapColumn(dataset, column)) classes.push("cell-wrap");
+  if (isTeamDisplayColumn(dataset, column)) classes.push("cell-team-text");
   if (dataset.id === "grassroots" && ["team_name", "team_full", "event_name", "event_group", "event_raw_name", "circuit"].includes(column)) {
     classes.push("cell-small-text");
   }
@@ -10002,10 +9980,16 @@ function isIntegerCountColumn(column) {
   return /^(pts|trb|ast|tov|stl|blk|pf|stocks|fgm|fga|2pm|2pa|3pm|3pa|ftm|fta|event_total_players|page_index)$/i.test(baseColumn);
 }
 
+function isTeamDisplayColumn(dataset, column) {
+  const baseColumn = stripCompanionPrefix(column);
+  if (!baseColumn || /^team_(code|id)$/i.test(baseColumn)) return false;
+  if (baseColumn === dataset?.teamColumn) return true;
+  return /^(team_name|team_full|team_alias|current_team|pre_draft_team)$/i.test(baseColumn);
+}
+
 function isLeftAligned(dataset, column) {
   return column === dataset?.playerColumn
-    || column === dataset?.teamColumn
-    || column === "team_full"
+    || isTeamDisplayColumn(dataset, column)
     || column === "profile_levels"
     || column === "career_path"
     || column === "coach"
@@ -10017,9 +10001,8 @@ function isLeftAligned(dataset, column) {
 }
 
 function isWrapColumn(dataset, column) {
+  if (isTeamDisplayColumn(dataset, column)) return false;
   return column === dataset?.playerColumn
-    || column === dataset?.teamColumn
-    || column === "team_full"
     || column === "profile_levels"
     || column === "career_path"
     || column === "coach"
