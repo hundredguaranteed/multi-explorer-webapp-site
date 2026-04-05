@@ -6,6 +6,7 @@ import json
 import math
 import re
 from collections import Counter, defaultdict
+from difflib import SequenceMatcher
 from pathlib import Path
 
 csv.field_size_limit(1024 * 1024 * 128)
@@ -319,6 +320,37 @@ US_STATE_ABBREVIATIONS = {
 }
 US_STATE_CODES = set(US_STATE_ABBREVIATIONS.values())
 TEAM_STATE_CODE_TO_NAME = {code.lower(): name for name, code in US_STATE_ABBREVIATIONS.items()}
+EXPLICIT_SCHOOL_KEY_VARIANTS = {
+    "arkansas pine bluff": ["uapb", "arkansas pine bluff"],
+    "cal poly": ["cal poly slo", "california polytechnic state", "california polytechnic state san luis obispo"],
+    "cal poly slo": ["cal poly", "california polytechnic state", "california polytechnic state san luis obispo"],
+    "california baptist": ["cal baptist"],
+    "connecticut": ["uconn"],
+    "east texas a m": ["texas a m commerce", "texas am commerce"],
+    "louisiana monroe": ["louisiana monroe", "ulm"],
+    "louisiana lafayette": ["ul lafayette", "louisiana"],
+    "massachusetts lowell": ["umass lowell"],
+    "north carolina asheville": ["unc asheville", "unca"],
+    "north carolina wilmington": ["unc wilmington", "uncw"],
+    "queens": ["queens nc", "queens university", "queens university of charlotte"],
+    "saint francis pa": ["st francis pa", "saint francis pennsylvania", "st francis pennsylvania"],
+    "southern miss": ["southern mississippi"],
+    "st thomas": ["saint thomas", "st thomas mn", "saint thomas mn", "st thomas minnesota", "saint thomas minnesota"],
+    "st thomas mn": ["st thomas", "saint thomas", "st thomas minnesota", "saint thomas minnesota"],
+    "texas rio grande valley": ["ut rio grande valley", "utrgv"],
+    "texas a m commerce": ["east texas a m", "texas am commerce"],
+    "uconn": ["connecticut"],
+    "ulm": ["louisiana monroe"],
+    "unc asheville": ["north carolina asheville", "unca"],
+    "unc wilmington": ["north carolina wilmington", "uncw"],
+    "unca": ["north carolina asheville", "unc asheville"],
+    "uncw": ["north carolina wilmington", "unc wilmington"],
+    "ut rio grande valley": ["texas rio grande valley", "utrgv"],
+    "utah tech": ["dixie state", "dixie state utah"],
+    "utrgv": ["texas rio grande valley", "ut rio grande valley"],
+    "vcu": ["virginia commonwealth"],
+    "virginia commonwealth": ["vcu"],
+}
 
 
 def main() -> None:
@@ -336,6 +368,7 @@ def main() -> None:
     nba_summary = match_nba_groups(site_data["nba"]["rows"], profiles, player_name_index)
     fiba_summary = match_fiba_groups(site_data["fiba"]["rows"], profiles, player_name_index)
     d1_link_summary = link_lower_levels_to_d1(site_data)
+    d1_cross_level_summary = link_unmatched_d1_groups_to_existing_anchors(site_data)
     d1_profile_summary = match_unmatched_d1_groups_to_profiles(site_data, college_index, player_name_index, team_alias_map)
     d1_link_reconcile_summary = reconcile_d1_linked_groups(site_data)
 
@@ -357,6 +390,7 @@ def main() -> None:
         "nba_match_summary": nba_summary,
         "fiba_match_summary": fiba_summary,
         "d1_link_summary": d1_link_summary,
+        "d1_cross_level_summary": d1_cross_level_summary,
         "d1_profile_summary": d1_profile_summary,
         "d1_link_reconcile_summary": d1_link_reconcile_summary,
         "grassroots_match_summary": grassroots_summary,
@@ -1363,6 +1397,78 @@ def link_lower_levels_to_d1(site_data: dict[str, dict[str, object]]) -> dict[str
     return summary
 
 
+def build_site_identity_anchors(
+    site_data: dict[str, dict[str, object]],
+    dataset_ids: tuple[str, ...] = ("d1", "d2", "naia", "juco", "fiba", "nba"),
+) -> list[dict[str, object]]:
+    anchors: list[dict[str, object]] = []
+    for dataset_id in dataset_ids:
+        bundle = site_data.get(dataset_id)
+        if not bundle:
+            continue
+        for group_rows in group_rows_by_identity(bundle["rows"]):
+            representative = sorted(group_rows, key=identity_row_score, reverse=True)[0]
+            realgm_player_id = clean_text(representative.get("_realgm_player_id"))
+            if not realgm_player_id:
+                continue
+            years = sorted({canonical_end_year(row.get("season")) for row in group_rows if canonical_end_year(row.get("season"))}, reverse=True)
+            canonical_id = (
+                clean_text(representative.get("_canonical_player_id"))
+                or clean_text(representative.get("canonical_player_id"))
+                or f"rgm_{realgm_player_id}"
+            )
+            anchor = {
+                "canonical_player_id": canonical_id,
+                "realgm_player_id": realgm_player_id,
+                "name_key": clean_text(representative.get("_name_key")),
+                "loose_name_key": clean_text(representative.get("_loose_name_key")),
+                "player_name": clean_text(representative.get("_player_name")),
+                "dob": clean_text(representative.get("_dob_iso")),
+                "height_in": first_number(representative.get("_height_in_value")),
+                "weight_lb": first_number(representative.get("_weight_lb_value")),
+                "draft_pick": parse_int_value(representative.get("_draft_pick_value")),
+                "min_year": years[-1] if years else 0,
+                "max_year": years[0] if years else 0,
+                "source_dataset": dataset_id,
+            }
+            if anchor["name_key"]:
+                anchors.append(anchor)
+    return anchors
+
+
+def link_unmatched_d1_groups_to_existing_anchors(site_data: dict[str, dict[str, object]]) -> dict[str, int]:
+    anchors = build_site_identity_anchors(site_data)
+    if not anchors:
+        return {"anchors": 0, "matched": 0, "ambiguous": 0, "unmatched": 0}
+
+    anchors_by_name: dict[str, dict[str, list[dict[str, object]]]] = {
+        "strict": defaultdict(list),
+        "loose": defaultdict(list),
+    }
+    for anchor in anchors:
+        if anchor["name_key"]:
+            anchors_by_name["strict"][anchor["name_key"]].append(anchor)
+        if anchor["loose_name_key"]:
+            anchors_by_name["loose"][anchor["loose_name_key"]].append(anchor)
+
+    matched = 0
+    ambiguous = 0
+    unmatched = 0
+    for group_rows in group_rows_by_identity(site_data["d1"]["rows"]):
+        if clean_text(group_rows[0].get("_realgm_player_id")):
+            continue
+        result = choose_best_existing_identity_anchor(group_rows, anchors_by_name)
+        if result["status"] == "matched":
+            matched += 1
+            assign_identity_anchor_to_group(group_rows, result["anchor"], "cross_level_anchor")
+        elif result["status"] == "ambiguous":
+            ambiguous += 1
+        else:
+            unmatched += 1
+
+    return {"anchors": len(anchors), "matched": matched, "ambiguous": ambiguous, "unmatched": unmatched}
+
+
 def match_unmatched_d1_groups_to_profiles(
     site_data: dict[str, dict[str, object]],
     college_index: dict[tuple[int, str], list[dict[str, object]]],
@@ -1373,12 +1479,15 @@ def match_unmatched_d1_groups_to_profiles(
     ambiguous = 0
     unmatched = 0
     eligible_groups = 0
+    college_team_index = build_college_team_season_index(college_index)
 
     for group_rows in group_rows_by_identity(site_data["d1"]["rows"]):
         if clean_text(group_rows[0].get("_realgm_player_id")):
             continue
         eligible_groups += 1
         result = choose_exact_d1_college_profile(group_rows, college_index, team_alias_map)
+        if result["status"] == "unmatched":
+            result = choose_fuzzy_d1_team_year_profile(group_rows, college_team_index, team_alias_map)
         if result["status"] == "unmatched":
             result = choose_best_d1_profile(group_rows, player_name_index, team_alias_map)
         if result["status"] == "matched":
@@ -1461,6 +1570,139 @@ def choose_exact_d1_college_profile(
     return {"status": "matched", "profile": best["profile"], "source": "realgm_college_exact"}
 
 
+def build_college_team_season_index(
+    college_index: dict[tuple[int, str], list[dict[str, object]]],
+) -> dict[tuple[int, str], list[dict[str, object]]]:
+    index: dict[tuple[int, str], list[dict[str, object]]] = defaultdict(list)
+    seen_entries: set[tuple[str, str, str]] = set()
+    for entries in college_index.values():
+        for entry in entries:
+            profile_id = clean_text(entry.get("realgm_player_id") or entry.get("profile", {}).get("realgm_player_id"))
+            season_start = parse_int_value(entry.get("season_start"))
+            school = clean_text(entry.get("school"))
+            if not profile_id or not season_start:
+                continue
+            dedupe_key = (profile_id, clean_text(entry.get("season")), school)
+            if dedupe_key in seen_entries:
+                continue
+            seen_entries.add(dedupe_key)
+            for team_key in entry.get("team_keys") or []:
+                if team_key:
+                    index[(season_start, team_key)].append(entry)
+    return index
+
+
+def choose_fuzzy_d1_team_year_profile(
+    group_rows: list[dict[str, object]],
+    college_team_index: dict[tuple[int, str], list[dict[str, object]]],
+    team_alias_map: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    profile_scores: dict[str, dict[str, object]] = {}
+    for row in sorted(group_rows, key=identity_row_score, reverse=True):
+        season_start = parse_int_value(row.get("_season_start"))
+        if not season_start:
+            continue
+        row_team_keys = build_row_team_keys("d1", row, team_alias_map)
+        if not row_team_keys:
+            continue
+        candidate_pool: dict[tuple[str, str, str], dict[str, object]] = {}
+        for team_key in row_team_keys:
+            for candidate in college_team_index.get((season_start, team_key), []):
+                profile = candidate.get("profile") or {}
+                profile_id = clean_text(profile.get("realgm_player_id"))
+                candidate_key = (profile_id, clean_text(candidate.get("season")), clean_text(candidate.get("school")))
+                if profile_id:
+                    candidate_pool[candidate_key] = candidate
+        for candidate in candidate_pool.values():
+            score = score_fuzzy_d1_team_year_candidate(row, candidate, team_alias_map)
+            if score <= 0:
+                continue
+            profile = candidate["profile"]
+            profile_id = clean_text(profile.get("realgm_player_id"))
+            entry = profile_scores.setdefault(profile_id, {
+                "profile": profile,
+                "score": 0.0,
+                "best_score": 0.0,
+                "row_hits": set(),
+            })
+            entry["score"] += score
+            entry["best_score"] = max(entry["best_score"], score)
+            entry["row_hits"].add(row_identity_key(row))
+
+    if not profile_scores:
+        return {"status": "unmatched"}
+
+    ranked = sorted(
+        profile_scores.values(),
+        key=lambda item: (len(item["row_hits"]), item["score"], item["best_score"]),
+        reverse=True,
+    )
+    best = ranked[0]
+    second = ranked[1] if len(ranked) > 1 else None
+    margin = (best["score"] - second["score"]) if second else 999.0
+    if best["best_score"] < 134:
+        return {"status": "unmatched"}
+    if second and margin < 16:
+        return {"status": "ambiguous"}
+    return {"status": "matched", "profile": best["profile"], "source": "realgm_college_fuzzy_team_year"}
+
+
+def score_fuzzy_d1_team_year_candidate(
+    row: dict[str, object],
+    candidate: dict[str, object],
+    team_alias_map: dict[str, dict[str, object]],
+) -> float:
+    profile = candidate.get("profile") or {}
+    row_team_keys = build_row_team_keys("d1", row, team_alias_map)
+    team_score = score_team_key_sets(row_team_keys, candidate.get("team_keys") or [])
+    if team_score < 0.82:
+        return 0.0
+
+    name_score = score_fuzzy_d1_name_match(row, profile)
+    if name_score < 58:
+        return 0.0
+
+    total = name_score
+    if team_score >= 0.99:
+        total += 84.0
+    elif team_score >= 0.9:
+        total += 72.0
+    else:
+        total += 60.0
+
+    row_dob = clean_text(row.get("_dob_iso"))
+    profile_dob = clean_text(profile.get("born_iso"))
+    if row_dob and profile_dob:
+        if row_dob != profile_dob:
+            return 0.0
+        total += 76.0
+
+    height_gap = abs_numeric_gap(row.get("_height_in_value"), profile.get("height_in"))
+    if math.isfinite(height_gap):
+        if height_gap > 4:
+            return 0.0
+        if height_gap <= 1:
+            total += 18.0
+        elif height_gap <= 2:
+            total += 10.0
+        else:
+            total += 4.0
+
+    weight_gap = abs_numeric_gap(row.get("_weight_lb_value"), profile.get("weight_lb"))
+    if math.isfinite(weight_gap):
+        if weight_gap > 55:
+            total -= 16.0
+        elif weight_gap <= 12:
+            total += 6.0
+        elif weight_gap <= 24:
+            total += 3.0
+
+    if compare_team_strings(row.get("_team_name"), profile.get("pre_draft_team"), team_alias_map):
+        total += 18.0
+
+    return total
+
+
 def build_d1_link_anchors(d1_groups: list[list[dict[str, object]]]) -> list[dict[str, object]]:
     anchors: list[dict[str, object]] = []
     for group_rows in d1_groups:
@@ -1521,6 +1763,42 @@ def choose_best_d1_anchor(group_rows: list[dict[str, object]], anchors_by_name: 
     return {"status": "matched", "anchor": best["anchor"]}
 
 
+def choose_best_existing_identity_anchor(group_rows: list[dict[str, object]], anchors_by_name: dict[str, dict[str, list[dict[str, object]]]]) -> dict[str, object]:
+    profile_scores: dict[str, dict[str, object]] = {}
+    for row in sorted(group_rows, key=identity_row_score, reverse=True):
+        candidate_pool = []
+        for key, bucket in (
+            (row.get("_name_key"), anchors_by_name["strict"]),
+            (row.get("_loose_name_key"), anchors_by_name["loose"]),
+        ):
+            if key:
+                candidate_pool.extend(bucket.get(key, []))
+        seen = set()
+        for anchor in candidate_pool:
+            anchor_id = clean_text(anchor.get("canonical_player_id"))
+            if not anchor_id or anchor_id in seen or not clean_text(anchor.get("realgm_player_id")):
+                continue
+            seen.add(anchor_id)
+            score = score_d1_anchor(row, anchor)
+            if score <= 0:
+                continue
+            entry = profile_scores.setdefault(anchor_id, {"anchor": anchor, "score": 0.0, "best_score": 0.0, "row_hits": set()})
+            entry["score"] += score
+            entry["best_score"] = max(entry["best_score"], score)
+            entry["row_hits"].add(row_identity_key(row))
+
+    if not profile_scores:
+        return {"status": "unmatched"}
+
+    ranked = sorted(profile_scores.values(), key=lambda item: (item["score"] + (len(item["row_hits"]) * 10), item["best_score"]), reverse=True)
+    best = ranked[0]
+    second = ranked[1] if len(ranked) > 1 else None
+    margin = (best["score"] - second["score"]) if second else 999.0
+    if best["best_score"] < 104 or margin < 18:
+        return {"status": "ambiguous"}
+    return {"status": "matched", "anchor": best["anchor"]}
+
+
 def score_d1_anchor(row: dict[str, object], anchor: dict[str, object]) -> float:
     if row.get("_name_key") == anchor.get("name_key"):
         total = 72.0
@@ -1568,13 +1846,17 @@ def score_d1_anchor(row: dict[str, object], anchor: dict[str, object]) -> float:
     return total
 
 
-def assign_d1_anchor_to_group(group_rows: list[dict[str, object]], anchor: dict[str, object]) -> None:
+def assign_identity_anchor_to_group(group_rows: list[dict[str, object]], anchor: dict[str, object], source: str) -> None:
     canonical_id = clean_text(anchor.get("canonical_player_id"))
     realgm_player_id = clean_text(anchor.get("realgm_player_id"))
     for row in group_rows:
         row["_canonical_player_id"] = canonical_id
         row["_realgm_player_id"] = realgm_player_id
-        row["_match_source"] = "d1_link"
+        row["_match_source"] = source
+
+
+def assign_d1_anchor_to_group(group_rows: list[dict[str, object]], anchor: dict[str, object]) -> None:
+    assign_identity_anchor_to_group(group_rows, anchor, "d1_link")
 
 
 def reconcile_d1_linked_groups(site_data: dict[str, dict[str, object]]) -> dict[str, int]:
@@ -3182,6 +3464,80 @@ def normalize_loose_name_key(value: object) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def tokenize_person_name(value: object) -> list[str]:
+    return [token for token in normalize_loose_name_key(value).split(" ") if token]
+
+
+def name_similarity_ratio(left: object, right: object) -> float:
+    return SequenceMatcher(None, clean_text(left), clean_text(right)).ratio()
+
+
+def first_name_matches_with_nickname(left: str, right: str) -> bool:
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    nickname_map = {
+        "alex": {"alexander"},
+        "cam": {"cameron"},
+        "cameron": {"cam"},
+        "mike": {"michael"},
+        "michael": {"mike"},
+        "nick": {"nicholas"},
+        "nicholas": {"nick"},
+        "rob": {"robert"},
+        "robert": {"rob"},
+        "steph": {"stephen"},
+        "stephen": {"steph"},
+        "tim": {"timothy"},
+        "timothy": {"tim"},
+        "tony": {"anthony"},
+        "anthony": {"tony"},
+        "will": {"william"},
+        "william": {"will"},
+    }
+    return right in nickname_map.get(left, set()) or left in nickname_map.get(right, set())
+
+
+def score_fuzzy_d1_name_match(row: dict[str, object], profile: dict[str, object]) -> float:
+    row_name_key = clean_text(row.get("_name_key"))
+    profile_name_key = clean_text(profile.get("name_key"))
+    row_loose = clean_text(row.get("_loose_name_key"))
+    profile_loose = clean_text(profile.get("loose_name_key"))
+    if row_name_key and row_name_key == profile_name_key:
+        return 96.0
+    if row_loose and row_loose == profile_loose:
+        return 82.0
+
+    row_tokens = tokenize_person_name(row.get("_player_name"))
+    profile_tokens = tokenize_person_name(profile.get("player_name"))
+    if len(row_tokens) < 2 or len(profile_tokens) < 2:
+        return 0.0
+
+    row_first = row_tokens[0]
+    row_last = row_tokens[-1]
+    profile_first = profile_tokens[0]
+    profile_last = profile_tokens[-1]
+    same_first = first_name_matches_with_nickname(row_first, profile_first)
+    shared_tokens = set(row_tokens) & set(profile_tokens)
+    subset_match = set(row_tokens).issubset(set(profile_tokens)) or set(profile_tokens).issubset(set(row_tokens))
+    last_ratio = name_similarity_ratio(row_last, profile_last)
+    full_ratio = name_similarity_ratio(" ".join(row_tokens), " ".join(profile_tokens))
+    loose_ratio = name_similarity_ratio(row_loose, profile_loose)
+
+    if same_first and subset_match and len(shared_tokens) >= 2:
+        return 78.0
+    if same_first and last_ratio >= 0.84:
+        return 74.0
+    if row_first[:1] == profile_first[:1] and row_last == profile_last:
+        return 68.0
+    if full_ratio >= 0.92:
+        return 66.0
+    if same_first and loose_ratio >= 0.82:
+        return 60.0
+    return 0.0
+
+
 def parse_height_to_inches(value: object) -> float | None:
     text = clean_text(value)
     if not text:
@@ -3633,6 +3989,11 @@ def build_school_keys(value: object) -> list[str]:
         normalized = normalize_key(candidate)
         if normalized:
             keys.add(normalized)
+            for variant in EXPLICIT_SCHOOL_KEY_VARIANTS.get(normalized, []):
+                variant_normalized = normalize_key(variant)
+                if variant_normalized:
+                    keys.add(variant_normalized)
+                    keys.update(expand_school_key_variants(variant_normalized))
         keys.update(expand_school_key_variants(candidate))
     return sorted(keys)
 
