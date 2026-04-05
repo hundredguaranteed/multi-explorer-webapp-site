@@ -433,7 +433,7 @@ a,
   padding: 2px 2px;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: clip;
+  text-overflow: ellipsis;
   border-top: 0;
   border-left: 0;
   border-right: 0;
@@ -445,10 +445,10 @@ a,
 
 #statsTable th.cell-wrap,
 #statsTable td.cell-wrap {
-  white-space: normal;
-  overflow: visible;
-  word-break: break-word;
-  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.02;
 }
 
 #statsTable th.cell-small-text,
@@ -478,14 +478,28 @@ a,
   letter-spacing: -0.08px;
 }
 
+#statsTable th.cell-text-overflow-sm,
+#statsTable td.cell-text-overflow-sm {
+  font-size: 7px;
+  line-height: 1;
+  letter-spacing: -0.1px;
+}
+
+#statsTable th.cell-text-overflow-xs,
+#statsTable td.cell-text-overflow-xs {
+  font-size: 6px;
+  line-height: 0.98;
+  letter-spacing: -0.15px;
+}
+
 #statsTable th {
   border-bottom: 1px solid #8a8a8a;
   font-weight: 700;
   cursor: pointer;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.02;
   font-size: 9px;
 }
 
@@ -535,7 +549,7 @@ a,
 }
 
 .cell-left {
-  text-align: left !important;
+  text-align: center !important;
 }
 
 .home-content {

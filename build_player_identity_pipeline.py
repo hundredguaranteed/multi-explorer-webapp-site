@@ -14,7 +14,7 @@ csv.field_size_limit(1024 * 1024 * 128)
 
 ROOT = Path(__file__).resolve().parent
 PROJECTS_ROOT = ROOT.parent
-SITE_DATA_ROOT = PROJECTS_ROOT / "multi-explorer-site-data"
+SITE_DATA_ROOT = ROOT
 GENERATED_DIR = SITE_DATA_ROOT / "generated"
 MANIFEST_DIR = SITE_DATA_ROOT / "manifests"
 
@@ -29,14 +29,68 @@ REALGM_REFERENCE_ROWS_PATH = REALGM_REFERENCE_ROOT / "reference_rows.csv"
 RIM_ROOT = PROJECTS_ROOT / "Rim Data"
 BARTTORVIK_DIR = PROJECTS_ROOT / "cbb_onoff_lab" / "cache" / "barttorvik"
 NBA_EPM_DIR = PROJECTS_ROOT / "NBA EPM"
+NCAA_SPI_DIR = PROJECTS_ROOT / "SPI for former JUCO D1 Players"
 
 PLAYER_CAREER_BUNDLE_PATH = ROOT / "data" / "vendor" / "player_career_all_seasons.js"
 PLAYER_CAREER_YEAR_MANIFEST_PATH = ROOT / "data" / "vendor" / "player_career_year_manifest.js"
 PLAYER_CAREER_YEAR_CHUNK_DIR = ROOT / "data" / "vendor" / "player_career_year_chunks"
+D1_MULTIPART_MANIFEST_PATH = ROOT / "data" / "vendor" / "d1_enriched_all_seasons_manifest.js"
+D1_MULTIPART_PARTS_DIR = ROOT / "data" / "vendor" / "d1_enriched_all_seasons_parts"
+D1_YEAR_MANIFEST_PATH = ROOT / "data" / "vendor" / "d1_year_manifest.js"
+D1_YEAR_CHUNK_DIR = ROOT / "data" / "vendor" / "d1_year_chunks"
+D1_MULTIPART_MANIFEST_GLOBAL = "D1_ENRICHED_ALL_SEASONS_PARTS"
+D1_YEAR_CHUNK_GLOBAL = "D1_YEAR_CSV_CHUNKS"
+D1_MULTIPART_TARGET_BYTES = 4 * 1024 * 1024
+D2_MULTIPART_MANIFEST_PATH = ROOT / "data" / "vendor" / "d2_all_seasons_manifest.js"
+D2_MULTIPART_PARTS_DIR = ROOT / "data" / "vendor" / "d2_all_seasons_parts"
+D2_MULTIPART_MANIFEST_GLOBAL = "D2_ALL_SEASONS_PARTS"
+NAIA_MULTIPART_MANIFEST_PATH = ROOT / "data" / "vendor" / "naia_all_seasons_manifest.js"
+NAIA_MULTIPART_PARTS_DIR = ROOT / "data" / "vendor" / "naia_all_seasons_parts"
+NAIA_MULTIPART_MANIFEST_GLOBAL = "NAIA_ALL_SEASONS_PARTS"
+JUCO_MULTIPART_MANIFEST_PATH = ROOT / "data" / "vendor" / "juco_all_seasons_manifest.js"
+JUCO_MULTIPART_PARTS_DIR = ROOT / "data" / "vendor" / "juco_all_seasons_parts"
+JUCO_MULTIPART_MANIFEST_GLOBAL = "JUCO_ALL_SEASONS_PARTS"
 GRASSROOTS_YEAR_MANIFEST_PATH = ROOT / "data" / "vendor" / "grassroots_year_manifest.js"
 GRASSROOTS_YEAR_CHUNK_DIR = ROOT / "data" / "vendor" / "grassroots_year_chunks"
 
 SHOT_PROFILE_COLUMNS = ["rim_made", "rim_att", "rim_pct", "mid_made", "mid_att", "mid_pct", "rim_source_gp"]
+SITE_DERIVED_SHOOTING_EXPORT_COLUMNS = ["fg_pct", "efg_pct", "ts_pct"]
+SITE_IDENTITY_EXPORT_COLUMNS = [
+    "canonical_player_id", "player_profile_key", "source_player_id", "realgm_player_id", "realgm_summary_url",
+    "profile_match_source", "profile_career_path", "profile_levels", "career_path",
+    "dob", "height_in", "weight_lb", "pos", "pos_text", "age", "high_school", "hometown", "nationality",
+    "pre_draft_team", "current_team", "current_nba_status",
+]
+NCAA_SPI_SEASON_FIELD_SPECS = [
+    ("rank", "ncaa_rank_y{index}"),
+    ("jersey", "ncaa_jersey_y{index}"),
+    ("team_name", "ncaa_team_y{index}"),
+    ("eligibility_year", "ncaa_eligibility_y{index}"),
+    ("height", "ncaa_height_y{index}"),
+    ("spi", "ncaa_spi_y{index}"),
+    ("spi_percentile", "ncaa_spi_pct_y{index}"),
+    ("off_impact", "ncaa_off_impact_y{index}"),
+    ("off_impact_percentile", "ncaa_off_impact_pct_y{index}"),
+    ("def_impact", "ncaa_def_impact_y{index}"),
+    ("def_impact_percentile", "ncaa_def_impact_pct_y{index}"),
+    ("wins_added", "ncaa_wins_added_y{index}"),
+    ("wins_added_percentile", "ncaa_wins_added_pct_y{index}"),
+]
+NCAA_SPI_PEAK_FIELD_SPECS = [
+    ("spi", "ncaa_spi_peak"),
+    ("spi_percentile", "ncaa_spi_pct_peak"),
+    ("off_impact", "ncaa_off_impact_peak"),
+    ("off_impact_percentile", "ncaa_off_impact_pct_peak"),
+    ("def_impact", "ncaa_def_impact_peak"),
+    ("def_impact_percentile", "ncaa_def_impact_pct_peak"),
+    ("wins_added", "ncaa_wins_added_peak"),
+    ("wins_added_percentile", "ncaa_wins_added_pct_peak"),
+]
+NCAA_SPI_EXPORT_COLUMNS = [
+    template.format(index=index)
+    for index in range(1, 7)
+    for _, template in NCAA_SPI_SEASON_FIELD_SPECS
+] + [column for _, column in NCAA_SPI_PEAK_FIELD_SPECS]
 
 PLAYER_CAREER_PASSTHROUGH_SKIP_COLUMNS = {
     "player", "player_name", "player_id", "pid", "id",
@@ -64,6 +118,10 @@ SITE_DATASETS = {
     "d1": {
         "path": ROOT / "data" / "d1_enriched_all_seasons.js",
         "global_name": "D1_ENRICHED_ALL_CSV",
+        "multipart_manifest_path": D1_MULTIPART_MANIFEST_PATH,
+        "multipart_parts_dir": D1_MULTIPART_PARTS_DIR,
+        "year_manifest_path": D1_YEAR_MANIFEST_PATH,
+        "year_chunk_dir": D1_YEAR_CHUNK_DIR,
         "player_column": "player_name",
         "team_column": "team_name",
         "team_display_column": "team_full",
@@ -74,6 +132,9 @@ SITE_DATASETS = {
     "d2": {
         "path": ROOT / "data" / "d2_all_seasons.js",
         "global_name": "D2_ALL_CSV",
+        "multipart_manifest_path": D2_MULTIPART_MANIFEST_PATH,
+        "multipart_parts_dir": D2_MULTIPART_PARTS_DIR,
+        "multipart_manifest_global": D2_MULTIPART_MANIFEST_GLOBAL,
         "player_column": "player",
         "team_column": "team_name",
         "team_display_column": "team_name",
@@ -84,6 +145,9 @@ SITE_DATASETS = {
     "naia": {
         "path": ROOT / "data" / "vendor" / "naia_all_seasons.js",
         "global_name": "NAIA_ALL_CSV",
+        "multipart_manifest_path": NAIA_MULTIPART_MANIFEST_PATH,
+        "multipart_parts_dir": NAIA_MULTIPART_PARTS_DIR,
+        "multipart_manifest_global": NAIA_MULTIPART_MANIFEST_GLOBAL,
         "player_column": "player_name",
         "team_column": "team_name",
         "team_display_column": "team_name",
@@ -94,6 +158,9 @@ SITE_DATASETS = {
     "juco": {
         "path": ROOT / "data" / "vendor" / "juco_all_seasons.js",
         "global_name": "NJCAA_ALL_CSV",
+        "multipart_manifest_path": JUCO_MULTIPART_MANIFEST_PATH,
+        "multipart_parts_dir": JUCO_MULTIPART_PARTS_DIR,
+        "multipart_manifest_global": JUCO_MULTIPART_MANIFEST_GLOBAL,
         "player_column": "player_name",
         "team_column": "team_name",
         "team_display_column": "team_name",
@@ -378,10 +445,12 @@ def main() -> None:
 
     rim_summary = apply_rim_data(site_data, team_alias_map, team_alias_details)
     finalize_row_identity_fields(site_data, profiles)
+    spi_summary = apply_ncaa_spi_data(site_data, team_alias_map, team_alias_details)
 
     grassroots_rows, grassroots_summary = load_and_match_grassroots_rows(player_name_index)
 
     player_profiles = build_player_profiles(site_data, profiles, grassroots_rows)
+    backfill_site_rows_from_player_profiles(site_data, player_profiles)
     player_career_rows = build_player_career_rows(site_data, player_profiles, grassroots_rows)
 
     write_rewritten_site_bundles(site_data)
@@ -395,6 +464,7 @@ def main() -> None:
         "d1_link_reconcile_summary": d1_link_reconcile_summary,
         "grassroots_match_summary": grassroots_summary,
         "rim_match_summary": rim_summary,
+        "spi_match_summary": spi_summary,
         "barttorvik_aliases_added": barttorvik_alias_count,
     })
 
@@ -409,6 +479,7 @@ def main() -> None:
         "d1_link_reconcile_summary": d1_link_reconcile_summary,
         "grassroots_match_summary": grassroots_summary,
         "rim_match_summary": rim_summary,
+        "spi_match_summary": spi_summary,
         "barttorvik_aliases_added": barttorvik_alias_count,
     }, indent=2))
 
@@ -416,7 +487,7 @@ def main() -> None:
 def load_site_datasets() -> dict[str, dict[str, object]]:
     site_data: dict[str, dict[str, object]] = {}
     for dataset_id, config in SITE_DATASETS.items():
-        rows, columns = load_js_csv_rows(config["path"], config["global_name"])
+        rows, columns = load_site_dataset_rows(dataset_id, config)
         filtered_rows = []
         for row in rows:
             annotate_site_row(dataset_id, row, config)
@@ -430,6 +501,19 @@ def load_site_datasets() -> dict[str, dict[str, object]]:
             "columns": columns,
         }
     return site_data
+
+
+def load_site_dataset_rows(dataset_id: str, config: dict[str, object]) -> tuple[list[dict[str, object]], list[str]]:
+    manifest_path = config.get("multipart_manifest_path")
+    parts_dir = config.get("multipart_parts_dir")
+    if (
+        isinstance(manifest_path, Path)
+        and isinstance(parts_dir, Path)
+        and manifest_path.exists()
+        and parts_dir.exists()
+    ):
+        return load_multipart_csv_rows(config, dataset_id.upper())
+    return load_js_csv_rows(config["path"], config["global_name"])
 
 
 def dedupe_site_rows(dataset_id: str, rows: list[dict[str, object]], config: dict[str, object]) -> list[dict[str, object]]:
@@ -642,7 +726,7 @@ def load_realgm_profiles() -> tuple[
         profile = ensure_realgm_profile_entry(profiles, realgm_player_id, season_row.get("player_name"), season_row.get("summary_url"))
         player_name = clean_display_name(season_row.get("player_name")) or profile["player_name"]
         season_start = extract_leading_year(season_row.get("season"))
-        school = clean_text(season_row.get("school") or season_row.get("team") or season_row.get("league"))
+        school = resolve_realgm_college_school(profile, season_row)
         entry = {
             "realgm_player_id": realgm_player_id,
             "player_name": player_name,
@@ -819,6 +903,21 @@ def ensure_realgm_profile_entry(
     if summary_url_text and not clean_text(profile.get("summary_url")):
         profile["summary_url"] = summary_url_text
     return profile
+
+
+def is_non_specific_realgm_school(value: object) -> bool:
+    return normalize_key(value) in {"", "n a", "na", "n/a", "all", "all teams", "all team", "allteam"}
+
+
+def resolve_realgm_college_school(profile: dict[str, object], season_row: dict[str, object]) -> str:
+    for value in (season_row.get("school"), season_row.get("team"), season_row.get("league")):
+        text = clean_text(value)
+        if text and not is_non_specific_realgm_school(text):
+            return text
+    pre_draft_team = clean_text(profile.get("pre_draft_team"))
+    if pre_draft_team and not is_non_specific_realgm_school(pre_draft_team):
+        return pre_draft_team
+    return clean_text(season_row.get("school") or season_row.get("team") or season_row.get("league"))
 
 
 def load_realgm_reference_season_buckets() -> dict[str, list[dict[str, object]]]:
@@ -1743,6 +1842,8 @@ def choose_best_d1_anchor(group_rows: list[dict[str, object]], anchors_by_name: 
             if not anchor_id or anchor_id in seen:
                 continue
             seen.add(anchor_id)
+            if not anchor_has_hard_identity_signal(row, anchor):
+                continue
             score = score_d1_anchor(row, anchor)
             if score <= 0:
                 continue
@@ -1779,6 +1880,8 @@ def choose_best_existing_identity_anchor(group_rows: list[dict[str, object]], an
             if not anchor_id or anchor_id in seen or not clean_text(anchor.get("realgm_player_id")):
                 continue
             seen.add(anchor_id)
+            if not anchor_has_hard_identity_signal(row, anchor):
+                continue
             score = score_d1_anchor(row, anchor)
             if score <= 0:
                 continue
@@ -1797,6 +1900,23 @@ def choose_best_existing_identity_anchor(group_rows: list[dict[str, object]], an
     if best["best_score"] < 104 or margin < 18:
         return {"status": "ambiguous"}
     return {"status": "matched", "anchor": best["anchor"]}
+
+
+def anchor_has_hard_identity_signal(row: dict[str, object], anchor: dict[str, object]) -> bool:
+    row_dob = clean_text(row.get("_dob_iso"))
+    anchor_dob = clean_text(anchor.get("dob"))
+    if row_dob and anchor_dob:
+        return row_dob == anchor_dob
+
+    height_gap = abs_numeric_gap(row.get("_height_in_value"), anchor.get("height_in"))
+    if math.isfinite(height_gap):
+        return height_gap <= 2
+
+    weight_gap = abs_numeric_gap(row.get("_weight_lb_value"), anchor.get("weight_lb"))
+    if math.isfinite(weight_gap):
+        return weight_gap <= 20
+
+    return False
 
 
 def score_d1_anchor(row: dict[str, object], anchor: dict[str, object]) -> float:
@@ -2357,11 +2477,44 @@ def finalize_row_identity_fields(site_data: dict[str, dict[str, object]], profil
             row["canonical_player_id"] = canonical_id
             row["player_profile_key"] = canonical_id
             row["source_player_id"] = clean_text(row.get("_source_player_id") or row.get("player_id") or row.get("pid") or row.get("id"))
-            row["realgm_player_id"] = clean_text(row.get("_realgm_player_id"))
+            row["realgm_player_id"] = clean_text(row.get("_realgm_player_id") or (profile.get("realgm_player_id") if profile else ""))
             row["realgm_summary_url"] = clean_text(profile.get("summary_url")) if profile else ""
-            row["profile_levels"] = clean_text(row.get("profile_levels")) or ""
-            row["profile_career_path"] = clean_text(row.get("profile_career_path")) or ""
+            row["profile_levels"] = clean_text(row.get("profile_levels")) or clean_text(profile.get("profile_levels")) if profile else clean_text(row.get("profile_levels"))
+            row["profile_career_path"] = clean_text(row.get("profile_career_path")) or clean_text(profile.get("career_path")) if profile else clean_text(row.get("profile_career_path"))
+            row["career_path"] = clean_text(row.get("career_path")) or clean_text(profile.get("career_path")) if profile else clean_text(row.get("career_path"))
             row["profile_match_source"] = clean_text(row.get("_match_source"))
+            if not profile:
+                continue
+            if not clean_text(row.get("dob")) and clean_text(profile.get("born_iso")):
+                row["dob"] = clean_text(profile.get("born_iso"))
+            if not clean_text(row.get("_dob_iso")) and clean_text(profile.get("born_iso")):
+                row["_dob_iso"] = clean_text(profile.get("born_iso"))
+            profile_height = first_number(profile.get("height_in"))
+            if first_number(row.get("height_in"), row.get("inches"), row.get("_height_in_value")) is None and profile_height is not None:
+                row["height_in"] = profile_height
+                row["inches"] = profile_height
+                row["_height_in_value"] = profile_height
+            profile_weight = first_number(profile.get("weight_lb"))
+            if first_number(row.get("weight_lb"), row.get("weight"), row.get("_weight_lb_value")) is None and profile_weight is not None:
+                row["weight_lb"] = profile_weight
+                row["weight"] = profile_weight
+                row["_weight_lb_value"] = profile_weight
+            if not clean_text(row.get("high_school")) and clean_text(profile.get("high_school")):
+                row["high_school"] = clean_text(profile.get("high_school"))
+            if not clean_text(row.get("hometown")) and clean_text(profile.get("hometown")):
+                row["hometown"] = clean_text(profile.get("hometown"))
+            if not clean_text(row.get("nationality")) and clean_text(profile.get("nationality")):
+                row["nationality"] = clean_text(profile.get("nationality"))
+            if not clean_text(row.get("pre_draft_team")) and clean_text(profile.get("pre_draft_team")):
+                row["pre_draft_team"] = clean_text(profile.get("pre_draft_team"))
+            if not clean_text(row.get("current_team")) and clean_text(profile.get("current_team")):
+                row["current_team"] = clean_text(profile.get("current_team"))
+            if not clean_text(row.get("current_nba_status")) and clean_text(profile.get("current_nba_status")):
+                row["current_nba_status"] = clean_text(profile.get("current_nba_status"))
+            if not clean_text(row.get("pos")) and clean_text(profile.get("position")):
+                row["pos"] = clean_text(profile.get("position"))
+            if not clean_text(row.get("pos_text")) and clean_text(profile.get("position")):
+                row["pos_text"] = clean_text(profile.get("position"))
 
 
 def add_realgm_team_aliases_from_matches(site_data: dict[str, dict[str, object]], team_alias_map: dict[str, dict[str, object]], team_alias_details: dict[str, dict[str, object]]) -> None:
@@ -2535,6 +2688,225 @@ def build_rim_supplement(row: dict[str, object], rim_row: dict[str, object], two
     }
 
 
+def apply_ncaa_spi_data(site_data: dict[str, dict[str, object]], team_alias_map: dict[str, dict[str, object]], team_alias_details: dict[str, dict[str, object]]) -> dict[str, int]:
+    spi_rows = load_ncaa_spi_rows()
+    if not spi_rows:
+        return {"total": 0, "matched": 0, "ambiguous": 0, "missing": 0, "players": 0}
+
+    d1_index = build_ncaa_spi_d1_index(site_data.get("d1", {}).get("rows", []), team_alias_map)
+    matched_records: dict[tuple[str, str], dict[str, object]] = {}
+    total = 0
+    matched = 0
+    ambiguous = 0
+    missing = 0
+
+    for spi_row in spi_rows:
+        total += 1
+        match = resolve_ncaa_spi_match(d1_index, spi_row, team_alias_map)
+        if not match:
+            missing += 1
+            continue
+        if match.get("ambiguous"):
+            ambiguous += 1
+            continue
+        row = match.get("row")
+        canonical_id = clean_text(row.get("canonical_player_id") or row.get("_canonical_player_id"))
+        season = canonical_season_label(spi_row.get("season"))
+        if not canonical_id or not season:
+            missing += 1
+            continue
+        matched += 1
+        record = dict(spi_row)
+        record["_score"] = match.get("score", 0.0)
+        key = (canonical_id, season)
+        current = matched_records.get(key)
+        if current is None or first_number(record.get("_score"), 0) > first_number(current.get("_score"), 0):
+            matched_records[key] = record
+        register_team_alias(
+            team_alias_map,
+            team_alias_details,
+            spi_row.get("team_name"),
+            clean_text(row.get("team_name") or row.get("team_full")),
+            "spi",
+            "D1",
+            0.92,
+        )
+
+    apply_ncaa_spi_assignments(site_data, matched_records)
+    player_count = len({canonical_id for canonical_id, _ in matched_records.keys()})
+    return {"total": total, "matched": matched, "ambiguous": ambiguous, "missing": missing, "players": player_count}
+
+
+def load_ncaa_spi_rows() -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    if not NCAA_SPI_DIR.exists():
+        return rows
+    for file_path in sorted(NCAA_SPI_DIR.glob("Player Impact Leaderboards - College Men *.csv")):
+        season = season_from_spi_file(file_path.name)
+        if not season:
+            continue
+        for row in load_plain_csv_rows(file_path):
+            player_name = clean_display_name(row.get("Player"))
+            if not is_valid_player_name(player_name):
+                continue
+            rows.append({
+                "season": season,
+                "season_start": extract_leading_year(season),
+                "rank": parse_int_value(row.get("Rank")),
+                "jersey": parse_int_value(row.get("Jersey #")),
+                "player_name": player_name,
+                "team_name": clean_text(row.get("Team")),
+                "eligibility_year": normalize_spi_eligibility_year(row.get("Eligibility Year")),
+                "height": clean_text(row.get("Height")),
+                "height_in": parse_height_to_inches(row.get("Height")),
+                "spi": first_number(row.get("SPI")),
+                "spi_percentile": first_number(row.get("SPI Percentile")),
+                "off_impact": first_number(row.get("Off Impact")),
+                "off_impact_percentile": first_number(row.get("Off Impact Percentile")),
+                "def_impact": first_number(row.get("Def Impact")),
+                "def_impact_percentile": first_number(row.get("Def Impact Percentile")),
+                "wins_added": first_number(row.get("Wins Added")),
+                "wins_added_percentile": first_number(row.get("Wins Added Percentile")),
+            })
+    return rows
+
+
+def season_from_spi_file(file_name: str) -> str:
+    match = re.search(r"(\d{4})-(\d{4})", file_name)
+    return f"{match.group(1)}-{match.group(2)[-2:]}" if match else ""
+
+
+def normalize_spi_eligibility_year(value: object) -> str:
+    key = normalize_key(value)
+    return {
+        "freshman": "Fr",
+        "redshirt freshman": "Fr",
+        "sophomore": "So",
+        "redshirt sophomore": "So",
+        "junior": "Jr",
+        "redshirt junior": "Jr",
+        "senior": "Sr",
+        "redshirt senior": "Sr",
+        "graduate student": "Gr",
+        "graduate": "Gr",
+        "grad": "Gr",
+    }.get(key, clean_text(value))
+
+
+def build_ncaa_spi_d1_index(rows: list[dict[str, object]], team_alias_map: dict[str, dict[str, object]]) -> dict[str, dict[tuple[int, str], list[dict[str, object]]]]:
+    index = {
+        "strict": defaultdict(list),
+        "loose": defaultdict(list),
+    }
+    for row in rows:
+        if not clean_text(row.get("realgm_player_id")):
+            continue
+        season_start = get_site_season_start("d1", row.get("season"))
+        if not season_start:
+            continue
+        entry = {
+            "row": row,
+            "team_keys": build_row_team_keys("d1", row, team_alias_map),
+            "height_in": first_number(row.get("height_in"), row.get("inches"), row.get("_height_in_value")),
+            "class_year": normalize_spi_eligibility_year(row.get("class_year")),
+        }
+        name_key = normalize_name_key(row.get("_player_name") or row.get("player_name"))
+        loose_name_key = normalize_loose_name_key(row.get("_player_name") or row.get("player_name"))
+        if name_key:
+            index["strict"][(season_start, name_key)].append(entry)
+        if loose_name_key:
+            index["loose"][(season_start, loose_name_key)].append(entry)
+    return index
+
+
+def resolve_ncaa_spi_match(index: dict[str, dict[tuple[int, str], list[dict[str, object]]]], spi_row: dict[str, object], team_alias_map: dict[str, dict[str, object]]) -> dict[str, object] | None:
+    season_start = parse_int_value(spi_row.get("season_start"))
+    if not season_start:
+        return None
+    candidates: dict[int, dict[str, object]] = {}
+    strict_key = normalize_name_key(spi_row.get("player_name"))
+    loose_key = normalize_loose_name_key(spi_row.get("player_name"))
+    for candidate in index["strict"].get((season_start, strict_key), []):
+        candidates[id(candidate["row"])] = candidate
+    for candidate in index["loose"].get((season_start, loose_key), []):
+        candidates.setdefault(id(candidate["row"]), candidate)
+    if not candidates:
+        return None
+
+    spi_team_keys = build_team_keys_with_alias(spi_row.get("team_name"), "d1", team_alias_map)
+    spi_height = first_number(spi_row.get("height_in"))
+    spi_class = normalize_spi_eligibility_year(spi_row.get("eligibility_year"))
+    scored = []
+    for candidate in candidates.values():
+        team_score = score_team_key_sets(candidate["team_keys"], spi_team_keys)
+        candidate_height = first_number(candidate.get("height_in"))
+        height_gap = abs(candidate_height - spi_height) if candidate_height is not None and spi_height is not None else None
+        height_score = max(0.0, 10.0 - (height_gap * 2.0)) if height_gap is not None else 0.0
+        class_match = 6.0 if spi_class and spi_class == candidate.get("class_year") else 0.0
+        total_score = (team_score * 100.0) + height_score + class_match
+        scored.append({
+            "row": candidate["row"],
+            "team_score": team_score,
+            "height_score": height_score,
+            "class_score": class_match,
+            "score": total_score,
+        })
+
+    scored.sort(key=lambda item: item["score"], reverse=True)
+    best = scored[0]
+    second = scored[1] if len(scored) > 1 else None
+    if not second:
+        if best["team_score"] >= 0.82 or (best["team_score"] >= 0.6 and (best["height_score"] > 0 or best["class_score"] > 0)):
+            return {"row": best["row"], "ambiguous": False, "score": best["score"]}
+        return None
+    if best["team_score"] >= 0.82 and (best["score"] - second["score"]) >= 6:
+        return {"row": best["row"], "ambiguous": False, "score": best["score"]}
+    if best["score"] > second["score"] and second["team_score"] == 0 and best["score"] >= 60:
+        return {"row": best["row"], "ambiguous": False, "score": best["score"]}
+    return {"row": None, "ambiguous": True, "score": best["score"]}
+
+
+def apply_ncaa_spi_assignments(site_data: dict[str, dict[str, object]], matched_records: dict[tuple[str, str], dict[str, object]]) -> None:
+    payloads: dict[str, dict[str, object]] = {}
+    grouped: defaultdict[str, list[dict[str, object]]] = defaultdict(list)
+    for (canonical_id, _), record in matched_records.items():
+        grouped[canonical_id].append(record)
+
+    for canonical_id, records in grouped.items():
+        ordered = sorted(
+            records,
+            key=lambda record: (extract_leading_year(record.get("season")), clean_text(record.get("season"))),
+        )[:6]
+        payload: dict[str, object] = {column: "" for column in NCAA_SPI_EXPORT_COLUMNS}
+        for index, record in enumerate(ordered, start=1):
+            for source_field, template in NCAA_SPI_SEASON_FIELD_SPECS:
+                payload[template.format(index=index)] = serialize_spi_field(source_field, record.get(source_field))
+        for source_field, target_field in NCAA_SPI_PEAK_FIELD_SPECS:
+            values = [
+                first_number(record.get(source_field))
+                for record in ordered
+                if first_number(record.get(source_field)) is not None
+            ]
+            payload[target_field] = round_number(max(values), 3) if values else ""
+        payloads[canonical_id] = payload
+
+    for bundle in site_data.values():
+        for row in bundle["rows"]:
+            canonical_id = clean_text(row.get("canonical_player_id") or row.get("_canonical_player_id"))
+            if not canonical_id or canonical_id not in payloads:
+                continue
+            row.update(payloads[canonical_id])
+
+
+def serialize_spi_field(source_field: str, value: object) -> object:
+    if source_field in {"team_name", "eligibility_year", "height"}:
+        return clean_text(value)
+    if source_field in {"rank", "jersey"}:
+        return parse_int_value(value) or ""
+    numeric = first_number(value)
+    return round_number(numeric, 3) if numeric is not None else ""
+
+
 def profile_level_for_dataset(dataset_id: str) -> str:
     if dataset_id == "grassroots":
         return "Grassroots"
@@ -2664,14 +3036,15 @@ def build_player_profiles(
                 "born_iso": clean_text(row.get("_dob_iso")),
                 "height_in": row.get("_height_in_value") or "",
                 "weight_lb": row.get("_weight_lb_value") or "",
+                "position": clean_text(row.get("pos") or row.get("pos_text")),
                 "nationality": "",
                 "high_school": "",
                 "hometown": "",
                 "pre_draft_team": "",
                 "current_team": "",
                 "current_nba_status": "",
-            "summary_url": "",
-            "college_seasons": [],
+                "summary_url": "",
+                "college_seasons": [],
                 "intl_seasons": [],
                 "gleague_seasons": [],
                 "nba_seasons": [],
@@ -2685,6 +3058,7 @@ def build_player_profiles(
                 entry["born_iso"] = base_profile["born_iso"] or entry["born_iso"]
                 entry["height_in"] = base_profile["height_in"] or entry["height_in"]
                 entry["weight_lb"] = base_profile["weight_lb"] or entry["weight_lb"]
+                entry["position"] = clean_text(base_profile.get("position")) or clean_text(entry.get("position"))
                 entry["nationality"] = base_profile["nationality"]
                 entry["high_school"] = base_profile["high_school"]
                 entry["hometown"] = base_profile["hometown"]
@@ -2698,6 +3072,8 @@ def build_player_profiles(
                 entry["nba_seasons"] = base_profile.get("nba_seasons") or entry["nba_seasons"]
                 entry["professional_seasons"] = base_profile.get("professional_seasons") or entry["professional_seasons"]
             entry["player_name"] = pick_preferred_name(entry["player_name"], row.get("_player_name"))
+            if not clean_text(entry.get("position")):
+                entry["position"] = clean_text(row.get("pos") or row.get("pos_text"))
             dataset_id = clean_text(row.get("_dataset_id"))
             entry["levels"].add(profile_level_for_dataset(dataset_id))
             entry["seasons"].append({
@@ -2715,6 +3091,7 @@ def build_player_profiles(
             "born_iso": profile["born_iso"],
             "height_in": profile["height_in"] or "",
             "weight_lb": profile["weight_lb"] or "",
+            "position": clean_text(profile.get("position")),
             "nationality": profile["nationality"],
             "high_school": profile["high_school"],
             "hometown": profile["hometown"],
@@ -2794,6 +3171,54 @@ def build_player_profiles(
     }
 
 
+def backfill_site_rows_from_player_profiles(
+    site_data: dict[str, dict[str, object]],
+    player_profiles: dict[str, dict[str, object]],
+) -> None:
+    for bundle in site_data.values():
+        for row in bundle["rows"]:
+            canonical_id = clean_text(row.get("_canonical_player_id") or row.get("canonical_player_id"))
+            if not canonical_id:
+                continue
+            profile = player_profiles.get(canonical_id)
+            if not profile:
+                continue
+            row["canonical_player_id"] = canonical_id
+            row["player_profile_key"] = clean_text(row.get("player_profile_key")) or canonical_id
+            if not clean_text(row.get("realgm_player_id")) and clean_text(profile.get("realgm_player_id")):
+                row["realgm_player_id"] = clean_text(profile.get("realgm_player_id"))
+            if not clean_text(row.get("realgm_summary_url")) and clean_text(profile.get("summary_url")):
+                row["realgm_summary_url"] = clean_text(profile.get("summary_url"))
+            if not clean_text(row.get("profile_levels")) and clean_text(profile.get("profile_levels")):
+                row["profile_levels"] = clean_text(profile.get("profile_levels"))
+            if not clean_text(row.get("profile_career_path")) and clean_text(profile.get("career_path")):
+                row["profile_career_path"] = clean_text(profile.get("career_path"))
+            if not clean_text(row.get("career_path")) and clean_text(profile.get("career_path")):
+                row["career_path"] = clean_text(profile.get("career_path"))
+            if not clean_text(row.get("dob")) and clean_text(profile.get("born_iso")):
+                row["dob"] = clean_text(profile.get("born_iso"))
+            if first_number(row.get("height_in"), row.get("inches")) is None and first_number(profile.get("height_in")) is not None:
+                row["height_in"] = round_number(first_number(profile.get("height_in")), 3)
+            if first_number(row.get("weight_lb"), row.get("weight")) is None and first_number(profile.get("weight_lb")) is not None:
+                row["weight_lb"] = round_number(first_number(profile.get("weight_lb")), 3)
+            if not clean_text(row.get("pos")) and clean_text(profile.get("position")):
+                row["pos"] = clean_text(profile.get("position"))
+            if not clean_text(row.get("pos_text")) and clean_text(profile.get("position")):
+                row["pos_text"] = clean_text(profile.get("position"))
+            if not clean_text(row.get("high_school")) and clean_text(profile.get("high_school")):
+                row["high_school"] = clean_text(profile.get("high_school"))
+            if not clean_text(row.get("hometown")) and clean_text(profile.get("hometown")):
+                row["hometown"] = clean_text(profile.get("hometown"))
+            if not clean_text(row.get("nationality")) and clean_text(profile.get("nationality")):
+                row["nationality"] = clean_text(profile.get("nationality"))
+            if not clean_text(row.get("pre_draft_team")) and clean_text(profile.get("pre_draft_team")):
+                row["pre_draft_team"] = clean_text(profile.get("pre_draft_team"))
+            if not clean_text(row.get("current_team")) and clean_text(profile.get("current_team")):
+                row["current_team"] = clean_text(profile.get("current_team"))
+            if not clean_text(row.get("current_nba_status")) and clean_text(profile.get("current_nba_status")):
+                row["current_nba_status"] = clean_text(profile.get("current_nba_status"))
+
+
 def build_player_career_rows(
     site_data: dict[str, dict[str, object]],
     player_profiles: dict[str, dict[str, object]],
@@ -2810,13 +3235,20 @@ def build_player_career_rows(
         source_row_groups.append(("grassroots", grassroots_rows))
 
     for dataset_id, source_rows in source_row_groups:
+        standardized_rows: list[dict[str, object]] = []
         for row in source_rows:
             max_site_year = max(max_site_year, canonical_end_year(row.get("season")))
             canonical_id = clean_text(row.get("_canonical_player_id"))
             if not canonical_id:
                 continue
             profile = player_profiles.get(canonical_id, {})
-            out = standardize_site_row_for_player_career(dataset_id, row, profile)
+            standardized_rows.append(standardize_site_row_for_player_career(dataset_id, row, profile))
+        if dataset_id == "grassroots":
+            standardized_rows = aggregate_grassroots_player_career_rows(standardized_rows)
+        for out in standardized_rows:
+            canonical_id = clean_text(out.get("canonical_player_id"))
+            if not canonical_id:
+                continue
             key = player_career_source_key(out)
             if key in seen_site_keys:
                 continue
@@ -2844,7 +3276,7 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
     out = {
         "player_id": clean_text(row.get("_canonical_player_id")),
         "canonical_player_id": clean_text(row.get("_canonical_player_id")),
-        "realgm_player_id": clean_text(row.get("realgm_player_id")),
+        "realgm_player_id": clean_text(row.get("realgm_player_id")) or clean_text(profile.get("realgm_player_id")),
         "source_player_id": clean_text(row.get("_source_player_id") or row.get("source_player_id") or row.get("player_id")),
         "player_profile_key": clean_text(row.get("player_profile_key")),
         "player_name": player_name,
@@ -2868,7 +3300,7 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "height_in": first_number(row.get("height_in"), row.get("inches"), profile.get("height_in")),
         "weight_lb": first_number(row.get("weight_lb"), row.get("weight"), profile.get("weight_lb")),
         "age": first_number(row.get("age"), realgm_overlay.get("age")),
-        "pos": clean_text(row.get("pos") or row.get("pos_text")),
+        "pos": clean_text(row.get("pos") or row.get("pos_text")) or clean_text(profile.get("position")),
         "class_year": clean_text(row.get("class_year")) or clean_text(realgm_overlay.get("class_year")),
         "draft_pick": parse_int_value(row.get("draft_pick")),
         "rookie_year": parse_int_value(row.get("rookie_year")),
@@ -2932,9 +3364,122 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
     }
     append_player_career_passthrough_fields(out, row)
     apply_player_career_shooting_derivations(out)
-    apply_player_career_defensive_rate_derivations(out)
+    if dataset_id != "d2":
+        apply_player_career_defensive_rate_derivations(out)
     fill_per_game_and_per40(out)
     return out
+
+
+GRASSROOTS_PLAYER_CAREER_SUM_COLUMNS = (
+    "gp", "min", "pts", "trb", "orb", "drb", "ast", "stl", "blk", "tov", "pf", "stocks",
+    "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
+)
+
+
+GRASSROOTS_PLAYER_CAREER_WEIGHTED_COLUMNS = (
+    "usg_pct", "ram", "c_ram", "psp", "three_pe", "dsi", "adj_bpm",
+    "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct",
+    "ftr", "three_pr", "ftm_fga", "three_pr_plus_ftm_fga", "blk_pf", "stl_pf", "stocks_pf",
+)
+
+
+def get_grassroots_player_career_group_key(row: dict[str, object]) -> tuple[str, ...]:
+    season = clean_text(row.get("season"))
+    name_key = normalize_name_key(row.get("player_name"))
+    if name_key and season:
+        return ("name", name_key, season)
+    realgm_player_id = clean_text(row.get("realgm_player_id"))
+    if realgm_player_id and season:
+        return ("rgm", realgm_player_id, season)
+    canonical_id = clean_text(row.get("canonical_player_id") or row.get("player_id"))
+    return ("fallback", canonical_id, season)
+
+
+def aggregate_grassroots_player_career_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    grouped: dict[tuple[str, ...], list[dict[str, object]]] = defaultdict(list)
+    for row in rows:
+        group_key = get_grassroots_player_career_group_key(row)
+        if not group_key or not any(group_key):
+            continue
+        grouped[group_key].append(row)
+
+    aggregated: list[dict[str, object]] = []
+    for group_rows in grouped.values():
+        representative = max(
+            group_rows,
+            key=lambda row: (
+                first_number(row.get("min")) or 0.0,
+                first_number(row.get("gp")) or 0.0,
+                1 if clean_text(row.get("realgm_player_id")) else 0,
+            ),
+        )
+        out = dict(representative)
+        for column in GRASSROOTS_PLAYER_CAREER_SUM_COLUMNS:
+            summed = sum_numeric_column(group_rows, column)
+            out[column] = round_number(summed) if summed is not None else ""
+        for column in GRASSROOTS_PLAYER_CAREER_WEIGHTED_COLUMNS:
+            weighted = weighted_average_column(group_rows, column, "min")
+            out[column] = round_number(weighted) if weighted is not None else ""
+
+        gp_value = first_number(out.get("gp"))
+        min_value = first_number(out.get("min"))
+        out["mpg"] = round_number(min_value / gp_value) if gp_value is not None and gp_value > 0 and min_value is not None else ""
+        team_names = sorted({clean_text(row.get("team_name")) for row in group_rows if clean_text(row.get("team_name"))})
+        team_fulls = sorted({clean_text(row.get("team_full")) for row in group_rows if clean_text(row.get("team_full"))})
+        circuits = sorted({clean_text(row.get("circuit")) for row in group_rows if clean_text(row.get("circuit"))})
+        out["team_name"] = team_names[0] if len(team_names) == 1 else ("Multiple" if team_names else clean_text(out.get("team_name")))
+        out["team_full"] = team_fulls[0] if len(team_fulls) == 1 else ("Multiple" if team_fulls else out["team_name"])
+        out["league"] = circuits[0] if len(circuits) == 1 else ("Multiple" if circuits else clean_text(out.get("league")))
+        out["event_name"] = "Year Total"
+        out["event_group"] = "Year Total"
+        out["event_raw_name"] = ""
+        out["event_aliases"] = ""
+        out["event_url"] = ""
+        out["page_index"] = ""
+        out["rank"] = ""
+        out["event_total_players"] = ""
+        aggregated.append(out)
+
+    aggregated.sort(key=lambda row: (normalize_name_key(row.get("player_name")), clean_text(row.get("season")), normalize_key(row.get("team_name"))))
+    return aggregated
+
+
+def sum_numeric_column(rows: list[dict[str, object]], column: str) -> float | None:
+    total = 0.0
+    found = False
+    for row in rows:
+        numeric = first_number(row.get(column))
+        if numeric is None:
+            continue
+        total += numeric
+        found = True
+    return total if found else None
+
+
+def weighted_average_column(rows: list[dict[str, object]], column: str, weight_column: str) -> float | None:
+    weighted_total = 0.0
+    total_weight = 0.0
+    fallback_values: list[float] = []
+    for row in rows:
+        value = first_number(row.get(column))
+        if value is None:
+            continue
+        fallback_values.append(value)
+        weight = positive_number(row.get(weight_column), row.get("gp"), 1.0) or 1.0
+        weighted_total += value * weight
+        total_weight += weight
+    if total_weight > 0:
+        return weighted_total / total_weight
+    if fallback_values:
+        return sum(fallback_values) / len(fallback_values)
+    return None
+
+
+def pick_most_common_text(rows: list[dict[str, object]], column: str) -> str:
+    values = [clean_text(row.get(column)) for row in rows if clean_text(row.get(column))]
+    if not values:
+        return ""
+    return Counter(values).most_common(1)[0][0]
 
 
 def append_player_career_passthrough_fields(out: dict[str, object], row: dict[str, object]) -> None:
@@ -3121,16 +3666,49 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
 
 
 def write_rewritten_site_bundles(site_data: dict[str, dict[str, object]]) -> None:
-    identity_columns = ["canonical_player_id", "player_profile_key", "source_player_id", "realgm_player_id", "realgm_summary_url", "profile_match_source", "profile_career_path", "profile_levels"]
     for dataset_id, bundle in site_data.items():
         config = bundle["config"]
         rows = bundle["rows"]
+        if dataset_id in {"d1", "d2", "naia", "juco", "fiba"}:
+            for row in rows:
+                populate_site_bundle_derived_shooting_fields(row)
         original_columns = [column for column in bundle["columns"] if not column.startswith("_")]
-        extra_columns = [column for column in identity_columns if column not in original_columns]
-        if dataset_id in {"d2", "naia", "juco", "fiba"}:
+        extra_columns = [column for column in SITE_IDENTITY_EXPORT_COLUMNS if column not in original_columns]
+        if dataset_id in {"d1", "d2", "naia", "juco", "fiba"}:
+            extra_columns += [column for column in SITE_DERIVED_SHOOTING_EXPORT_COLUMNS if column not in original_columns and column not in extra_columns]
             extra_columns += [column for column in SHOT_PROFILE_COLUMNS if column not in original_columns and column not in extra_columns]
+            extra_columns += [column for column in NCAA_SPI_EXPORT_COLUMNS if column not in original_columns and column not in extra_columns]
         columns = original_columns + extra_columns
-        write_js_csv_rows(config["path"], config["global_name"], rows, columns)
+        write_site_dataset_bundle(dataset_id, config, rows, columns)
+
+
+def populate_site_bundle_derived_shooting_fields(row: dict[str, object]) -> None:
+    scratch = dict(row)
+    if first_number(scratch.get("two_pm")) is None and first_number(scratch.get("two_p_made")) is not None:
+        scratch["two_pm"] = first_number(scratch.get("two_p_made"))
+    if first_number(scratch.get("two_pa")) is None and first_number(scratch.get("two_p_att")) is not None:
+        scratch["two_pa"] = first_number(scratch.get("two_p_att"))
+    if first_number(scratch.get("three_pm")) is None and first_number(scratch.get("three_p_made")) is not None:
+        scratch["three_pm"] = first_number(scratch.get("three_p_made"))
+    if first_number(scratch.get("three_pa")) is None and first_number(scratch.get("three_p_att")) is not None:
+        scratch["three_pa"] = first_number(scratch.get("three_p_att"))
+    apply_player_career_shooting_derivations(scratch)
+    for column in SITE_DERIVED_SHOOTING_EXPORT_COLUMNS:
+        if first_number(row.get(column)) is not None:
+            continue
+        derived = first_number(scratch.get(column))
+        if derived is not None:
+            row[column] = round_number(derived, 3)
+
+
+def write_site_dataset_bundle(dataset_id: str, config: dict[str, object], rows: list[dict[str, object]], columns: list[str]) -> None:
+    if dataset_id == "d1":
+        write_d1_dataset_bundles(config, rows, columns)
+        return
+    if isinstance(config.get("multipart_manifest_path"), Path) and isinstance(config.get("multipart_parts_dir"), Path):
+        write_multipart_dataset_bundle(config, rows, columns)
+        return
+    write_js_csv_rows(config["path"], config["global_name"], rows, columns)
 
 
 def write_outputs(player_profiles: dict[str, dict[str, object]], player_career_rows: list[dict[str, object]], team_alias_map: dict[str, dict[str, object]], team_alias_details: dict[str, dict[str, object]], site_data: dict[str, dict[str, object]], profiles: dict[str, dict[str, object]], summary: dict[str, object]) -> None:
@@ -3143,6 +3721,7 @@ def write_outputs(player_profiles: dict[str, dict[str, object]], player_career_r
             "born_iso": clean_text(profile.get("born_iso")),
             "height_in": profile.get("height_in") or "",
             "weight_lb": profile.get("weight_lb") or "",
+            "position": clean_text(profile.get("position")),
             "nationality": clean_text(profile.get("nationality")),
             "high_school": clean_text(profile.get("high_school")),
             "hometown": clean_text(profile.get("hometown")),
@@ -3248,9 +3827,157 @@ def load_js_csv_rows(path: Path, global_name: str) -> tuple[list[dict[str, objec
     return rows, list(columns)
 
 
+def load_js_assignment_payload(path: Path) -> object:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"=\s*(.+?);\s*$", text, re.S)
+    if not match:
+        raise ValueError(f"Unable to parse JS assignment: {path}")
+    return json.loads(match.group(1).strip())
+
+
+def load_js_concat_string_payload(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"\+\s*(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')\s*;\s*$", text, re.S)
+    if not match:
+        raise ValueError(f"Unable to parse JS concat bundle: {path}")
+    return str(json.loads(match.group(1).strip()))
+
+
+def load_multipart_csv_rows(config: dict[str, object], label: str = "dataset") -> tuple[list[dict[str, object]], list[str]]:
+    manifest_path = config.get("multipart_manifest_path")
+    parts_dir = config.get("multipart_parts_dir")
+    if not isinstance(manifest_path, Path) or not manifest_path.exists():
+        raise FileNotFoundError(f"Missing {label} multipart manifest: {manifest_path}")
+    if not isinstance(parts_dir, Path) or not parts_dir.exists():
+        raise FileNotFoundError(f"Missing {label} multipart parts directory: {parts_dir}")
+    part_names = load_js_assignment_payload(manifest_path)
+    if not isinstance(part_names, list) or not part_names:
+        raise ValueError(f"{label} multipart manifest is empty: {manifest_path}")
+    csv_text = "".join(
+        load_js_concat_string_payload(parts_dir / f"{clean_text(part_name)}.js")
+        for part_name in part_names
+        if clean_text(part_name)
+    )
+    rows = parse_csv_text(csv_text)
+    columns = list(rows[0].keys()) if rows else []
+    return rows, columns
+
+
 def write_js_csv_rows(path: Path, global_name: str, rows: list[dict[str, object]], columns: list[str]) -> None:
     csv_text = dict_rows_to_csv(rows, columns)
     path.write_text(f"window.{global_name} = {json.dumps(csv_text)};\n", encoding="utf-8")
+
+
+def write_d1_dataset_bundles(config: dict[str, object], rows: list[dict[str, object]], columns: list[str]) -> None:
+    csv_text = dict_rows_to_csv(rows, columns)
+    multipart_manifest_path = config.get("multipart_manifest_path")
+    multipart_parts_dir = config.get("multipart_parts_dir")
+    year_manifest_path = config.get("year_manifest_path")
+    year_chunk_dir = config.get("year_chunk_dir")
+    if not isinstance(multipart_manifest_path, Path) or not isinstance(multipart_parts_dir, Path):
+        raise ValueError("D1 dataset config is missing multipart bundle paths")
+    if not isinstance(year_manifest_path, Path) or not isinstance(year_chunk_dir, Path):
+        raise ValueError("D1 dataset config is missing year-chunk bundle paths")
+    write_multipart_bundle(
+        csv_text,
+        multipart_manifest_path,
+        multipart_parts_dir,
+        config["global_name"],
+        D1_MULTIPART_MANIFEST_GLOBAL,
+    )
+    write_d1_year_chunks(rows, columns, year_manifest_path, year_chunk_dir)
+
+
+def write_multipart_dataset_bundle(config: dict[str, object], rows: list[dict[str, object]], columns: list[str]) -> None:
+    csv_text = dict_rows_to_csv(rows, columns)
+    multipart_manifest_path = config.get("multipart_manifest_path")
+    multipart_parts_dir = config.get("multipart_parts_dir")
+    multipart_manifest_global = clean_text(config.get("multipart_manifest_global"))
+    if not isinstance(multipart_manifest_path, Path) or not isinstance(multipart_parts_dir, Path):
+        raise ValueError("Multipart dataset config is missing bundle paths")
+    if not multipart_manifest_global:
+        raise ValueError("Multipart dataset config is missing manifest global")
+    write_multipart_bundle(
+        csv_text,
+        multipart_manifest_path,
+        multipart_parts_dir,
+        config["global_name"],
+        multipart_manifest_global,
+    )
+
+
+def write_multipart_bundle(csv_text: str, manifest_path: Path, parts_dir: Path, global_name: str, manifest_global: str) -> None:
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    lines = csv_text.splitlines(keepends=True)
+    chunks: list[str] = []
+    current_lines: list[str] = []
+    current_size = 0
+    for line in lines:
+        line_size = len(line.encode("utf-8"))
+        if current_lines and current_size + line_size > D1_MULTIPART_TARGET_BYTES:
+            chunks.append("".join(current_lines))
+            current_lines = [line]
+            current_size = line_size
+            continue
+        current_lines.append(line)
+        current_size += line_size
+    if current_lines:
+        chunks.append("".join(current_lines))
+    if not chunks:
+        chunks = [csv_text]
+
+    part_names = [f"part-{index:03d}" for index in range(1, len(chunks) + 1)]
+    expected_files = {f"{part_name}.js" for part_name in part_names}
+    for existing in parts_dir.glob("*.js"):
+        if existing.name not in expected_files:
+            existing.unlink()
+
+    manifest_path.write_text(
+        f"window.{manifest_global} = {json.dumps(part_names)};\n",
+        encoding="utf-8",
+    )
+    for part_name, chunk_text in zip(part_names, chunks):
+        (parts_dir / f"{part_name}.js").write_text(
+            f'window.{global_name} = (window.{global_name} || "") + {json.dumps(chunk_text)};\n',
+            encoding="utf-8",
+        )
+
+
+def write_d1_year_chunks(rows: list[dict[str, object]], columns: list[str], manifest_path: Path, chunk_dir: Path) -> None:
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    rows_by_year: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for row in rows:
+        season = clean_text(row.get("season"))
+        if season:
+            rows_by_year[season].append(row)
+    years = sorted(rows_by_year.keys(), key=lambda value: canonical_end_year(value))
+    latest_year = years[-1] if years else ""
+    expected_files = {f"{year}.js" for year in years}
+    for existing in chunk_dir.glob("*.js"):
+        if existing.name not in expected_files:
+            existing.unlink()
+
+    manifest = {
+        "years": years,
+        "latestYear": latest_year,
+        "initialYears": [latest_year] if latest_year else [],
+        "rowCounts": {year: len(rows_by_year[year]) for year in years},
+    }
+    manifest_source = "\n".join([
+        "// Generated by build_player_identity_pipeline.py",
+        "window.D1_YEAR_MANIFEST = " + json.dumps(manifest, indent=2) + ";",
+        "",
+    ])
+    manifest_path.write_text(manifest_source, encoding="utf-8")
+
+    for year in years:
+        csv_text = dict_rows_to_csv(rows_by_year[year], columns)
+        chunk_source = "\n".join([
+            f"window.{D1_YEAR_CHUNK_GLOBAL} = window.{D1_YEAR_CHUNK_GLOBAL} || {{}};",
+            f"window.{D1_YEAR_CHUNK_GLOBAL}[{json.dumps(year)}] = {json.dumps(csv_text)};",
+            "",
+        ])
+        (chunk_dir / f"{year}.js").write_text(chunk_source, encoding="utf-8")
 
 
 def load_js_chunk_csv_rows(path: Path, chunk_store_name: str) -> list[dict[str, object]]:
@@ -3677,21 +4404,22 @@ def normalize_site_percent_value(dataset_id: str, column: str, value: object) ->
     column_key = clean_text(column)
     d1_ratio_columns = {"fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "rim_pct", "mid_pct"}
     d2_ratio_columns = {
-        "fg_pct", "3p_pct", "ft_pct", "efg_pct", "ts_pct", "tpa_rate", "fta_rate",
+        "fg_pct", "2p_pct", "two_p_pct", "3p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "tpa_rate", "fta_rate",
         "usg_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct",
     }
     nba_ratio_columns = {
+        "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct",
         "usg", "tspct", "efg", "fgpct_rim", "fgpct_mid", "fg2pct", "fg3pct", "ftpct",
         "orbpct", "drbpct", "astpct", "topct", "stlpct", "blkpct",
     }
     if dataset_id == "d1" and column_key in d1_ratio_columns:
-        return normalize_percent_value(value, "ratio")
+        return normalize_percent_value(value, "auto")
     if dataset_id == "d2" and column_key in d2_ratio_columns:
-        return normalize_percent_value(value, "ratio")
+        return normalize_percent_value(value, "auto")
     if dataset_id == "nba" and column_key in nba_ratio_columns:
-        return normalize_percent_value(value, "ratio")
+        return normalize_percent_value(value, "auto")
     if dataset_id == "realgm":
-        return normalize_percent_value(value, "ratio")
+        return normalize_percent_value(value, "auto")
     return normalize_percent_value(value, "percent")
 
 

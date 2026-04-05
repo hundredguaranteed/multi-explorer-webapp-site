@@ -1,1 +1,1 @@
-window.D1_ENRICHED_ALL_SEASONS_PARTS = ["part-001","part-002","part-003","part-004","part-005","part-006","part-007"];
+window.D1_ENRICHED_ALL_SEASONS_PARTS = ["part-001", "part-002", "part-003", "part-004", "part-005", "part-006", "part-007", "part-008", "part-009", "part-010", "part-011", "part-012", "part-013", "part-014", "part-015", "part-016", "part-017", "part-018", "part-019", "part-020", "part-021", "part-022", "part-023", "part-024", "part-025", "part-026", "part-027", "part-028"];
