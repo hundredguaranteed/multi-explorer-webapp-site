@@ -1,12 +1,9 @@
 const fs = require("fs");
 const path = require("path");
-const vm = require("vm");
-
 const ROOT = __dirname;
-const SOURCE_FILE = path.join(ROOT, "data", "vendor", "player_career_all_seasons.js");
+const SOURCE_FILE = path.join(ROOT, "..", "multi-explorer-site-data", "generated", "player_career_rows.csv");
 const OUTPUT_DIR = path.join(ROOT, "data", "vendor", "player_career_year_chunks");
 const MANIFEST_PATH = path.join(ROOT, "data", "vendor", "player_career_year_manifest.js");
-const GLOBAL_NAME = "PLAYER_CAREER_ALL_CSV";
 const MIN_YEAR = 1998;
 
 function parseCsv(text) {
@@ -65,11 +62,7 @@ function serializeCsvRow(row) {
 }
 
 function loadAllRows() {
-  const source = fs.readFileSync(SOURCE_FILE, "utf8");
-  const sandbox = { window: {} };
-  vm.runInNewContext(source, sandbox, { filename: path.basename(SOURCE_FILE) });
-  const csvText = String(sandbox.window[GLOBAL_NAME] ?? "");
-  return parseCsv(csvText);
+  return parseCsv(fs.readFileSync(SOURCE_FILE, "utf8"));
 }
 
 function canonicalSeasonLabel(value) {

@@ -1,5 +1,6 @@
 const LOAD_STEP = 40;
 const SEARCH_RENDER_DEBOUNCE_MS = 120;
+const FILTER_RENDER_DEBOUNCE_MS = 220;
 const HOME_ID = "home";
 const HOME_PAGES = [
   { id: "d1", label: "D1" },
@@ -13,11 +14,11 @@ const HOME_PAGES = [
 ];
 const D1_HM_CONFS = new Set(["ACC", "SEC", "B10", "B12", "BE", "P12", "P10"]);
 const D1_HMM_CONFS = new Set(["WCC", "A10", "MWC"]);
-const MINUTES_DEFAULT = 400;
+const MINUTES_DEFAULT = 200;
 const TABLE_FRAME_LIMIT = 2580;
-const COLOR_SCALE_MAX_ROWS = 8000;
+const COLOR_SCALE_MAX_ROWS = 5000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260404-tab-validation-v26";
+const APP_BUILD_VERSION = "20260405-prof-linkage-v30";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const SHARED_SINGLE_FILTERS = [
   {
@@ -347,8 +348,8 @@ const D1_ADVANCED_COLUMNS = [
   { key: "tov_pct_adv", label: "TOV%", defaultVisible: true },
   { key: "stl_pct", label: "STL%", defaultVisible: true },
   { key: "blk_pct", label: "BLK%", defaultVisible: true },
-  { key: "stl_pct_percentile", label: "STL Pctl", defaultVisible: true },
-  { key: "blk_pct_percentile", label: "BLK Pctl", defaultVisible: true },
+  { key: "stl_pct_percentile", label: "STL Pctl", defaultVisible: false },
+  { key: "blk_pct_percentile", label: "BLK Pctl", defaultVisible: false },
 ];
 
 function getD1PlaytypeMetrics(playtypeId) {
@@ -603,7 +604,7 @@ const NBA_COMPANION_GROUPS = [
     id: "advanced",
     label: "Advanced",
     columns: ["ncaa_orb_pct", "nba_orb_pct", "ncaa_drb_pct", "nba_drb_pct", "ncaa_usg_pct", "nba_usg_pct", "ncaa_ast_pct", "nba_ast_pct", "ncaa_ast_to", "nba_ast_to", "ncaa_tov_pct", "nba_tov_pct", "ncaa_stl_pct", "nba_stl_pct", "ncaa_blk_pct", "nba_blk_pct", "ncaa_stl_pct_percentile", "nba_stl_pct_percentile", "ncaa_blk_pct_percentile", "nba_blk_pct_percentile", "ncaa_ts_pct", "nba_ts_pct", "ncaa_efg_pct", "nba_efg_pct"],
-    defaultColumns: ["ncaa_usg_pct", "nba_usg_pct", "ncaa_ast_pct", "nba_ast_pct", "ncaa_ast_to", "nba_ast_to", "ncaa_tov_pct", "nba_tov_pct", "ncaa_stl_pct", "nba_stl_pct", "ncaa_blk_pct", "nba_blk_pct", "ncaa_stl_pct_percentile", "nba_stl_pct_percentile", "ncaa_blk_pct_percentile", "nba_blk_pct_percentile", "ncaa_ts_pct", "nba_ts_pct", "ncaa_efg_pct", "nba_efg_pct"],
+    defaultColumns: ["ncaa_usg_pct", "nba_usg_pct", "ncaa_ast_pct", "nba_ast_pct", "ncaa_ast_to", "nba_ast_to", "ncaa_tov_pct", "nba_tov_pct", "ncaa_stl_pct", "nba_stl_pct", "ncaa_blk_pct", "nba_blk_pct", "ncaa_ts_pct", "nba_ts_pct", "ncaa_efg_pct", "nba_efg_pct"],
   },
   {
     id: "shooting",
@@ -831,6 +832,8 @@ function buildNbaCompanionConfig() {
   };
 }
 
+const PLAYER_CAREER_PROFESSIONAL_LEVELS = new Set(["International", "G League", "NBA", "Professional"]);
+
 function buildPlayerCareerConfig() {
   const demoColumns = ["competition_level", "profile_levels", "pos", "class_year", "height_in", "weight_lb", "age", "dob", "draft_pick"];
   return {
@@ -891,11 +894,29 @@ function buildPlayerCareerConfig() {
       },
     ],
     singleFilters: withSharedSingleFilters([
-      { id: "competition_level", label: "Level", column: "competition_level" },
+      {
+        id: "competition_level",
+        label: "Level",
+        column: "competition_level",
+        options: [
+          { value: "all", label: "All" },
+          { value: "Grassroots", label: "Grassroots" },
+          { value: "JUCO", label: "JUCO" },
+          { value: "D2", label: "D2" },
+          { value: "NAIA", label: "NAIA" },
+          { value: "D1", label: "D1" },
+          { value: "College", label: "College" },
+          { value: "FIBA", label: "FIBA" },
+          { value: "International", label: "International" },
+          { value: "G League", label: "G League" },
+          { value: "Professional", label: "Professional" },
+          { value: "NBA", label: "NBA" },
+        ],
+      },
     ]),
     multiFilters: [
       { id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C", "G", "F", "G/F", "F/C", "C/F"] },
-      { id: "path_levels", label: "Path", column: "profile_levels", sort: ["Grassroots", "JUCO", "D2", "NAIA", "D1", "FIBA", "NBA", "College"] },
+      { id: "path_levels", label: "Path", column: "profile_levels", sort: ["Grassroots", "JUCO", "D2", "NAIA", "D1", "College", "FIBA", "International", "G League", "Professional", "NBA"] },
     ],
     defaultVisible: ["rank", "season", "player_name", "competition_level", "profile_levels", "team_name", "pos", "class_year", "gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "tov_pg", "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
     labels: {
@@ -1067,11 +1088,11 @@ const DATASETS = {
     searchColumns: ["player", "team_name", "team_search_text"],
     sortBy: "pts_per40",
     sortDir: "desc",
-    demoColumns: ["pos", "class_year", "height_in", "weight_lb"],
-    demoFilterColumns: [],
+    demoColumns: ["pos", "class_year", "height_in", "weight_lb", "gp", "min", "mpg"],
+    demoFilterColumns: ["gp", "min", "mpg"],
     groups: [
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag"] },
-      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"] },
+      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "two_pm", "two_pa", "two_p_pct", "3pm", "3pa", "3p_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "three_pa_per100"], defaultColumns: ["fg_pct", "two_p_pct", "3p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "three_pa_per100"] },
       buildLowerTierShotProfileGroup(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"] },
@@ -1083,7 +1104,7 @@ const DATASETS = {
       { id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C"] },
       { id: "class_year", label: "Class", column: "class_year", sort: ["Fr", "So", "Jr", "Sr", "Gr"] },
     ],
-    defaultVisible: ["rank", "season", "player", "team_name", "class_year", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "two_p_pct", "3p_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "three_pa_per100", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
+    defaultVisible: ["rank", "season", "player", "team_name", "class_year", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "two_p_pct", "3p_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "three_pa_per100", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
     labels: {
       rank: "",
       season: "Year",
@@ -1170,11 +1191,12 @@ const DATASETS = {
     searchColumns: ["player_name", "team_name", "conference", "division", "team_search_text"],
     sortBy: "min",
     sortDir: "desc",
+    minuteDefault: 200,
     demoColumns: ["division", "conference", "age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg"],
-    demoFilterColumns: [],
+    demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg"],
     groups: [
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag"] },
-      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"] },
+      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "tpm", "tpa", "tp_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"] },
       buildLowerTierShotProfileGroup(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"] },
@@ -1187,7 +1209,7 @@ const DATASETS = {
       { id: "status_path", label: "Status", options: [{ value: "all", label: "All" }, { value: "d1", label: "D1" }, { value: "formerd1", label: "Former D1" }] },
     ]),
     minYear: 2011,
-    defaultVisible: ["rank", "season", "player_name", "team_name", "division", "age", "height_in", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
+    defaultVisible: ["rank", "season", "player_name", "team_name", "division", "age", "height_in", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
     labels: {
       rank: "",
       season: "Year",
@@ -1279,7 +1301,7 @@ const DATASETS = {
     demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "gp", "min", "mpg", "dob"],
     groups: [
       { id: "summary", label: "Summary", columns: ["adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["adjoe", "adrtg", "porpag", "dporpag"] },
-      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"] },
+      { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "tpm", "tpa", "tp_pct", "ftm", "fta", "ft_pct", "ts_pct", "efg_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr"] },
       buildLowerTierShotProfileGroup(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"] },
@@ -1292,7 +1314,7 @@ const DATASETS = {
       { id: "region", label: "Region", column: "region" },
       { id: "status_path", label: "Status", options: [{ value: "all", label: "All" }, { value: "d1", label: "D1" }, { value: "formerd1", label: "Former D1" }, { value: "nba", label: "NBA" }] },
     ]),
-    defaultVisible: ["rank", "season", "player_name", "team_name", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "usg_pct", "min_per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
+    defaultVisible: ["rank", "season", "player_name", "team_name", "level", "region", "age", "height_in", "gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag", "pts_pg", "trb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "stocks_pg", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct"],
     labels: {
       rank: "",
       season: "Year",
@@ -1522,12 +1544,12 @@ const DATASETS = {
     sortDir: "desc",
     defaultAllYears: true,
     minYear: 1998,
-    minuteDefault: 120,
+    minuteDefault: 200,
     demoColumns: ["competition_label", "pos", "height_in", "age", "dob", "gp", "min", "mpg"],
     demoFilterColumns: ["height_in", "age", "dob", "gp", "min", "mpg"],
     groups: [
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "eff_pg", "plus_minus_pg"], defaultColumns: ["min", "mpg", "eff_pg", "plus_minus_pg"] },
-      { id: "advanced", label: "Advanced", columns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "rgm_per", "fic", "ppr", "nba_career_epm", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"] },
+      { id: "advanced", label: "Advanced", columns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "rgm_per", "fic", "ppr", "nba_career_epm", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "3pm", "3pa", "tp_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"] },
       buildLowerTierShotProfileGroup(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"] },
@@ -1538,7 +1560,7 @@ const DATASETS = {
       { id: "status_path", label: "Status", options: [{ value: "all", label: "All" }, { value: "d1", label: "D1" }, { value: "nba", label: "NBA" }] },
     ]), "color_mode", "competition_position"),
     multiFilters: [{ id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C", "G", "F", "C/F", "F/C"] }],
-    defaultVisible: ["rank", "season", "player_name", "team_name", "competition_label", "pos", "min", "mpg", "eff_pg", "plus_minus_pg", "min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"],
+    defaultVisible: ["rank", "season", "player_name", "team_name", "competition_label", "pos", "min", "mpg", "eff_pg", "plus_minus_pg", "min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"],
     labels: {
       rank: "",
       season: "Year",
@@ -1630,12 +1652,13 @@ const DATASETS = {
     demoFilterColumns: ["age", "inches", "weight", "bmi", "wingspan", "exp", "gp", "mp", "mpg", "rookie_year"],
     groups: [
       { id: "summary", label: "Summary", columns: ["off", "def", "tot", "ewins", "per", "porpag", "fic"] },
+      { id: "per_game", label: "Per Game", columns: ["pts_pg", "trb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "stocks_pg", "two_pa_pg", "three_pa_pg"], defaultColumns: ["pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg"] },
       { id: "shot_profile", label: "Shot Profile", columns: ["fgpct_rim", "rim_ast_pct", "fga_rim_75", "fgpct_mid", "mid_ast_pct", "fga_mid_75", "fg2pct", "two_ast_pct", "fg3pct", "three_ast_pct", "fg3a_75", "ftpct", "three_p_per100", "three_pr", "ftr"] },
       { id: "advanced", label: "Advanced", columns: ["orbpct", "drbpct", "usg", "astpct", "ast_to", "topct", "stlpct", "blkpct", "stlpct_percentile", "blkpct_percentile", "tspct", "efg"] },
     ],
     singleFilters: withSharedSingleFilters(),
     multiFilters: [{ id: "pos_text", label: "Pos", column: "pos_text", sort: ["PG", "SG", "SF", "PF", "C"] }],
-    defaultVisible: ["rank", "season", "player_name", "team_alias", "pos_text", "age", "gp", "mp", "off", "def", "tot", "ewins", "per", "porpag", "fic", "fgpct_rim", "fgpct_mid", "fg2pct", "fg3pct", "ftpct", "three_p_per100", "three_pr", "ftr", "usg", "orbpct", "drbpct", "astpct", "ast_to", "topct", "stlpct", "blkpct", "stlpct_percentile", "blkpct_percentile", "tspct", "efg"],
+    defaultVisible: ["rank", "season", "player_name", "team_alias", "pos_text", "age", "gp", "mp", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "off", "def", "tot", "ewins", "per", "porpag", "fic", "fgpct_rim", "fgpct_mid", "fg2pct", "fg3pct", "ftpct", "three_p_per100", "three_pr", "ftr", "usg", "orbpct", "drbpct", "astpct", "ast_to", "topct", "stlpct", "blkpct", "tspct", "efg"],
     labels: {
       rank: "",
       season: "Year",
@@ -1646,6 +1669,15 @@ const DATASETS = {
       gp: "GP",
       mp: "MP",
       mpg: "MPG",
+      pts_pg: "PTS/G",
+      trb_pg: "TRB/G",
+      ast_pg: "AST/G",
+      tov_pg: "TOV/G",
+      stl_pg: "STL/G",
+      blk_pg: "BLK/G",
+      stocks_pg: "Stocks/G",
+      two_pa_pg: "2PA/G",
+      three_pa_pg: "3PA/G",
       rookie_year: "Draft",
       inches: "HT",
       weight: "WT",
@@ -1916,6 +1948,7 @@ function getRouteId() {
 async function handleRoute() {
   const datasetId = getRouteId();
   appState.currentId = datasetId;
+  cancelBackgroundTasksForInactiveDataset(datasetId);
   updateNavActive(datasetId);
 
   if (datasetId === HOME_ID) {
@@ -2133,6 +2166,23 @@ function scheduleBackgroundTask(taskKey, callback, delayMs = 1200) {
   appState.scheduledTasks.set(taskKey, { type: "timeout", handle });
 }
 
+function cancelBackgroundTasksForInactiveDataset(activeDatasetId) {
+  appState.scheduledTasks.forEach((task, taskKey) => {
+    if (taskTargetsDataset(taskKey, activeDatasetId)) return;
+    if (task?.type === "idle" && typeof window.cancelIdleCallback === "function") {
+      window.cancelIdleCallback(task.handle);
+    } else if (task?.type === "timeout") {
+      window.clearTimeout(task.handle);
+    }
+    appState.scheduledTasks.delete(taskKey);
+  });
+}
+
+function taskTargetsDataset(taskKey, datasetId) {
+  if (!datasetId || datasetId === HOME_ID) return false;
+  return getStringValue(taskKey).endsWith(`:${datasetId}`);
+}
+
 function scheduleDeferredHydration(datasetId) {
   const dataset = appState.datasetCache[datasetId];
   if (!dataset?._hydrationPending) return;
@@ -2152,7 +2202,9 @@ function scheduleDeferredHydration(datasetId) {
         elements.statusPill.textContent = `Loading ${dataset.navLabel} seasons`;
         await ensureDatasetYearsLoaded(dataset, missingYears);
         if (appState.currentId !== datasetId) return;
-        renderCurrentDataset();
+        resetUiCaches(appState.uiState[datasetId]);
+        renderYearPills(dataset, appState.uiState[datasetId]);
+        renderResultsOnly(dataset, appState.uiState[datasetId]);
         elements.statusPill.textContent = `${dataset.navLabel} ready`;
       } catch (error) {
         if (appState.currentId !== datasetId) return;
@@ -2169,8 +2221,9 @@ function scheduleDeferredHydration(datasetId) {
       elements.statusPill.textContent = `Loading ${dataset.navLabel} corrections`;
       await ensureDatasetHydrated(datasetId);
       if (appState.currentId !== datasetId) return;
-      resetUiCaches(appState.uiState[datasetId]);
-      renderCurrentDataset();
+      const state = appState.uiState[datasetId];
+      resetUiCaches(state);
+      renderResultsOnly(dataset, state);
       elements.statusPill.textContent = `${dataset.navLabel} ready`;
     } catch (error) {
       if (appState.currentId !== datasetId) return;
@@ -2192,8 +2245,6 @@ function scheduleStatusAnnotations(datasetId) {
       elements.statusPill.textContent = `Loading ${dataset.navLabel} status`;
       await ensureStatusAnnotations(datasetId);
       if (appState.currentId !== datasetId) return;
-      resetUiCaches(appState.uiState[datasetId]);
-      renderCurrentDataset();
       elements.statusPill.textContent = `${dataset.navLabel} ready`;
     } catch (error) {
       if (appState.currentId !== datasetId) return;
@@ -3099,58 +3150,11 @@ function syncGrassrootsCareerYears(dataset, state, active) {
 
 function syncPlayerCareerSearchYears(dataset, state) {
   if (dataset?.id !== "player_career" || !state) return false;
-  const allYears = getAvailableYears(dataset).map((year) => getStringValue(year).trim()).filter(Boolean);
-  if (!allYears.length) return false;
-  const searchActive = parseSearchTerms(state.search).length > 0;
-  const currentYears = new Set(Array.from(state.years || []).map((year) => getStringValue(year).trim()).filter(Boolean));
-  if (searchActive) {
-    if (!state._playerCareerPlayerYears) state._playerCareerPlayerYears = new Set(currentYears.size ? currentYears : [allYears[0]]);
-    const nextYears = new Set(allYears);
-    if (setsMatch(currentYears, nextYears)) return false;
-    state.years = nextYears;
-    resetUiCaches(state);
-    return true;
-  }
-  if (!state._playerCareerPlayerYears) return false;
-  const restoredYears = Array.from(state._playerCareerPlayerYears)
-    .map((year) => getStringValue(year).trim())
-    .filter((year) => year && allYears.includes(year));
-  state._playerCareerPlayerYears = null;
-  const nextYears = new Set(restoredYears.length ? restoredYears : [allYears[0]]);
-  if (setsMatch(currentYears, nextYears)) return false;
-  state.years = nextYears;
-  resetUiCaches(state);
-  return true;
+  return false;
 }
 
 function schedulePlayerCareerSearchPrefetch(dataset, state) {
-  if (dataset?.id !== "player_career" || !dataset._playerCareerChunked || !state) return;
-  const searchKey = parseSearchTerms(state.search).join("||");
-  if (!searchKey) return;
-  const missingYears = getAvailableYears(dataset)
-    .map((year) => getStringValue(year).trim())
-    .filter((year) => year && !getLoadedYearSet(dataset).has(year));
-  if (!missingYears.length) return;
-  const loadKey = `${searchKey}|${missingYears.join("|")}`;
-  if (dataset._playerCareerSearchPrefetchKey === loadKey) return;
-  dataset._playerCareerSearchPrefetchKey = loadKey;
-  Promise.resolve().then(async () => {
-    try {
-      await ensureDatasetYearsLoaded(dataset, missingYears);
-    } catch (error) {
-      console.warn("Player/Career search prefetch failed.", error);
-      return;
-    } finally {
-      if (dataset._playerCareerSearchPrefetchKey === loadKey) {
-        dataset._playerCareerSearchPrefetchKey = "";
-      }
-    }
-    if (appState.currentId !== dataset.id) return;
-    const currentState = getCurrentUiState();
-    if (!currentState) return;
-    if (parseSearchTerms(currentState.search).join("||") !== searchKey) return;
-    renderCurrentDataset();
-  });
+  if (dataset?.id !== "player_career" || !state) return;
 }
 
 function setsMatch(left, right) {
@@ -5463,6 +5467,10 @@ function createInitialUiState(dataset) {
   dataset.meta.demoFilterMeta.forEach((item) => {
     demoFilters[item.column] = { min: "", max: "" };
   });
+  const minuteColumn = dataset?.meta?.minuteFilterColumn;
+  if (minuteColumn && demoFilters[minuteColumn]) {
+    demoFilters[minuteColumn].min = String(getDatasetMinuteThreshold(dataset));
+  }
 
   const state = {
     search: "",
@@ -5528,7 +5536,7 @@ function scheduleFilterResultsRender(dataset, state, deferredColumns = []) {
       if (appState.currentId !== datasetId) return;
     }
     renderResultsOnly(dataset, state);
-  }, SEARCH_RENDER_DEBOUNCE_MS);
+  }, FILTER_RENDER_DEBOUNCE_MS);
 }
 
 function applySearchInputValue(dataset, state, rawValue) {
@@ -6204,6 +6212,8 @@ async function cycleGroupVisibility(dataset, state, group) {
 
 function renderTableLegend(dataset, state) {
   if (!elements.tableLegend) return;
+  const legendKey = `${dataset.id}|${(dataset.meta.groups || []).map((group) => group.id).join("|")}`;
+  if (elements.tableLegend.dataset.legendKey === legendKey) return;
   const footerGroups = dataset.id === "d1"
     ? ["summary", "playtype_analysis", "advanced", "shot_profile", "drive", "runner"]
       .map((groupId) => (dataset.meta.groups || []).find((group) => group.id === groupId))
@@ -6224,6 +6234,7 @@ function renderTableLegend(dataset, state) {
   links.push(sep);
   links.push(`<button class="link-button" type="button" data-reset-filters="true">Reset</button>`);
   elements.tableLegend.innerHTML = `<span class="table-legend__title">Show:</span> <span class="table-legend__links">${links.join("")}</span>`;
+  elements.tableLegend.dataset.legendKey = legendKey;
 
   elements.tableLegend.querySelectorAll("[data-stat-mode]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -6235,16 +6246,20 @@ function renderTableLegend(dataset, state) {
 
   elements.tableLegend.querySelectorAll("[data-stat-group]").forEach((button) => {
     button.addEventListener("click", async () => {
+      const currentDataset = getCurrentDataset();
+      const currentState = getCurrentUiState();
       const groupId = button.dataset.statGroup;
-      const group = dataset.meta.groups.find((item) => item.id === groupId);
-      if (!group) return;
-      await cycleGroupVisibility(dataset, state, group);
+      const group = currentDataset?.meta?.groups?.find((item) => item.id === groupId);
+      if (!currentDataset || !currentState || !group) return;
+      await cycleGroupVisibility(currentDataset, currentState, group);
     });
   });
 
   elements.tableLegend.querySelectorAll("[data-reset-filters]").forEach((button) => {
     button.addEventListener("click", () => {
-      appState.uiState[dataset.id] = createInitialUiState(dataset);
+      const currentDataset = getCurrentDataset();
+      if (!currentDataset) return;
+      appState.uiState[currentDataset.id] = createInitialUiState(currentDataset);
       renderCurrentDataset();
     });
   });
@@ -6252,52 +6267,60 @@ function renderTableLegend(dataset, state) {
 
 function getFilteredRows(dataset, state) {
   const cache = getRenderCache(state);
-  const key = [
+  const baseKey = [
     getDisplayRowsCacheKey(dataset, state),
     getStringValue(state.team),
     state.search.trim().toLowerCase(),
-    getStringValue(state.sortBy),
-    getStringValue(state.sortDir),
-    getStringValue(state.sortBlankMode),
     serializeSingleFilterState(dataset, state),
     serializeMultiFilterState(dataset, state),
     serializeRangeFilters(dataset.meta.demoFilterMeta.map((item) => item.column), state.demoFilters),
     serializeRangeFilters(dataset.meta.numericColumns || [], state.numericFilters),
   ].join("||");
-  if (cache.filteredRowsKey === key) return cache.filteredRows;
   const displayRows = getDisplayRows(dataset, state);
-  const filtered = state.extraSelects.view_mode === "career"
-    ? getCareerFilteredRows(dataset, state, displayRows)
-    : getFilterContextRows(dataset, state, { rows: displayRows });
+  const baseFiltered = state.extraSelects.view_mode === "career"
+    ? getCareerFilteredRows(dataset, state, displayRows, baseKey)
+    : getBaseFilteredRows(dataset, state, displayRows, baseKey);
+  const key = [
+    baseKey,
+    getStringValue(state.sortBy),
+    getStringValue(state.sortDir),
+    getStringValue(state.sortBlankMode),
+  ].join("||");
+  if (cache.filteredRowsKey === key) return cache.filteredRows;
+  const filtered = sortRows(baseFiltered, state.sortBy, state.sortDir, dataset, state.sortBlankMode);
   cache.filteredRowsKey = key;
   cache.filteredRows = filtered;
   return filtered;
 }
 
-function getCareerFilteredRows(dataset, state, rows) {
+function getBaseFilteredRows(dataset, state, rows, baseKey) {
   const cache = getRenderCache(state);
-  const searchKey = getStringValue(state.search).trim().toLowerCase();
-  const demoKey = serializeRangeFilters(dataset.meta.demoFilterMeta.map((item) => item.column), state.demoFilters);
-  const numericKey = serializeRangeFilters(dataset.meta.numericColumns || [], state.numericFilters);
-  const key = [
+  if (cache.baseFilteredRowsKey === baseKey) return cache.baseFilteredRows;
+  const filtered = getFilterContextRows(dataset, state, { rows, skipSort: true });
+  cache.baseFilteredRowsKey = baseKey;
+  cache.baseFilteredRows = filtered;
+  return filtered;
+}
+
+function getCareerFilteredRows(dataset, state, rows, baseKey = "") {
+  const cache = getRenderCache(state);
+  const key = baseKey || [
     getDisplayRowsCacheKey(dataset, state),
     getStringValue(state.team),
+    getStringValue(state.search).trim().toLowerCase(),
     serializeSingleFilterState(dataset, state),
     serializeMultiFilterState(dataset, state),
-    searchKey,
-    demoKey,
-    numericKey,
-    getStringValue(state.sortBy),
-    getStringValue(state.sortDir),
-    getStringValue(state.sortBlankMode),
+    serializeRangeFilters(dataset.meta.demoFilterMeta.map((item) => item.column), state.demoFilters),
+    serializeRangeFilters(dataset.meta.numericColumns || [], state.numericFilters),
   ].join("||");
   if (cache.careerFilteredRowsKey === key) return cache.careerFilteredRows;
-  let filtered = getFilterContextRows(dataset, state, {
+  const filtered = getFilterContextRows(dataset, state, {
     rows,
     ignoreYears: true,
     ignoreTeam: true,
     ignoreSingleFilters: true,
     ignoreMultiFilters: true,
+    skipSort: true,
   });
   cache.careerFilteredRowsKey = key;
   cache.careerFilteredRows = filtered;
@@ -6306,12 +6329,12 @@ function getCareerFilteredRows(dataset, state, rows) {
 
 function getFilterContextRows(dataset, state, options = {}) {
   const searchClauses = parseSearchTerms(state.search);
-  const sourceRows = options.rows || getDisplayRows(dataset, state);
+  const baseRows = options.rows || getDisplayRows(dataset, state);
   const applyYearFilter = !options.ignoreYears && !shouldIgnoreCareerYearFilter(dataset, state);
   const grassrootsSearchApplied = dataset.id === "grassroots" && searchClauses.length && !options.ignoreSearch;
   const filteredSourceRows = grassrootsSearchApplied
-    ? getGrassrootsSearchRows(dataset, searchClauses, sourceRows)
-    : sourceRows;
+    ? getGrassrootsSearchRows(dataset, searchClauses, baseRows)
+    : baseRows;
 
   const filtered = filteredSourceRows.filter((row) => {
     if (applyYearFilter) {
@@ -6346,6 +6369,11 @@ function getFilterContextRows(dataset, state, options = {}) {
       }
       if (filter.id === "status_path") {
         if (!row._statusFlags?.[selected]) return false;
+        continue;
+      }
+      if (dataset.id === "player_career" && filter.id === "competition_level" && selected === "Professional") {
+        const rowLevel = getStringValue(row[filter.column]);
+        if (!PLAYER_CAREER_PROFESSIONAL_LEVELS.has(rowLevel)) return false;
         continue;
       }
       if (dataset.id === "grassroots" && filter.id === "state") {
@@ -6421,7 +6449,8 @@ function getFilterContextRows(dataset, state, options = {}) {
     return true;
   });
 
-  return options.skipSort ? filtered : sortRows(filtered, state.sortBy, state.sortDir, dataset, state.sortBlankMode);
+  if (options.skipSort) return filtered;
+  return sortRows(filtered, state.sortBy, state.sortDir, dataset, state.sortBlankMode);
 }
 
 function getRawFilterContextRows(dataset, state, options = {}) {
@@ -6674,6 +6703,20 @@ function getRowSearchHaystack(dataset, row) {
 function getRenderCache(state) {
   if (!state._renderCache) state._renderCache = {};
   return state._renderCache;
+}
+
+function getSortedDisplayRows(dataset, state, rows = getDisplayRows(dataset, state)) {
+  const cache = getRenderCache(state);
+  const key = [
+    cache.displayRowsKey || getDisplayRowsCacheKey(dataset, state),
+    getStringValue(state.sortBy),
+    getStringValue(state.sortDir),
+    getStringValue(state.sortBlankMode),
+  ].join("||");
+  if (cache.sortedDisplayRowsKey === key) return cache.sortedDisplayRows;
+  cache.sortedDisplayRowsKey = key;
+  cache.sortedDisplayRows = sortRows(rows, state.sortBy, state.sortDir, dataset, state.sortBlankMode);
+  return cache.sortedDisplayRows;
 }
 
 function getDisplayRowsCacheKey(dataset, state) {
@@ -7751,18 +7794,29 @@ function sortRows(rows, sortBy, sortDir, dataset, blankMode = "last") {
   if (!sortBy) return rows.slice();
   const direction = sortDir === "asc" ? 1 : -1;
   const isNumeric = dataset.meta.numericColumns.includes(sortBy);
-
-  return rows.slice().sort((left, right) => {
-    const a = getRowColumnValue(dataset, left, sortBy);
-    const b = getRowColumnValue(dataset, right, sortBy);
-    const aBlank = isBlankSortValue(a, sortBy, left);
-    const bBlank = isBlankSortValue(b, sortBy, right);
-    if (aBlank && bBlank) return 0;
-    if (aBlank) return blankMode === "first" ? -1 : 1;
-    if (bBlank) return blankMode === "first" ? 1 : -1;
-    if (isNumeric) return (a - b) * direction;
-    return getStringValue(a).localeCompare(getStringValue(b), undefined, { numeric: true, sensitivity: "base" }) * direction;
-  });
+  return rows
+    .map((row, index) => {
+      const value = getRowColumnValue(dataset, row, sortBy);
+      return {
+        row,
+        index,
+        value,
+        blank: isBlankSortValue(value, sortBy, row),
+        text: isNumeric ? "" : getStringValue(value),
+      };
+    })
+    .sort((left, right) => {
+      if (left.blank && right.blank) return left.index - right.index;
+      if (left.blank) return blankMode === "first" ? -1 : 1;
+      if (right.blank) return blankMode === "first" ? 1 : -1;
+      if (isNumeric) {
+        const diff = (left.value - right.value) * direction;
+        return diff || (left.index - right.index);
+      }
+      const diff = left.text.localeCompare(right.text, undefined, { numeric: true, sensitivity: "base" }) * direction;
+      return diff || (left.index - right.index);
+    })
+    .map((entry) => entry.row);
 }
 
 function isBlankSortValue(value, column, row) {

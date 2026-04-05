@@ -21,12 +21,17 @@ REALGM_ROOT = PROJECTS_ROOT / "realgm_college_crawl"
 REALGM_PRIMARY_ROOT = REALGM_ROOT / "output_parallel_6"
 REALGM_SECONDARY_ROOT = REALGM_ROOT / "output_parallel"
 REALGM_SUPPLEMENTAL_ROOT = REALGM_ROOT / "output_full"
+REALGM_NBA_ROOT = PROJECTS_ROOT / "pbp" / "realgm_nba_crawl" / "output_full"
+REALGM_REFERENCE_ROOT = PROJECTS_ROOT / "pbp" / "realgm_reference_v1"
+REALGM_REFERENCE_PLAYERS_PATH = REALGM_REFERENCE_ROOT / "reference_players.csv"
+REALGM_REFERENCE_ROWS_PATH = REALGM_REFERENCE_ROOT / "reference_rows.csv"
 RIM_ROOT = PROJECTS_ROOT / "Rim Data"
 BARTTORVIK_DIR = PROJECTS_ROOT / "cbb_onoff_lab" / "cache" / "barttorvik"
 NBA_EPM_DIR = PROJECTS_ROOT / "NBA EPM"
 
 PLAYER_CAREER_BUNDLE_PATH = ROOT / "data" / "vendor" / "player_career_all_seasons.js"
-PLAYER_CAREER_GLOBAL = "PLAYER_CAREER_ALL_CSV"
+PLAYER_CAREER_YEAR_MANIFEST_PATH = ROOT / "data" / "vendor" / "player_career_year_manifest.js"
+PLAYER_CAREER_YEAR_CHUNK_DIR = ROOT / "data" / "vendor" / "player_career_year_chunks"
 GRASSROOTS_YEAR_MANIFEST_PATH = ROOT / "data" / "vendor" / "grassroots_year_manifest.js"
 GRASSROOTS_YEAR_CHUNK_DIR = ROOT / "data" / "vendor" / "grassroots_year_chunks"
 
@@ -247,6 +252,18 @@ FIBA_CODE_MAP = {
     "UAE": "United Arab Emirates",
 }
 
+NBA_TEAM_CODE_ALIASES = {
+    "CHH": "CHA",
+    "NJN": "BKN",
+    "NOH": "NOP",
+    "NOK": "NOP",
+    "SEA": "OKC",
+    "VAN": "MEM",
+    "WSB": "WAS",
+    "PHO": "PHX",
+    "SAN": "SAS",
+}
+
 US_STATE_ABBREVIATIONS = {
     "alabama": "AL",
     "alaska": "AK",
@@ -318,6 +335,9 @@ def main() -> None:
     college_summary = match_college_groups(site_data, profiles, college_index, team_alias_map)
     nba_summary = match_nba_groups(site_data["nba"]["rows"], profiles, player_name_index)
     fiba_summary = match_fiba_groups(site_data["fiba"]["rows"], profiles, player_name_index)
+    d1_link_summary = link_lower_levels_to_d1(site_data)
+    d1_profile_summary = match_unmatched_d1_groups_to_profiles(site_data, college_index, player_name_index, team_alias_map)
+    d1_link_reconcile_summary = reconcile_d1_linked_groups(site_data)
 
     apply_fallback_identity(site_data)
     finalize_row_identity_fields(site_data, profiles)
@@ -332,11 +352,13 @@ def main() -> None:
     player_career_rows = build_player_career_rows(site_data, player_profiles, grassroots_rows)
 
     write_rewritten_site_bundles(site_data)
-    write_player_career_bundle(player_career_rows)
     write_outputs(player_profiles, player_career_rows, team_alias_map, team_alias_details, site_data, profiles, {
         "college_match_summary": college_summary,
         "nba_match_summary": nba_summary,
         "fiba_match_summary": fiba_summary,
+        "d1_link_summary": d1_link_summary,
+        "d1_profile_summary": d1_profile_summary,
+        "d1_link_reconcile_summary": d1_link_reconcile_summary,
         "grassroots_match_summary": grassroots_summary,
         "rim_match_summary": rim_summary,
         "barttorvik_aliases_added": barttorvik_alias_count,
@@ -348,6 +370,9 @@ def main() -> None:
         "college_match_summary": college_summary,
         "nba_match_summary": nba_summary,
         "fiba_match_summary": fiba_summary,
+        "d1_link_summary": d1_link_summary,
+        "d1_profile_summary": d1_profile_summary,
+        "d1_link_reconcile_summary": d1_link_reconcile_summary,
         "grassroots_match_summary": grassroots_summary,
         "rim_match_summary": rim_summary,
         "barttorvik_aliases_added": barttorvik_alias_count,
@@ -508,9 +533,13 @@ def load_realgm_profiles() -> tuple[
     dict[str, dict[tuple[int, str], list[dict[str, object]]]],
     dict[str, dict[str, list[dict[str, object]]]],
 ]:
-    players = load_realgm_csv_rows("players.csv")
-    college_rows = load_realgm_csv_rows("player_seasons.csv")
-    intl_rows = load_realgm_csv_rows("international_player_seasons.csv")
+    reference_summaries = load_realgm_reference_player_summaries()
+    players = load_realgm_player_source_rows(reference_summaries)
+    season_buckets = load_realgm_reference_season_buckets()
+    college_rows = season_buckets.get("college", [])
+    intl_rows = season_buckets.get("international", [])
+    gleague_rows = season_buckets.get("gleague", [])
+    nba_rows = season_buckets.get("nba", [])
 
     profiles: dict[str, dict[str, object]] = {}
     for player in players:
@@ -538,9 +567,25 @@ def load_realgm_profiles() -> tuple[
             "loose_name_key": normalize_loose_name_key(player_name),
             "college_seasons": [],
             "intl_seasons": [],
+            "gleague_seasons": [],
+            "nba_seasons": [],
+            "professional_seasons": [],
             "matched_site_groups": set(),
         }
         profiles[realgm_player_id] = profile
+
+    for summary in reference_summaries.values():
+        realgm_player_id = clean_text(summary.get("realgm_player_id"))
+        if not realgm_player_id:
+            continue
+        profile = ensure_realgm_profile_entry(
+            profiles,
+            realgm_player_id,
+            summary.get("player_name"),
+            summary.get("summary_url"),
+        )
+        if clean_text(summary.get("summary_url")) and not clean_text(profile.get("summary_url")):
+            profile["summary_url"] = clean_text(summary.get("summary_url"))
 
     college_index: dict[tuple[int, str], list[dict[str, object]]] = defaultdict(list)
     intl_index: dict[str, dict[tuple[int, str], list[dict[str, object]]]] = {
@@ -560,12 +605,10 @@ def load_realgm_profiles() -> tuple[
 
     for season_row in college_rows:
         realgm_player_id = clean_text(season_row.get("realgm_player_id"))
-        profile = profiles.get(realgm_player_id)
-        if not profile:
-            continue
+        profile = ensure_realgm_profile_entry(profiles, realgm_player_id, season_row.get("player_name"), season_row.get("summary_url"))
         player_name = clean_display_name(season_row.get("player_name")) or profile["player_name"]
         season_start = extract_leading_year(season_row.get("season"))
-        school = clean_text(season_row.get("school"))
+        school = clean_text(season_row.get("school") or season_row.get("team") or season_row.get("league"))
         entry = {
             "realgm_player_id": realgm_player_id,
             "player_name": player_name,
@@ -587,9 +630,7 @@ def load_realgm_profiles() -> tuple[
 
     for season_row in intl_rows:
         realgm_player_id = clean_text(season_row.get("realgm_player_id"))
-        profile = profiles.get(realgm_player_id)
-        if not profile:
-            continue
+        profile = ensure_realgm_profile_entry(profiles, realgm_player_id, season_row.get("player_name"), season_row.get("summary_url"))
         player_name = clean_display_name(season_row.get("player_name")) or profile["player_name"]
         season_start = extract_leading_year(season_row.get("season"))
         team = clean_text(season_row.get("team") or season_row.get("school"))
@@ -608,12 +649,304 @@ def load_realgm_profiles() -> tuple[
             "stats": dict(season_row),
         }
         profile["intl_seasons"].append(entry)
+        profile["professional_seasons"].append(entry)
         if season_start and entry["name_key"]:
             intl_index["strict"][(season_start, entry["name_key"])].append(entry)
         if season_start and entry["loose_name_key"]:
             intl_index["loose"][(season_start, entry["loose_name_key"])].append(entry)
 
+    for family_rows, source_name, target_key in (
+        (gleague_rows, "realgm_gleague", "gleague_seasons"),
+        (nba_rows, "realgm_nba", "nba_seasons"),
+    ):
+        for season_row in family_rows:
+            realgm_player_id = clean_text(season_row.get("realgm_player_id"))
+            profile = ensure_realgm_profile_entry(profiles, realgm_player_id, season_row.get("player_name"), season_row.get("summary_url"))
+            player_name = clean_display_name(season_row.get("player_name")) or profile["player_name"]
+            entry = {
+                "realgm_player_id": realgm_player_id,
+                "player_name": player_name,
+                "season": clean_text(season_row.get("season")),
+                "season_start": extract_leading_year(season_row.get("season")),
+                "team": clean_text(season_row.get("team") or season_row.get("school") or season_row.get("league")),
+                "league": clean_text(season_row.get("league")),
+                "team_keys": build_school_keys(season_row.get("team") or season_row.get("school") or season_row.get("league")),
+                "name_key": normalize_name_key(player_name),
+                "loose_name_key": normalize_loose_name_key(player_name),
+                "profile": profile,
+                "source": source_name,
+                "stats": dict(season_row),
+            }
+            profile[target_key].append(entry)
+            profile["professional_seasons"].append(entry)
+
     return profiles, college_index, intl_index, player_name_index
+
+
+def load_realgm_reference_player_summaries() -> dict[str, dict[str, object]]:
+    summaries: dict[str, dict[str, object]] = {}
+    if not REALGM_REFERENCE_PLAYERS_PATH.is_file():
+        return summaries
+    with REALGM_REFERENCE_PLAYERS_PATH.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            realgm_player_id = clean_text(row.get("realgm_player_id"))
+            if not realgm_player_id:
+                continue
+            summaries[realgm_player_id] = dict(row)
+    return summaries
+
+
+def get_realgm_player_source_paths() -> list[Path]:
+    paths: list[Path] = []
+    for path in [REALGM_NBA_ROOT / "players.csv"]:
+        if path.is_file():
+            paths.append(path)
+    for path in get_realgm_source_paths():
+        if path.name == "players.csv":
+            paths.append(path)
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        ordered.append(path)
+    return ordered
+
+
+def load_realgm_player_source_rows(reference_summaries: dict[str, dict[str, object]]) -> list[dict[str, object]]:
+    merged: dict[str, dict[str, object]] = {}
+    for path in get_realgm_player_source_paths():
+        for row in load_plain_csv_rows(path):
+            realgm_player_id = clean_text(row.get("realgm_player_id"))
+            if not realgm_player_id:
+                continue
+            current = merged.get(realgm_player_id)
+            if current is None or count_non_blank_fields(row) > count_non_blank_fields(current):
+                merged[realgm_player_id] = row
+    for realgm_player_id, summary in reference_summaries.items():
+        current = merged.setdefault(realgm_player_id, {
+            "realgm_player_id": realgm_player_id,
+            "player_name": clean_text(summary.get("player_name")),
+            "summary_url": clean_text(summary.get("summary_url")),
+        })
+        if clean_text(summary.get("player_name")) and not clean_text(current.get("player_name")):
+            current["player_name"] = clean_text(summary.get("player_name"))
+        if clean_text(summary.get("summary_url")) and not clean_text(current.get("summary_url")):
+            current["summary_url"] = clean_text(summary.get("summary_url"))
+    return list(merged.values())
+
+
+def ensure_realgm_profile_entry(
+    profiles: dict[str, dict[str, object]],
+    realgm_player_id: str,
+    player_name: object = "",
+    summary_url: object = "",
+) -> dict[str, object]:
+    profile = profiles.get(realgm_player_id)
+    player_name_text = clean_display_name(player_name)
+    summary_url_text = clean_text(summary_url)
+    if profile is None:
+        profile = {
+            "realgm_player_id": realgm_player_id,
+            "canonical_player_id": f"rgm_{realgm_player_id}",
+            "player_name": player_name_text,
+            "display_name": player_name_text,
+            "born_iso": "",
+            "height_in": "",
+            "weight_lb": "",
+            "nationality": "",
+            "high_school": "",
+            "hometown": "",
+            "position": "",
+            "pre_draft_team": "",
+            "current_team": "",
+            "current_nba_status": "",
+            "summary_url": summary_url_text,
+            "name_key": normalize_name_key(player_name_text),
+            "loose_name_key": normalize_loose_name_key(player_name_text),
+            "college_seasons": [],
+            "intl_seasons": [],
+            "gleague_seasons": [],
+            "nba_seasons": [],
+            "professional_seasons": [],
+            "matched_site_groups": set(),
+        }
+        profiles[realgm_player_id] = profile
+        return profile
+
+    preferred_name = pick_preferred_name(profile.get("player_name"), player_name_text)
+    if preferred_name and preferred_name != profile.get("player_name"):
+        profile["player_name"] = preferred_name
+        profile["display_name"] = preferred_name
+        profile["name_key"] = normalize_name_key(preferred_name)
+        profile["loose_name_key"] = normalize_loose_name_key(preferred_name)
+    if summary_url_text and not clean_text(profile.get("summary_url")):
+        profile["summary_url"] = summary_url_text
+    return profile
+
+
+def load_realgm_reference_season_buckets() -> dict[str, list[dict[str, object]]]:
+    buckets: dict[str, list[dict[str, object]]] = defaultdict(list)
+    merged_rows: dict[tuple[str, str, str, str, str], dict[str, object]] = {}
+    if REALGM_REFERENCE_ROWS_PATH.is_file():
+        with REALGM_REFERENCE_ROWS_PATH.open("r", encoding="utf-8", newline="", errors="ignore") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                realgm_player_id = clean_text(row.get("realgm_player_id"))
+                if not realgm_player_id:
+                    continue
+                family = normalize_realgm_reference_family(row)
+                if not family or not is_realgm_reference_regular_season_row(row):
+                    continue
+                key = build_realgm_reference_season_key(realgm_player_id, family, row)
+                if not any(key):
+                    continue
+                normalized = dict(row)
+                normalized["_reference_family"] = family
+                current = merged_rows.get(key)
+                merged_rows[key] = merge_realgm_reference_rows(current, normalized) if current else normalized
+
+    for row in load_realgm_csv_rows("player_seasons.csv"):
+        realgm_player_id = clean_text(row.get("realgm_player_id"))
+        if not realgm_player_id:
+            continue
+        out = dict(row)
+        out["_reference_family"] = "college"
+        key = build_realgm_reference_season_key(realgm_player_id, "college", out)
+        if not any(key):
+            continue
+        current = merged_rows.get(key)
+        merged_rows[key] = merge_realgm_reference_rows(current, out) if current else out
+    for row in load_realgm_csv_rows("international_player_seasons.csv"):
+        realgm_player_id = clean_text(row.get("realgm_player_id"))
+        if not realgm_player_id:
+            continue
+        out = dict(row)
+        out["_reference_family"] = "international"
+        key = build_realgm_reference_season_key(realgm_player_id, "international", out)
+        if not any(key):
+            continue
+        current = merged_rows.get(key)
+        merged_rows[key] = merge_realgm_reference_rows(current, out) if current else out
+
+    for row in merged_rows.values():
+        buckets[clean_text(row.get("_reference_family"))].append(row)
+    return buckets
+
+
+def normalize_realgm_reference_family(value: object) -> str:
+    candidates: list[str] = []
+    if isinstance(value, dict):
+        candidates.extend([
+            clean_text(value.get("source_family")),
+            clean_text(value.get("career_family")),
+            clean_text(value.get("stats_scope")),
+            clean_text(value.get("source_dataset")),
+            clean_text(value.get("source_file")),
+            clean_text(value.get("source_table")),
+            clean_text(value.get("table_kind")),
+        ])
+    else:
+        candidates.append(clean_text(value))
+
+    normalized = {normalize_key(candidate) for candidate in candidates if clean_text(candidate)}
+    if normalized & {"international", "fiba", "international summary", "international player seasons csv"}:
+        return "international"
+    if normalized & {"gleague", "g league", "gleague crawl", "g league crawl"}:
+        return "gleague"
+    if normalized & {"nba", "nba crawl", "nba totals csv", "nba advanced csv"}:
+        return "nba"
+    if normalized & {"college", "ncaa", "college crawl", "player seasons csv", "season summary"}:
+        return "college"
+    return ""
+
+
+def is_realgm_reference_regular_season_row(row: dict[str, object]) -> bool:
+    source_table = normalize_key(row.get("source_table") or row.get("table_kind"))
+    if source_table and source_table not in {
+        "totals",
+        "advanced",
+        "season summary",
+        "international summary",
+        "player seasons csv",
+        "international player seasons csv",
+    }:
+        return False
+    section = clean_text(row.get("section_path")).lower()
+    if not section:
+        return True
+    if any(token in section for token in ("playoff", "preseason", "summer league", "all-star", "all star")):
+        return False
+    return ("regular season" in section) or ("season stats" in section)
+
+
+def build_realgm_reference_season_key(realgm_player_id: str, family: str, row: dict[str, object]) -> tuple[str, str, str, str, str]:
+    season = canonical_season_label(row.get("season"))
+    team_name = clean_text(row.get("school") if family == "college" else row.get("team") or row.get("school") or row.get("league"))
+    league = clean_text(row.get("league"))
+    return (
+        clean_text(realgm_player_id),
+        clean_text(family),
+        clean_text(season),
+        normalize_key(team_name),
+        normalize_key(league),
+    )
+
+
+def merge_realgm_reference_rows(existing: dict[str, object] | None, candidate: dict[str, object]) -> dict[str, object]:
+    if existing is None:
+        return candidate
+    preferred = existing if realgm_reference_row_priority(existing) >= realgm_reference_row_priority(candidate) else candidate
+    secondary = candidate if preferred is existing else existing
+    merged = dict(preferred)
+    for column, value in secondary.items():
+        if column.startswith("_"):
+            continue
+        if not has_row_value(merged.get(column)) and has_row_value(value):
+            merged[column] = value
+    merged["_reference_family"] = clean_text(preferred.get("_reference_family") or secondary.get("_reference_family"))
+    return merged
+
+
+def realgm_reference_row_priority(row: dict[str, object]) -> float:
+    score = float(count_non_blank_fields(row))
+    source_table = normalize_key(row.get("source_table") or row.get("table_kind"))
+    if source_table == "totals":
+        score += 300.0
+    elif source_table == "advanced":
+        score += 180.0
+    if is_realgm_reference_counting_totals_row(row):
+        score -= 60.0
+    else:
+        score += 40.0
+    return score
+
+
+def is_realgm_reference_counting_totals_row(row: dict[str, object]) -> bool:
+    if normalize_key(row.get("source_table") or row.get("table_kind")) != "totals":
+        return False
+    min_text = clean_text(row.get("min"))
+    if "," in min_text:
+        return True
+    for column, threshold in (
+        ("min", 80.0),
+        ("pts", 80.0),
+        ("fgm", 25.0),
+        ("fga", 50.0),
+        ("reb", 25.0),
+        ("trb", 25.0),
+        ("ast", 18.0),
+        ("off", 15.0),
+        ("def", 25.0),
+        ("3pa", 18.0),
+        ("fta", 20.0),
+    ):
+        numeric = to_float(row.get(column))
+        if numeric is not None and numeric > threshold:
+            return True
+    return False
 
 
 def add_barttorvik_aliases(team_alias_map: dict[str, dict[str, object]], team_alias_details: dict[str, dict[str, object]], site_team_records: list[dict[str, object]]) -> int:
@@ -759,7 +1092,7 @@ def score_college_candidate(row: dict[str, object], candidate: dict[str, object]
             return 0.0
         total += 45.0
 
-    height_gap = abs_numeric_gap(row.get("_height_in_value"), candidate["profile"].get("height_in"))
+    height_gap = abs_numeric_gap(positive_number(row.get("_height_in_value")), positive_number(candidate["profile"].get("height_in")))
     if math.isfinite(height_gap):
         if height_gap > 3:
             return 0.0
@@ -852,7 +1185,7 @@ def score_nba_profile(row: dict[str, object], profile: dict[str, object], prefer
     if prefer_existing:
         total += 24.0
 
-    height_gap = abs_numeric_gap(row.get("_height_in_value"), profile.get("height_in"))
+    height_gap = abs_numeric_gap(positive_number(row.get("_height_in_value")), positive_number(profile.get("height_in")))
     if math.isfinite(height_gap):
         if height_gap > 3:
             return 0.0
@@ -863,7 +1196,7 @@ def score_nba_profile(row: dict[str, object], profile: dict[str, object], prefer
         else:
             total += 6.0
 
-    weight_gap = abs_numeric_gap(row.get("_weight_lb_value"), profile.get("weight_lb"))
+    weight_gap = abs_numeric_gap(positive_number(row.get("_weight_lb_value")), positive_number(profile.get("weight_lb")))
     if math.isfinite(weight_gap):
         if weight_gap > 40:
             total -= 10.0
@@ -876,6 +1209,31 @@ def score_nba_profile(row: dict[str, object], profile: dict[str, object], prefer
         total += 6.0
     if clean_text(profile.get("pre_draft_team")):
         total += 3.0
+    target_year = canonical_end_year(row.get("season"))
+    target_team_keys = row.get("_team_keys") or build_nba_team_keys(
+        row.get("team_alias"),
+        row.get("_team_name"),
+        row.get("team_alias_all"),
+        row.get("team_name"),
+    )
+    if target_year and target_team_keys:
+        best_team_score = 0.0
+        matched_year = False
+        for season_entry in profile.get("nba_seasons") or []:
+            if canonical_end_year(season_entry.get("season")) != target_year:
+                continue
+            matched_year = True
+            season_team = clean_text(season_entry.get("team") or season_entry.get("school"))
+            season_team_keys = build_nba_team_keys(season_team)
+            best_team_score = max(best_team_score, score_team_key_sets(target_team_keys, season_team_keys))
+        if matched_year:
+            total += 10.0
+            if best_team_score >= 0.99:
+                total += 28.0
+            elif best_team_score >= 0.82:
+                total += 20.0
+            elif best_team_score >= 0.66:
+                total += 12.0
     return total
 
 
@@ -967,6 +1325,441 @@ def score_fiba_profile(row: dict[str, object], profile: dict[str, object]) -> fl
     if profile.get("intl_seasons"):
         total += 4.0
     return total
+
+
+def link_lower_levels_to_d1(site_data: dict[str, dict[str, object]]) -> dict[str, dict[str, int]]:
+    d1_groups = group_rows_by_identity(site_data["d1"]["rows"])
+    d1_anchors = build_d1_link_anchors(d1_groups)
+    if not d1_anchors:
+        return {}
+
+    anchors_by_name: dict[str, dict[str, list[dict[str, object]]]] = {
+        "strict": defaultdict(list),
+        "loose": defaultdict(list),
+    }
+    for anchor in d1_anchors:
+        if anchor["name_key"]:
+            anchors_by_name["strict"][anchor["name_key"]].append(anchor)
+        if anchor["loose_name_key"]:
+            anchors_by_name["loose"][anchor["loose_name_key"]].append(anchor)
+
+    summary: dict[str, dict[str, int]] = {}
+    for dataset_id in ("d2", "naia", "juco", "fiba"):
+        linked = 0
+        ambiguous = 0
+        unmatched = 0
+        for group_rows in group_rows_by_identity(site_data[dataset_id]["rows"]):
+            if clean_text(group_rows[0].get("_canonical_player_id")):
+                continue
+            result = choose_best_d1_anchor(group_rows, anchors_by_name)
+            if result["status"] == "matched":
+                linked += 1
+                assign_d1_anchor_to_group(group_rows, result["anchor"])
+            elif result["status"] == "ambiguous":
+                ambiguous += 1
+            else:
+                unmatched += 1
+        summary[dataset_id] = {"linked": linked, "ambiguous": ambiguous, "unmatched": unmatched}
+    return summary
+
+
+def match_unmatched_d1_groups_to_profiles(
+    site_data: dict[str, dict[str, object]],
+    college_index: dict[tuple[int, str], list[dict[str, object]]],
+    player_name_index: dict[str, dict[str, list[dict[str, object]]]],
+    team_alias_map: dict[str, dict[str, object]],
+) -> dict[str, int]:
+    matched = 0
+    ambiguous = 0
+    unmatched = 0
+    eligible_groups = 0
+
+    for group_rows in group_rows_by_identity(site_data["d1"]["rows"]):
+        if clean_text(group_rows[0].get("_realgm_player_id")):
+            continue
+        eligible_groups += 1
+        result = choose_exact_d1_college_profile(group_rows, college_index, team_alias_map)
+        if result["status"] == "unmatched":
+            result = choose_best_d1_profile(group_rows, player_name_index, team_alias_map)
+        if result["status"] == "matched":
+            matched += 1
+            assign_profile_to_group(group_rows, result["profile"], result["source"])
+            result["profile"]["matched_site_groups"].add(group_rows[0]["_identity_group_key"])
+        elif result["status"] == "ambiguous":
+            ambiguous += 1
+        else:
+            unmatched += 1
+
+    return {"groups": eligible_groups, "matched": matched, "ambiguous": ambiguous, "unmatched": unmatched}
+
+
+def choose_exact_d1_college_profile(
+    group_rows: list[dict[str, object]],
+    college_index: dict[tuple[int, str], list[dict[str, object]]],
+    team_alias_map: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    profile_scores: dict[str, dict[str, object]] = {}
+    for row in sorted(group_rows, key=identity_row_score, reverse=True):
+        season_start = parse_int_value(row.get("_season_start"))
+        if not season_start:
+            continue
+        row_team_keys = build_row_team_keys("d1", row, team_alias_map)
+        if not row_team_keys:
+            continue
+        candidate_pool: list[tuple[dict[str, object], float]] = []
+        strict_key = clean_text(row.get("_name_key"))
+        loose_key = clean_text(row.get("_loose_name_key"))
+        if strict_key:
+            candidate_pool.extend((candidate, 128.0) for candidate in college_index.get((season_start, strict_key), []))
+        if loose_key and loose_key != strict_key:
+            candidate_pool.extend((candidate, 96.0) for candidate in college_index.get((season_start, loose_key), []))
+        seen = set()
+        for candidate, base_score in candidate_pool:
+            profile = candidate["profile"]
+            profile_id = clean_text(profile.get("realgm_player_id"))
+            candidate_key = (profile_id, clean_text(candidate.get("season")), clean_text(candidate.get("school")))
+            if not profile_id or candidate_key in seen:
+                continue
+            seen.add(candidate_key)
+            team_score = score_team_key_sets(row_team_keys, candidate.get("team_keys") or [])
+            if team_score < 0.82:
+                continue
+            score = base_score
+            if team_score >= 0.99:
+                score += 42.0
+            elif team_score >= 0.9:
+                score += 32.0
+            else:
+                score += 18.0
+            entry = profile_scores.setdefault(profile_id, {
+                "profile": profile,
+                "score": 0.0,
+                "best_score": 0.0,
+                "row_hits": set(),
+            })
+            entry["score"] += score
+            entry["best_score"] = max(entry["best_score"], score)
+            entry["row_hits"].add(row_identity_key(row))
+
+    if not profile_scores:
+        return {"status": "unmatched"}
+
+    ranked = sorted(
+        profile_scores.values(),
+        key=lambda item: (len(item["row_hits"]), item["score"], item["best_score"]),
+        reverse=True,
+    )
+    best = ranked[0]
+    second = ranked[1] if len(ranked) > 1 else None
+    best_hits = len(best["row_hits"])
+    second_hits = len(second["row_hits"]) if second else 0
+    margin = (best["score"] - second["score"]) if second else 999.0
+    if best["best_score"] < 114:
+        return {"status": "unmatched"}
+    if second and best_hits == second_hits and margin < 28:
+        return {"status": "ambiguous"}
+    return {"status": "matched", "profile": best["profile"], "source": "realgm_college_exact"}
+
+
+def build_d1_link_anchors(d1_groups: list[list[dict[str, object]]]) -> list[dict[str, object]]:
+    anchors: list[dict[str, object]] = []
+    for group_rows in d1_groups:
+        representative = sorted(group_rows, key=identity_row_score, reverse=True)[0]
+        years = sorted({canonical_end_year(row.get("season")) for row in group_rows if canonical_end_year(row.get("season"))}, reverse=True)
+        canonical_id = clean_text(representative.get("_canonical_player_id")) or build_fallback_canonical_id(representative)
+        anchor = {
+            "canonical_player_id": canonical_id,
+            "realgm_player_id": clean_text(representative.get("_realgm_player_id")),
+            "name_key": clean_text(representative.get("_name_key")),
+            "loose_name_key": clean_text(representative.get("_loose_name_key")),
+            "player_name": clean_text(representative.get("_player_name")),
+            "dob": clean_text(representative.get("_dob_iso")),
+            "height_in": first_number(representative.get("_height_in_value")),
+            "weight_lb": first_number(representative.get("_weight_lb_value")),
+            "draft_pick": parse_int_value(representative.get("_draft_pick_value")),
+            "min_year": years[-1] if years else 0,
+            "max_year": years[0] if years else 0,
+        }
+        if anchor["name_key"]:
+            anchors.append(anchor)
+    return anchors
+
+
+def choose_best_d1_anchor(group_rows: list[dict[str, object]], anchors_by_name: dict[str, dict[str, list[dict[str, object]]]]) -> dict[str, object]:
+    profile_scores: dict[str, dict[str, object]] = {}
+    for row in sorted(group_rows, key=identity_row_score, reverse=True):
+        candidate_pool = []
+        for key, bucket in (
+            (row.get("_name_key"), anchors_by_name["strict"]),
+            (row.get("_loose_name_key"), anchors_by_name["loose"]),
+        ):
+            if key:
+                candidate_pool.extend(bucket.get(key, []))
+        seen = set()
+        for anchor in candidate_pool:
+            anchor_id = clean_text(anchor.get("canonical_player_id"))
+            if not anchor_id or anchor_id in seen:
+                continue
+            seen.add(anchor_id)
+            score = score_d1_anchor(row, anchor)
+            if score <= 0:
+                continue
+            entry = profile_scores.setdefault(anchor_id, {"anchor": anchor, "score": 0.0, "best_score": 0.0, "row_hits": set()})
+            entry["score"] += score
+            entry["best_score"] = max(entry["best_score"], score)
+            entry["row_hits"].add(row_identity_key(row))
+
+    if not profile_scores:
+        return {"status": "unmatched"}
+
+    ranked = sorted(profile_scores.values(), key=lambda item: (item["score"] + (len(item["row_hits"]) * 10), item["best_score"]), reverse=True)
+    best = ranked[0]
+    second = ranked[1] if len(ranked) > 1 else None
+    margin = (best["score"] - second["score"]) if second else 999.0
+    if best["best_score"] < 82 or margin < 12:
+        return {"status": "ambiguous"}
+    return {"status": "matched", "anchor": best["anchor"]}
+
+
+def score_d1_anchor(row: dict[str, object], anchor: dict[str, object]) -> float:
+    if row.get("_name_key") == anchor.get("name_key"):
+        total = 72.0
+    elif row.get("_loose_name_key") and row.get("_loose_name_key") == anchor.get("loose_name_key"):
+        total = 54.0
+    else:
+        return 0.0
+
+    row_dob = clean_text(row.get("_dob_iso"))
+    anchor_dob = clean_text(anchor.get("dob"))
+    if row_dob and anchor_dob:
+        if row_dob != anchor_dob:
+            return 0.0
+        total += 80.0
+
+    height_gap = abs_numeric_gap(row.get("_height_in_value"), anchor.get("height_in"))
+    if math.isfinite(height_gap):
+        if height_gap > 4:
+            return 0.0
+        if height_gap <= 1:
+            total += 22.0
+        elif height_gap <= 2:
+            total += 12.0
+        else:
+            total += 5.0
+
+    row_year = canonical_end_year(row.get("season"))
+    anchor_min_year = parse_int_value(anchor.get("min_year"))
+    anchor_max_year = parse_int_value(anchor.get("max_year"))
+    if row_year and anchor_min_year and anchor_max_year:
+        if row_year > (anchor_max_year + 2):
+            return 0.0
+        distance = min(abs(row_year - anchor_min_year), abs(row_year - anchor_max_year))
+        if distance <= 1:
+            total += 18.0
+        elif distance <= 3:
+            total += 12.0
+        elif distance <= 5:
+            total += 6.0
+        elif distance > 8:
+            return 0.0
+
+    if clean_text(anchor.get("realgm_player_id")):
+        total += 6.0
+    return total
+
+
+def assign_d1_anchor_to_group(group_rows: list[dict[str, object]], anchor: dict[str, object]) -> None:
+    canonical_id = clean_text(anchor.get("canonical_player_id"))
+    realgm_player_id = clean_text(anchor.get("realgm_player_id"))
+    for row in group_rows:
+        row["_canonical_player_id"] = canonical_id
+        row["_realgm_player_id"] = realgm_player_id
+        row["_match_source"] = "d1_link"
+
+
+def reconcile_d1_linked_groups(site_data: dict[str, dict[str, object]]) -> dict[str, int]:
+    fallback_updates: dict[str, tuple[str, str]] = {}
+    for group_rows in group_rows_by_identity(site_data["d1"]["rows"]):
+        representative = sorted(group_rows, key=identity_row_score, reverse=True)[0]
+        fallback_id = build_fallback_canonical_id(representative)
+        canonical_id = clean_text(representative.get("_canonical_player_id"))
+        if not fallback_id or not canonical_id or canonical_id == fallback_id:
+            continue
+        fallback_updates[fallback_id] = (
+            canonical_id,
+            clean_text(representative.get("_realgm_player_id")),
+        )
+
+    updated_rows = 0
+    updated_groups = 0
+    for dataset_id in ("d2", "naia", "juco", "fiba"):
+        for group_rows in group_rows_by_identity(site_data[dataset_id]["rows"]):
+            if clean_text(group_rows[0].get("_match_source")) != "d1_link":
+                continue
+            current_id = clean_text(group_rows[0].get("_canonical_player_id"))
+            next_ids = fallback_updates.get(current_id)
+            if not next_ids:
+                continue
+            updated_groups += 1
+            canonical_id, realgm_player_id = next_ids
+            for row in group_rows:
+                row["_canonical_player_id"] = canonical_id
+                row["_realgm_player_id"] = realgm_player_id
+                row["_match_source"] = "d1_link_reconciled"
+                updated_rows += 1
+
+    return {"anchors": len(fallback_updates), "groups": updated_groups, "rows": updated_rows}
+
+
+def choose_best_d1_profile(
+    group_rows: list[dict[str, object]],
+    player_name_index: dict[str, dict[str, list[dict[str, object]]]],
+    team_alias_map: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    profile_scores: dict[str, dict[str, object]] = {}
+    for row in sorted(group_rows, key=identity_row_score, reverse=True):
+        candidate_pool = []
+        for key in {row.get("_name_key"), row.get("_loose_name_key")}:
+            if key:
+                candidate_pool.extend(player_name_index["strict"].get(key, []))
+                candidate_pool.extend(player_name_index["loose"].get(key, []))
+        seen = set()
+        for profile in candidate_pool:
+            profile_id = clean_text(profile.get("realgm_player_id"))
+            if not profile_id or profile_id in seen:
+                continue
+            seen.add(profile_id)
+            score = score_d1_profile(row, profile, team_alias_map)
+            if score <= 0:
+                continue
+            entry = profile_scores.setdefault(profile_id, {
+                "profile": profile,
+                "score": 0.0,
+                "best_score": 0.0,
+                "row_hits": set(),
+            })
+            entry["score"] += score
+            entry["best_score"] = max(entry["best_score"], score)
+            entry["row_hits"].add(row_identity_key(row))
+
+    if not profile_scores:
+        return {"status": "unmatched"}
+
+    ranked = sorted(
+        profile_scores.values(),
+        key=lambda item: (item["score"] + (len(item["row_hits"]) * 16), item["best_score"]),
+        reverse=True,
+    )
+    best = ranked[0]
+    second = ranked[1] if len(ranked) > 1 else None
+    margin = (best["score"] - second["score"]) if second else 999.0
+    if best["best_score"] < 118 or margin < 16:
+        return {"status": "ambiguous"}
+    return {"status": "matched", "profile": best["profile"], "source": "realgm_d1_bridge"}
+
+
+def score_d1_profile(row: dict[str, object], profile: dict[str, object], team_alias_map: dict[str, dict[str, object]]) -> float:
+    if row.get("_name_key") == profile.get("name_key"):
+        total = 72.0
+    elif row.get("_loose_name_key") and row.get("_loose_name_key") == profile.get("loose_name_key"):
+        total = 54.0
+    else:
+        return 0.0
+
+    row_dob = clean_text(row.get("_dob_iso"))
+    profile_dob = clean_text(profile.get("born_iso"))
+    if row_dob and profile_dob:
+        if row_dob != profile_dob:
+            return 0.0
+        total += 92.0
+    elif row_dob:
+        total += 6.0
+
+    height_gap = abs_numeric_gap(row.get("_height_in_value"), profile.get("height_in"))
+    if math.isfinite(height_gap):
+        if height_gap > 4:
+            return 0.0
+        if height_gap <= 1:
+            total += 22.0
+        elif height_gap <= 2:
+            total += 12.0
+        else:
+            total += 5.0
+
+    weight_gap = abs_numeric_gap(row.get("_weight_lb_value"), profile.get("weight_lb"))
+    if math.isfinite(weight_gap):
+        if weight_gap > 50:
+            total -= 12.0
+        elif weight_gap <= 12:
+            total += 6.0
+        elif weight_gap <= 24:
+            total += 3.0
+
+    row_year = canonical_end_year(row.get("season"))
+    row_team_keys = build_row_team_keys("d1", row, team_alias_map)
+
+    college_team_score = best_profile_team_match_score(profile.get("college_seasons") or [], row_year, row_team_keys)
+    if college_team_score >= 0.99:
+        total += 88.0
+    elif college_team_score >= 0.82:
+        total += 74.0
+    elif college_team_score >= 0.66:
+        total += 56.0
+    elif college_team_score >= 0.5:
+        total += 30.0
+
+    if compare_team_strings(row.get("_team_name"), profile.get("pre_draft_team"), team_alias_map):
+        total += 26.0
+
+    profile_years = collect_profile_years(profile)
+    if row_year and profile_years:
+        min_year = min(profile_years)
+        max_year = max(profile_years)
+        if row_year > (max_year + 2):
+            return 0.0
+        if row_year < (min_year - 10):
+            return 0.0
+        distance = min(abs(row_year - min_year), abs(row_year - max_year))
+        if min_year <= row_year <= max_year:
+            total += 16.0
+        elif distance <= 2:
+            total += 10.0
+        elif distance <= 5:
+            total += 5.0
+
+    if clean_text(profile.get("realgm_player_id")):
+        total += 8.0
+    if clean_text(profile.get("summary_url")):
+        total += 2.0
+    return total
+
+
+def best_profile_team_match_score(profile_seasons: list[dict[str, object]], target_year: int, row_team_keys: list[str]) -> float:
+    if not target_year or not row_team_keys or not profile_seasons:
+        return 0.0
+    best_score = 0.0
+    for season_entry in profile_seasons:
+        if canonical_end_year(season_entry.get("season")) != target_year:
+            continue
+        season_team = clean_text(season_entry.get("school") or season_entry.get("team"))
+        season_team_keys = build_school_keys(season_team) or [normalize_key(season_team)]
+        best_score = max(best_score, score_team_key_sets(row_team_keys, season_team_keys))
+    return best_score
+
+
+def collect_profile_years(profile: dict[str, object]) -> list[int]:
+    years = set()
+    for season_entries in (
+        profile.get("college_seasons") or [],
+        profile.get("intl_seasons") or [],
+        profile.get("gleague_seasons") or [],
+        profile.get("nba_seasons") or [],
+    ):
+        for season_entry in season_entries:
+            season_year = canonical_end_year(season_entry.get("season"))
+            if season_year:
+                years.add(season_year)
+    return sorted(years)
 
 
 def group_rows_by_identity(rows: list[dict[str, object]]) -> list[list[dict[str, object]]]:
@@ -1145,9 +1938,21 @@ def score_grassroots_profile(row: dict[str, object], profile: dict[str, object])
             total += 6.0
         else:
             return 0.0
+    elif expected_college_year:
+        earliest_professional_year = get_profile_earliest_professional_year(profile)
+        if earliest_professional_year:
+            gap = abs(expected_college_year - earliest_professional_year)
+            if gap == 0:
+                total += 20.0
+            elif gap == 1:
+                total += 12.0
+            elif gap == 2:
+                total += 4.0
+            else:
+                return 0.0
 
-    row_height = first_number(row.get("_height_in_value"))
-    profile_height = first_number(profile.get("height_in"))
+    row_height = positive_number(row.get("_height_in_value"))
+    profile_height = positive_number(profile.get("height_in"))
     if row_height is not None and profile_height is not None:
         height_gap = abs(row_height - profile_height)
         if height_gap > 4:
@@ -1167,10 +1972,20 @@ def score_grassroots_profile(row: dict[str, object], profile: dict[str, object])
         else:
             total -= 4.0
 
+    high_school_score = score_team_key_sets(build_school_keys(row.get("team_name")), build_school_keys(profile.get("high_school")))
+    if high_school_score >= 0.99:
+        total += 20.0
+    elif high_school_score >= 0.82:
+        total += 14.0
+    elif high_school_score >= 0.66:
+        total += 8.0
+
     if clean_text(profile.get("high_school")):
         total += 2.0
     if profile.get("college_seasons"):
         total += 3.0
+    elif get_profile_earliest_professional_year(profile):
+        total += 4.0
 
     return total
 
@@ -1184,6 +1999,21 @@ def get_profile_earliest_college_year(profile: dict[str, object]) -> int:
     years = [
         canonical_end_year(entry.get("season"))
         for entry in (profile.get("college_seasons") or [])
+        if canonical_end_year(entry.get("season"))
+    ]
+    return min(years) if years else 0
+
+
+def get_profile_earliest_professional_year(profile: dict[str, object]) -> int:
+    seasons = (
+        (profile.get("professional_seasons") or [])
+        or (profile.get("nba_seasons") or [])
+        or (profile.get("gleague_seasons") or [])
+        or (profile.get("intl_seasons") or [])
+    )
+    years = [
+        canonical_end_year(entry.get("season"))
+        for entry in seasons
         if canonical_end_year(entry.get("season"))
     ]
     return min(years) if years else 0
@@ -1428,8 +2258,8 @@ def profile_level_for_dataset(dataset_id: str) -> str:
         return "Grassroots"
     if dataset_id in SITE_DATASETS:
         return clean_text(SITE_DATASETS[dataset_id]["profile_level"])
-    if dataset_id == "realgm_international":
-        return "FIBA"
+    if dataset_id in {"realgm_international", "realgm_gleague", "realgm_nba"}:
+        return "Professional"
     if dataset_id == "realgm_college":
         return "College"
     return clean_text(dataset_id).upper()
@@ -1446,6 +2276,8 @@ def display_source_dataset(source_name: str) -> str:
         "nba": "NBA",
         "realgm_college": "RealGM College",
         "realgm_international": "RealGM International",
+        "realgm_gleague": "RealGM G League",
+        "realgm_nba": "RealGM NBA",
     }.get(clean_text(source_name), clean_text(source_name))
 
 
@@ -1460,7 +2292,7 @@ def build_realgm_overlay_for_site_row(dataset_id: str, row: dict[str, object], p
     gp = to_float(stats.get("gp"))
     mpg = to_float(stats.get("min"))
     pts_pg = to_float(stats.get("pts"))
-    trb_pg = to_float(stats.get("reb"))
+    trb_pg = first_number(stats.get("trb"), stats.get("reb"))
     ast_pg = to_float(stats.get("ast"))
     stl_pg = to_float(stats.get("stl"))
     blk_pg = to_float(stats.get("blk"))
@@ -1485,9 +2317,9 @@ def build_realgm_overlay_for_site_row(dataset_id: str, row: dict[str, object], p
         "stl": round_number(gp * stl_pg, 3) if gp is not None and stl_pg is not None else "",
         "blk": round_number(gp * blk_pg, 3) if gp is not None and blk_pg is not None else "",
         "tov": round_number(gp * tov_pg, 3) if gp is not None and tov_pg is not None else "",
-        "fg_pct": normalize_site_percent_value("realgm", "fg_pct", stats.get("fg")),
-        "three_p_pct": normalize_site_percent_value("realgm", "three_p_pct", stats.get("3p")),
-        "ft_pct": normalize_site_percent_value("realgm", "ft_pct", stats.get("ft")),
+        "fg_pct": normalize_site_percent_value("realgm", "fg_pct", first_non_blank(stats.get("fg"), stats.get("fg_pct"))),
+        "three_p_pct": normalize_site_percent_value("realgm", "three_p_pct", first_non_blank(stats.get("3p"), stats.get("3p_pct"))),
+        "ft_pct": normalize_site_percent_value("realgm", "ft_pct", first_non_blank(stats.get("ft"), stats.get("ft_pct"))),
     }
 
 
@@ -1498,6 +2330,8 @@ def find_matching_realgm_season_entry(dataset_id: str, row: dict[str, object], p
         season_entries = profile.get("college_seasons") or []
     elif dataset_id == "fiba":
         season_entries = profile.get("intl_seasons") or []
+    elif dataset_id == "nba":
+        season_entries = profile.get("nba_seasons") or []
     else:
         return None
 
@@ -1554,9 +2388,12 @@ def build_player_profiles(
                 "pre_draft_team": "",
                 "current_team": "",
                 "current_nba_status": "",
-                "summary_url": "",
-                "college_seasons": [],
+            "summary_url": "",
+            "college_seasons": [],
                 "intl_seasons": [],
+                "gleague_seasons": [],
+                "nba_seasons": [],
+                "professional_seasons": [],
                 "levels": set(),
                 "seasons": [],
             })
@@ -1575,6 +2412,9 @@ def build_player_profiles(
                 entry["summary_url"] = base_profile["summary_url"]
                 entry["college_seasons"] = base_profile.get("college_seasons") or entry["college_seasons"]
                 entry["intl_seasons"] = base_profile.get("intl_seasons") or entry["intl_seasons"]
+                entry["gleague_seasons"] = base_profile.get("gleague_seasons") or entry["gleague_seasons"]
+                entry["nba_seasons"] = base_profile.get("nba_seasons") or entry["nba_seasons"]
+                entry["professional_seasons"] = base_profile.get("professional_seasons") or entry["professional_seasons"]
             entry["player_name"] = pick_preferred_name(entry["player_name"], row.get("_player_name"))
             dataset_id = clean_text(row.get("_dataset_id"))
             entry["levels"].add(profile_level_for_dataset(dataset_id))
@@ -1602,6 +2442,9 @@ def build_player_profiles(
             "summary_url": profile["summary_url"],
             "college_seasons": profile.get("college_seasons") or [],
             "intl_seasons": profile.get("intl_seasons") or [],
+            "gleague_seasons": profile.get("gleague_seasons") or [],
+            "nba_seasons": profile.get("nba_seasons") or [],
+            "professional_seasons": profile.get("professional_seasons") or [],
             "levels": set(),
             "seasons": [],
         })
@@ -1609,22 +2452,64 @@ def build_player_profiles(
             entry["levels"].add(derive_realgm_competition_level("realgm_college", clean_text(season.get("school"))))
             entry["seasons"].append({"source": "realgm_college", "season": canonical_season_label(season["season"]), "team": season["school"]})
         for season in profile["intl_seasons"]:
-            entry["levels"].add("FIBA")
+            entry["levels"].add("International")
+            entry["levels"].add("Professional")
             entry["seasons"].append({"source": "realgm_international", "season": canonical_season_label(season["season"]), "team": season["team"]})
+        for season in profile.get("gleague_seasons") or []:
+            entry["levels"].add("G League")
+            entry["levels"].add("Professional")
+            entry["seasons"].append({"source": "realgm_gleague", "season": canonical_season_label(season["season"]), "team": season["team"]})
+        for season in profile.get("nba_seasons") or []:
+            entry["levels"].add("NBA")
+            entry["levels"].add("Professional")
+            entry["seasons"].append({"source": "realgm_nba", "season": canonical_season_label(season["season"]), "team": season["team"]})
 
     for entry in profile_map.values():
-        ordered = sorted(
-            {
-                (item["source"], item["season"], item["team"])
-                for item in entry["seasons"]
-                if (item["season"] or item["team"]) and (not canonical_end_year(item["season"]) or canonical_end_year(item["season"]) >= 1998)
-            },
-            key=lambda item: (extract_leading_year(item[1]), item[1], item[2], item[0]),
-        )
-        entry["seasons"] = [{"source": source, "season": season, "team": team} for source, season, team in ordered]
-        entry["career_path"] = " -> ".join(filter(None, [team for _, _, team in ordered]))[:1200]
+        if "NBA" in entry["levels"] or (entry.get("professional_seasons") or []):
+            entry["levels"].add("Professional")
+        seasons_by_year: defaultdict[str, list[dict[str, object]]] = defaultdict(list)
+        for season_entry in entry["seasons"]:
+            season = canonical_season_label(season_entry.get("season"))
+            team = clean_text(season_entry.get("team"))
+            if not season and not team:
+                continue
+            end_year = canonical_end_year(season)
+            if end_year and end_year < 1998:
+                continue
+            seasons_by_year[season].append({
+                "source": clean_text(season_entry.get("source")),
+                "season": season,
+                "team": team,
+            })
+
+        ordered_entries: list[dict[str, object]] = []
+        for season, season_entries in seasons_by_year.items():
+            has_specific_team = any(normalize_key(item.get("team")) not in {"", "all", "all_teams", "allteam"} for item in season_entries)
+            deduped_entries: dict[str, dict[str, object]] = {}
+            for season_entry in season_entries:
+                team = clean_text(season_entry.get("team"))
+                if has_specific_team and normalize_key(team) in {"all", "all_teams", "allteam"}:
+                    continue
+                team_key = normalize_key(team) or team
+                current = deduped_entries.get(team_key)
+                if current is None:
+                    deduped_entries[team_key] = season_entry
+                    continue
+                current_is_realgm = clean_text(current.get("source")).startswith("realgm_")
+                candidate_is_realgm = clean_text(season_entry.get("source")).startswith("realgm_")
+                if current_is_realgm and not candidate_is_realgm:
+                    deduped_entries[team_key] = season_entry
+            ordered_entries.extend(deduped_entries.values())
+
+        ordered_entries.sort(key=lambda item: (extract_leading_year(item.get("season")), item.get("season"), item.get("team"), item.get("source")))
+        entry["seasons"] = ordered_entries
+        entry["career_path"] = " -> ".join(filter(None, [clean_text(item.get("team")) for item in ordered_entries]))[:1200]
         entry["profile_levels"] = " / ".join(sorted(entry["levels"], key=profile_level_sort_key))
-    return profile_map
+    return {
+        canonical_id: entry
+        for canonical_id, entry in profile_map.items()
+        if entry.get("seasons") or clean_text(entry.get("realgm_player_id"))
+    }
 
 
 def build_player_career_rows(
@@ -1635,6 +2520,7 @@ def build_player_career_rows(
     rows: list[dict[str, object]] = []
     seen_site_keys = set()
     site_rows_by_player_season: defaultdict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
+    site_player_ids: set[str] = set()
     max_site_year = 0
 
     source_row_groups = [(dataset_id, bundle["rows"]) for dataset_id, bundle in site_data.items()]
@@ -1655,8 +2541,9 @@ def build_player_career_rows(
             rows.append(out)
             seen_site_keys.add(key)
             site_rows_by_player_season[(canonical_id, clean_text(out.get("season")))].append(out)
+            site_player_ids.add(canonical_id)
 
-    realgm_rows = build_realgm_only_rows(player_profiles, seen_site_keys, site_rows_by_player_season)
+    realgm_rows = build_realgm_only_rows(player_profiles, seen_site_keys, site_rows_by_player_season, site_player_ids)
     rows.extend(realgm_rows)
     return [
         row for row in rows
@@ -1803,6 +2690,7 @@ def build_realgm_only_rows(
     player_profiles: dict[str, dict[str, object]],
     seen_site_keys: set[str],
     site_rows_by_player_season: defaultdict[tuple[str, str], list[dict[str, object]]],
+    site_player_ids: set[str],
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
 
@@ -1810,7 +2698,14 @@ def build_realgm_only_rows(
         realgm_player_id = clean_text(profile.get("realgm_player_id"))
         if not realgm_player_id:
             continue
-        for source_name, season_entries in (("realgm_college", profile.get("college_seasons") or []), ("realgm_international", profile.get("intl_seasons") or [])):
+        source_groups = [
+            ("realgm_international", profile.get("intl_seasons") or []),
+            ("realgm_gleague", profile.get("gleague_seasons") or []),
+            ("realgm_nba", profile.get("nba_seasons") or []),
+        ]
+        if canonical_id not in site_player_ids and (profile.get("college_seasons") or []):
+            source_groups.insert(0, ("realgm_college", profile.get("college_seasons") or []))
+        for source_name, season_entries in source_groups:
             for entry in season_entries:
                 season_row = entry.get("stats") if isinstance(entry, dict) else {}
                 if not isinstance(season_row, dict):
@@ -1824,6 +2719,7 @@ def build_realgm_only_rows(
                     continue
                 seen_site_keys.add(key)
                 rows.append(out)
+                site_rows_by_player_season[(canonical_id, clean_text(out.get("season")))].append(out)
     return rows
 
 
@@ -1832,7 +2728,7 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
     gp = to_float(season_row.get("gp"))
     mpg = to_float(season_row.get("min"))
     pts_pg = to_float(season_row.get("pts"))
-    reb_pg = to_float(season_row.get("reb"))
+    reb_pg = first_number(season_row.get("trb"), season_row.get("reb"))
     ast_pg = to_float(season_row.get("ast"))
     stl_pg = to_float(season_row.get("stl"))
     blk_pg = to_float(season_row.get("blk"))
@@ -1891,10 +2787,10 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "fga_75": "",
         "fta_75": "",
         "fg3a_75": "",
-        "fg_pct": normalize_site_percent_value("realgm", "fg_pct", season_row.get("fg")),
+        "fg_pct": normalize_site_percent_value("realgm", "fg_pct", first_non_blank(season_row.get("fg"), season_row.get("fg_pct"))),
         "two_p_pct": "",
-        "three_p_pct": normalize_site_percent_value("realgm", "three_p_pct", season_row.get("3p")),
-        "ft_pct": normalize_site_percent_value("realgm", "ft_pct", season_row.get("ft")),
+        "three_p_pct": normalize_site_percent_value("realgm", "three_p_pct", first_non_blank(season_row.get("3p"), season_row.get("3p_pct"))),
+        "ft_pct": normalize_site_percent_value("realgm", "ft_pct", first_non_blank(season_row.get("ft"), season_row.get("ft_pct"))),
         "efg_pct": "",
         "ts_pct": "",
         "ftr": "",
@@ -1955,34 +2851,6 @@ def write_rewritten_site_bundles(site_data: dict[str, dict[str, object]]) -> Non
         write_js_csv_rows(config["path"], config["global_name"], rows, columns)
 
 
-def write_player_career_bundle(rows: list[dict[str, object]]) -> None:
-    preferred_columns = [
-        "player_id", "canonical_player_id", "realgm_player_id", "source_player_id", "player_profile_key", "player_name", "season", "source_dataset", "competition_level",
-        "team_name", "team_full", "league", "career_path", "profile_levels", "profile_match_source", "realgm_summary_url",
-        "nationality", "hometown", "high_school", "pre_draft_team", "current_team", "current_nba_status",
-        "dob", "height_in", "weight_lb", "age", "pos", "class_year", "draft_pick", "rookie_year",
-        "gp", "min", "mpg", "pts", "pts_pg", "trb", "trb_pg", "orb", "drb", "ast", "ast_pg", "stl", "stl_pg",
-        "blk", "blk_pg", "tov", "tov_pg", "pf", "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
-        "fga_75", "fta_75", "fg3a_75", "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "rim_made", "rim_att", "rim_pct",
-        "mid_made", "mid_att", "mid_pct", "adjoe", "adrtg", "porpag", "dporpag", "bpm", "per", "rgm_per", "off", "def",
-        "tot", "ewins", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct", "ast_to",
-        "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40",
-    ]
-    all_columns = []
-    seen = set()
-    for column in preferred_columns:
-        if column not in seen:
-            seen.add(column)
-            all_columns.append(column)
-    for row in rows:
-        for column in row.keys():
-            if column.startswith("_") or column in seen:
-                continue
-            seen.add(column)
-            all_columns.append(column)
-    write_js_csv_rows(PLAYER_CAREER_BUNDLE_PATH, PLAYER_CAREER_GLOBAL, rows, all_columns)
-
-
 def write_outputs(player_profiles: dict[str, dict[str, object]], player_career_rows: list[dict[str, object]], team_alias_map: dict[str, dict[str, object]], team_alias_details: dict[str, dict[str, object]], site_data: dict[str, dict[str, object]], profiles: dict[str, dict[str, object]], summary: dict[str, object]) -> None:
     profile_records = []
     for profile in sorted(player_profiles.values(), key=lambda item: (normalize_name_key(item.get("player_name")), item.get("canonical_player_id"))):
@@ -2024,10 +2892,20 @@ def write_outputs(player_profiles: dict[str, dict[str, object]], player_career_r
     manifest = {
         "workspace_root": str(SITE_DATA_ROOT),
         "sources": {
-            "realgm": {
+            "realgm_reference": {
+                "path": str(REALGM_REFERENCE_ROOT),
+                "files": [str(path) for path in [REALGM_REFERENCE_PLAYERS_PATH, REALGM_REFERENCE_ROWS_PATH] if path.is_file()],
+                "notes": "Merged reference export used for cross-level player identity and professional-season linkage.",
+            },
+            "realgm_college": {
                 "path": str(REALGM_ROOT),
                 "files": [str(path) for path in get_realgm_source_paths()],
-                "notes": "Ground-truth player identity, college path, and international seasons.",
+                "notes": "College crawl source family used for supplemental player metadata and legacy season fallbacks.",
+            },
+            "realgm_nba": {
+                "path": str(REALGM_NBA_ROOT),
+                "files": [str(path) for path in [REALGM_NBA_ROOT / filename for filename in ("players.csv", "totals_rows.csv", "advanced_rows.csv")] if path.is_file()],
+                "notes": "NBA/G League/international RealGM crawl used to enrich professional linkage and season overlays.",
             },
             "rim_data": {
                 "path": str(RIM_ROOT),
@@ -2048,7 +2926,8 @@ def write_outputs(player_profiles: dict[str, dict[str, object]], player_career_r
         },
         "outputs": {
             "rewritten_site_bundles": {dataset_id: str(bundle["config"]["path"]) for dataset_id, bundle in site_data.items()},
-            "player_career_bundle": str(PLAYER_CAREER_BUNDLE_PATH),
+            "player_career_year_manifest": str(PLAYER_CAREER_YEAR_MANIFEST_PATH),
+            "player_career_year_chunks": str(PLAYER_CAREER_YEAR_CHUNK_DIR),
             "player_profiles_json": str(GENERATED_DIR / "player_profiles.json"),
             "team_aliases_json": str(GENERATED_DIR / "team_aliases.json"),
         },
@@ -2071,6 +2950,8 @@ def write_outputs(player_profiles: dict[str, dict[str, object]], player_career_r
                 "canonical_player_id": clean_text(representative.get("_canonical_player_id")),
             })
     (GENERATED_DIR / "unmatched_identity_groups.csv").write_text(dict_rows_to_csv(unresolved), encoding="utf-8")
+    if PLAYER_CAREER_BUNDLE_PATH.exists():
+        PLAYER_CAREER_BUNDLE_PATH.unlink()
 
 
 def load_js_csv_rows(path: Path, global_name: str) -> tuple[list[dict[str, object]], list[str]]:
@@ -2374,6 +3255,7 @@ def to_float(value: object) -> float | None:
     text = clean_text(value)
     if not text:
         return None
+    text = text.replace(",", "")
     try:
         return float(text)
     except ValueError:
@@ -2397,6 +3279,13 @@ def first_number(*values: object) -> float | None:
         if numeric is not None and math.isfinite(numeric):
             return numeric
     return None
+
+
+def positive_number(*values: object) -> float | None:
+    numeric = first_number(*values)
+    if numeric is None or not math.isfinite(numeric) or numeric <= 0:
+        return None
+    return numeric
 
 
 def first_non_blank(*values: object) -> object:
@@ -2763,12 +3652,40 @@ def build_fiba_team_keys(*values: object) -> list[str]:
     return sorted(key for key in keys if key)
 
 
+def build_nba_team_keys(*values: object) -> list[str]:
+    keys = set()
+    for value in values:
+        raw = clean_text(value)
+        if not raw:
+            continue
+        for piece in re.split(r"[,/|]+", raw):
+            part = piece.strip()
+            if not part:
+                continue
+            keys.update(build_school_keys(part))
+            upper = part.upper()
+            if re.fullmatch(r"[A-Z]{2,3}", upper):
+                canonical = NBA_TEAM_CODE_ALIASES.get(upper, upper)
+                keys.add(normalize_key(canonical))
+    return sorted(key for key in keys if key)
+
+
 def build_team_keys_with_alias(value: object, dataset_id: str, team_alias_map: dict[str, dict[str, object]]) -> list[str]:
     raw = clean_text(value)
-    keys = set(build_fiba_team_keys(raw) if dataset_id == "fiba" else build_school_keys(raw))
+    if dataset_id == "fiba":
+        keys = set(build_fiba_team_keys(raw))
+    elif dataset_id == "nba":
+        keys = set(build_nba_team_keys(raw))
+    else:
+        keys = set(build_school_keys(raw))
     canonical = canonicalize_team_name(raw, team_alias_map)
     if canonical:
-        keys.update(build_fiba_team_keys(canonical) if dataset_id == "fiba" else build_school_keys(canonical))
+        if dataset_id == "fiba":
+            keys.update(build_fiba_team_keys(canonical))
+        elif dataset_id == "nba":
+            keys.update(build_nba_team_keys(canonical))
+        else:
+            keys.update(build_school_keys(canonical))
     return sorted(key for key in keys if key)
 
 
@@ -2792,6 +3709,21 @@ def build_row_team_keys(dataset_id: str, row: dict[str, object], team_alias_map:
             canonicalize_team_name(row.get("team_name"), team_alias_map or {}) if team_alias_map else "",
         ]
         return sorted(set(build_fiba_team_keys(*values)))
+    if dataset_id == "nba":
+        team_values = [
+            row.get("_team_name"),
+            row.get("_team_display"),
+            row.get("team_name"),
+            row.get("team_full"),
+            row.get("team_alias"),
+            row.get("team_alias_all"),
+        ]
+        keys = set(build_nba_team_keys(*team_values))
+        if team_alias_map:
+            canonical = canonicalize_team_name(row.get("_team_name") or row.get("team_name"), team_alias_map)
+            if canonical:
+                keys.update(build_nba_team_keys(canonical))
+        return sorted(key for key in keys if key)
     team_values = [
         row.get("_team_name"),
         row.get("_team_display"),
@@ -3003,7 +3935,11 @@ def player_career_source_key(row: dict[str, object]) -> str:
 
 def derive_realgm_competition_level(source_name: str, team_name: str) -> str:
     if source_name == "realgm_international":
-        return "FIBA"
+        return "International"
+    if source_name == "realgm_gleague":
+        return "G League"
+    if source_name == "realgm_nba":
+        return "NBA"
     team_key = normalize_key(team_name)
     if "cc" in team_key or "community college" in team_key or "junior college" in team_key:
         return "JUCO"
@@ -3011,7 +3947,19 @@ def derive_realgm_competition_level(source_name: str, team_name: str) -> str:
 
 
 def profile_level_sort_key(value: str) -> tuple[int, str]:
-    order = {"Grassroots": 0, "JUCO": 1, "D2": 2, "NAIA": 3, "D1": 4, "FIBA": 5, "NBA": 6, "College": 7}
+    order = {
+        "Grassroots": 0,
+        "JUCO": 1,
+        "D2": 2,
+        "NAIA": 3,
+        "D1": 4,
+        "College": 5,
+        "FIBA": 6,
+        "International": 7,
+        "G League": 8,
+        "Professional": 9,
+        "NBA": 10,
+    }
     return (order.get(value, 99), value)
 
 
