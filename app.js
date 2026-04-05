@@ -2328,6 +2328,9 @@ function reapplyDatasetPostProcessing(rows, config) {
   if (config.id === "d1") annotateTrustedD1Rows(rows);
   inferMissingClassYears(rows, config);
   normalizeRepeatedSeniorSeasons(rows, config);
+  if (config.id === "grassroots") {
+    backfillGrassrootsPlayerAttributes(rows);
+  }
   rows.forEach((row) => populateImpactMetrics(row));
   applyCalculatedRatings(rows, config.id);
   rows.forEach((row) => populateImpactMetrics(row));
@@ -6868,6 +6871,17 @@ function getGrassrootsCareerAliasKey(rowsOrRow) {
   return buildGrassrootsCareerKey(sample);
 }
 
+function getGrassrootsCareerBucketKey(rowsOrRow) {
+  const rows = Array.isArray(rowsOrRow) ? rowsOrRow : [rowsOrRow];
+  if (!rows.length) return "";
+  const explicitId = Array.from(new Set(rows.map((row) => getExplicitIdentityId(row)).filter(Boolean)))[0] || "";
+  if (explicitId) return `id|${explicitId}`;
+  const preferredName = normalizeNameKey(getPreferredStatusName(rows));
+  if (preferredName) return `name|${preferredName}`;
+  const aliasKey = getGrassrootsCareerAliasKey(rows);
+  return aliasKey ? `alias|${aliasKey}` : "";
+}
+
 function getGrassrootsCareerNameYearKey(row) {
   const playerName = normalizeKey(row?.player_name || row?.player);
   const classYear = getGrassrootsCareerClassYearKey(row?.class_year);
@@ -6880,12 +6894,10 @@ function buildGrassrootsCareerKey(row) {
   const classYearText = getStringValue(row.class_year).trim();
   const classYearNumeric = classYearText ? Number(classYearText) : Number.NaN;
   const classYear = Number.isFinite(classYearNumeric) && classYearNumeric >= 1000 ? Math.round(classYearNumeric) : "";
-  const heightText = getStringValue(row.height_in ?? row.inches).trim();
-  const heightNumeric = heightText ? Number(heightText) : Number.NaN;
-  const heightKey = Number.isFinite(heightNumeric) ? Math.round(heightNumeric / 2) * 2 : "";
-  const weightText = getStringValue(row.weight_lb ?? row.weight).trim();
-  const weightNumeric = weightText ? Number(weightText) : Number.NaN;
-  const weightKey = Number.isFinite(weightNumeric) ? Math.round(weightNumeric / 5) * 5 : "";
+  const heightValue = firstPositiveFinite(row.height_in, row.inches, Number.NaN);
+  const heightKey = Number.isFinite(heightValue) ? Math.round(heightValue / 2) * 2 : "";
+  const weightValue = firstPositiveFinite(row.weight_lb, row.weight, Number.NaN);
+  const weightKey = Number.isFinite(weightValue) ? Math.round(weightValue / 5) * 5 : "";
   const posKey = normalizePosLabel(row.pos || row.pos_text);
   return [playerName, classYear, heightKey, weightKey, normalizeKey(posKey)].map((value) => String(value ?? "").trim()).join("|");
 }
@@ -6896,20 +6908,32 @@ function dedupeGrassrootsCareerScopeRows(dataset, rows) {
 
   const grouped = new Map();
   rows.forEach((row, index) => {
-    const key = getGrassrootsCareerNameYearKey(row) || `__grassroots_row_${index}`;
+    const key = getCareerGroupKey(dataset, row) || `__grassroots_row_${index}`;
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key).push(row);
   });
 
-  return Array.from(grouped.values()).map((groupRows) => (groupRows.length > 1 ? aggregateCareerRows(dataset, groupRows) : groupRows[0]));
+  return mergeCareerRowGroups(dataset, Array.from(grouped.values()))
+    .map((groupRows) => (groupRows.length > 1 ? aggregateCareerRows(dataset, groupRows) : groupRows[0]));
 }
 
-function buildGrassrootsCareerClusterMeta(row) {
+function buildGrassrootsCareerClusterMeta(rowsOrRow) {
+  const rows = Array.isArray(rowsOrRow) ? rowsOrRow.slice() : [rowsOrRow];
+  const representative = rows
+    .slice()
+    .sort((left, right) => grassrootsAliasRowScore(right) - grassrootsAliasRowScore(left))[0] || {};
+  const explicitIds = new Set();
+  const teamTokens = new Set();
+  rows.forEach((row) => {
+    const explicitId = getExplicitIdentityId(row);
+    if (explicitId) explicitIds.add(explicitId);
+    getGrassrootsCareerTeamTokens(row).forEach((value) => teamTokens.add(value));
+  });
   return {
-    rows: [row],
-    representative: row,
-    explicitIds: new Set(getExplicitIdentityId(row) ? [getExplicitIdentityId(row)] : []),
-    teamTokens: getGrassrootsCareerTeamTokens(row),
+    rows,
+    representative,
+    explicitIds,
+    teamTokens,
   };
 }
 
@@ -6978,6 +7002,128 @@ function getGrassrootsCareerInches(row) {
 function getGrassrootsCareerWeight(row) {
   const value = firstFinite(row?.weight_lb, row?.weight, Number.NaN);
   return Number.isFinite(value) && value > 0 ? value : Number.NaN;
+}
+
+function normalizePhysicalMeasurementField(row, field) {
+  if (!row || !field) return;
+  const rawValue = row[field];
+  const numeric = typeof rawValue === "number"
+    ? rawValue
+    : (getStringValue(rawValue).trim() === "" ? Number.NaN : Number(rawValue));
+  if (Number.isFinite(numeric) && numeric > 0) {
+    row[field] = numeric;
+    return;
+  }
+  delete row[field];
+}
+
+function normalizePhysicalMeasurements(row) {
+  normalizePhysicalMeasurementField(row, "height_in");
+  normalizePhysicalMeasurementField(row, "inches");
+  normalizePhysicalMeasurementField(row, "weight_lb");
+  normalizePhysicalMeasurementField(row, "weight");
+}
+
+function buildGrassrootsAttributeProfileKeys(row) {
+  const explicitId = getExplicitIdentityId(row);
+  const player = normalizeNameKey(row?.player_name || row?.player);
+  if (!explicitId && !player) return [];
+  const season = getStringValue(row?.season).trim();
+  const ageRange = getStringValue(row?.age_range || row?.level || "").trim();
+  const classYear = getGrassrootsCareerClassYearKey(row?.class_year);
+  return Array.from(new Set([
+    explicitId ? `id|${explicitId}` : "",
+    getStringValue(row?.career_player_key).trim(),
+    player ? [player, season, ageRange, classYear].join("|") : "",
+    player ? [player, season, ageRange].join("|") : "",
+    player ? [player, classYear].join("|") : "",
+    player,
+  ].filter(Boolean)));
+}
+
+function grassrootsAttributeSourceScore(row) {
+  let score = countMeaningfulRowFields(row);
+  if (getExplicitIdentityId(row)) score += 100;
+  if (Number.isFinite(getGrassrootsCareerInches(row))) score += 25;
+  if (Number.isFinite(getGrassrootsCareerWeight(row))) score += 15;
+  if (normalizePosLabel(row?.pos || row?.pos_text)) score += 10;
+  return score;
+}
+
+function backfillGrassrootsPlayerAttributes(rows) {
+  if (!Array.isArray(rows) || !rows.length) return;
+  const profiles = new Map();
+
+  rows.forEach((row) => {
+    normalizePhysicalMeasurements(row);
+    const keys = buildGrassrootsAttributeProfileKeys(row);
+    if (!keys.length) return;
+    const score = grassrootsAttributeSourceScore(row);
+    const height = getGrassrootsCareerInches(row);
+    const weight = getGrassrootsCareerWeight(row);
+    const pos = normalizePosLabel(row.pos || row.pos_text);
+    if (pos) {
+      row.pos = pos;
+      row.pos_text = pos;
+    }
+    keys.forEach((key) => {
+      const current = profiles.get(key) || {
+        heightScore: Number.NEGATIVE_INFINITY,
+        weightScore: Number.NEGATIVE_INFINITY,
+        posScore: Number.NEGATIVE_INFINITY,
+      };
+      if (Number.isFinite(height) && score > current.heightScore) {
+        current.heightScore = score;
+        current.height = height;
+      }
+      if (Number.isFinite(weight) && score > current.weightScore) {
+        current.weightScore = score;
+        current.weight = weight;
+      }
+      if (pos && score > current.posScore) {
+        current.posScore = score;
+        current.pos = pos;
+      }
+      profiles.set(key, current);
+    });
+  });
+
+  rows.forEach((row) => {
+    const keys = buildGrassrootsAttributeProfileKeys(row);
+    if (!keys.length) return;
+    if (!Number.isFinite(getGrassrootsCareerInches(row))) {
+      for (const key of keys) {
+        const height = profiles.get(key)?.height;
+        if (Number.isFinite(height)) {
+          row.height_in = height;
+          row.inches = height;
+          break;
+        }
+      }
+    }
+    if (!Number.isFinite(getGrassrootsCareerWeight(row))) {
+      for (const key of keys) {
+        const weight = profiles.get(key)?.weight;
+        if (Number.isFinite(weight)) {
+          row.weight_lb = weight;
+          row.weight = weight;
+          break;
+        }
+      }
+    }
+    if (!normalizePosLabel(row.pos || row.pos_text)) {
+      for (const key of keys) {
+        const pos = profiles.get(key)?.pos;
+        if (pos) {
+          row.pos = pos;
+          row.pos_text = pos;
+          break;
+        }
+      }
+    }
+    normalizePhysicalMeasurements(row);
+    row.career_player_key = buildGrassrootsCareerKey(row);
+  });
 }
 
 function getGrassrootsCareerTeamTokens(row) {
@@ -7627,7 +7773,7 @@ function mergeCareerRowGroups(dataset, groups) {
 
 function getCareerMergeBucketKey(meta, rows) {
   if (rows?.length && Object.prototype.hasOwnProperty.call(rows[0] || {}, "circuit")) {
-    const grassrootsKey = getGrassrootsCareerAliasKey(rows);
+    const grassrootsKey = getGrassrootsCareerBucketKey(rows);
     if (grassrootsKey) return `grassroots|${grassrootsKey}`;
   }
   const preferredName = normalizeNameKey(getPreferredStatusName(rows));
@@ -7716,7 +7862,12 @@ function canMergeCareerGroups(left, right) {
   }
   const leftGrassroots = Array.isArray(left.rows) && left.rows.length && Object.prototype.hasOwnProperty.call(left.rows[0] || {}, "circuit");
   const rightGrassroots = Array.isArray(right.rows) && right.rows.length && Object.prototype.hasOwnProperty.call(right.rows[0] || {}, "circuit");
-  if (leftGrassroots || rightGrassroots) return true;
+  if (leftGrassroots || rightGrassroots) {
+    return canMergeGrassrootsCareerClusters(
+      buildGrassrootsCareerClusterMeta(left.rows || []),
+      buildGrassrootsCareerClusterMeta(right.rows || [])
+    );
+  }
   if (left.dobs.length && right.dobs.length && !left.dobs.some((dob) => right.dobs.includes(dob))) return false;
   if (left.draftPicks.length && right.draftPicks.length && !left.draftPicks.some((pick) => right.draftPicks.includes(pick))) return false;
   if (left.rookieYears.length && right.rookieYears.length && !left.rookieYears.some((year) => right.rookieYears.includes(year))) return false;
@@ -8625,6 +8776,7 @@ function enhanceCommonRow(row, datasetId) {
     row.setting = getGrassrootsSettingForCircuit(row.circuit);
   }
 
+  normalizePhysicalMeasurements(row);
   if (!Number.isFinite(row.height_in) && Number.isFinite(row.inches)) row.height_in = row.inches;
   if (!Number.isFinite(row.inches) && Number.isFinite(row.height_in)) row.inches = row.height_in;
   if (!Number.isFinite(row.height_in) && typeof row.height === "string") {
@@ -8634,9 +8786,11 @@ function enhanceCommonRow(row, datasetId) {
       row.inches = parsed;
     }
   }
+  normalizePhysicalMeasurements(row);
 
   if (!Number.isFinite(row.weight_lb) && Number.isFinite(row.weight)) row.weight_lb = row.weight;
   if (!Number.isFinite(row.weight) && Number.isFinite(row.weight_lb)) row.weight = row.weight_lb;
+  normalizePhysicalMeasurements(row);
 
   if ((!Number.isFinite(row.gp) || row.gp <= 0) && Number.isFinite(row.min) && Number.isFinite(row.mpg) && row.mpg > 0) {
     row.gp = roundNumber(row.min / row.mpg, 3);
@@ -9706,6 +9860,10 @@ function calculateDporpag(adrtg, minuteSharePct, baselineEff = 104.9) {
 
 function firstFinite(...values) {
   return values.find((value) => Number.isFinite(value));
+}
+
+function firstPositiveFinite(...values) {
+  return values.find((value) => Number.isFinite(value) && value > 0);
 }
 
 function applyPerNormalization(rows, datasetId = "") {
