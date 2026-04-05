@@ -19,7 +19,7 @@ const MINUTES_DEFAULT = 200;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 2000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260405-supabase-pathfix-v37";
+const APP_BUILD_VERSION = "20260405-perf-shell-v38";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -1842,6 +1842,8 @@ const appState = {
   searchRenderTimer: 0,
   filterRenderTimer: 0,
   filterRenderColumns: new Set(),
+  secondaryFilterFrame: 0,
+  secondaryFilterDatasetId: "",
   adaptiveTeamTextFrame: 0,
   grassrootsScopePrefetches: new Set(),
   grassrootsScopeWorkerUrl: "",
@@ -2266,6 +2268,11 @@ function cancelPendingInteractiveRenders() {
     window.clearTimeout(appState.filterRenderTimer);
     appState.filterRenderTimer = 0;
   }
+  if (appState.secondaryFilterFrame) {
+    window.cancelAnimationFrame(appState.secondaryFilterFrame);
+    appState.secondaryFilterFrame = 0;
+  }
+  appState.secondaryFilterDatasetId = "";
   appState.filterRenderColumns.clear();
 }
 
@@ -6033,8 +6040,9 @@ function renderCurrentDataset() {
   if (!dataset || !state) return;
   if (dataset.id === "grassroots") maybeStartGrassrootsCareerYearLoad(dataset, state);
 
-  renderFilters(dataset, state);
   renderResultsOnly(dataset, state);
+  renderPrimaryFilters(dataset, state);
+  scheduleSecondaryFiltersRender(dataset, state);
   scheduleDeferredHydration(dataset.id);
   if (dataset.id === "grassroots" && state._grassrootsLoadingYearsKey) {
     elements.statusPill.textContent = `Loading ${dataset.navLabel} ${formatSelectedYearSummary(state._grassrootsLoadingYearsKey.split("|").filter(Boolean))}`;
@@ -6045,6 +6053,21 @@ function renderCurrentDataset() {
   } else {
     elements.statusPill.textContent = `${dataset.navLabel} ready`;
   }
+}
+
+function scheduleSecondaryFiltersRender(dataset, state) {
+  if (appState.secondaryFilterFrame) {
+    window.cancelAnimationFrame(appState.secondaryFilterFrame);
+    appState.secondaryFilterFrame = 0;
+  }
+  appState.secondaryFilterDatasetId = dataset?.id || "";
+  appState.secondaryFilterFrame = window.requestAnimationFrame(() => {
+    appState.secondaryFilterFrame = 0;
+    if (!dataset || !state) return;
+    if (appState.currentId !== dataset.id) return;
+    if (appState.secondaryFilterDatasetId !== dataset.id) return;
+    renderSecondaryFilters(dataset, state);
+  });
 }
 
 function maybeScheduleVisibleDeferredSupplementLoad(dataset, state) {
@@ -6097,11 +6120,14 @@ function renderResultsOnly(dataset = getCurrentDataset(), state = getCurrentUiSt
 }
 
 function renderFilters(dataset, state) {
+  renderPrimaryFilters(dataset, state);
+  renderSecondaryFilters(dataset, state);
+}
+
+function renderPrimaryFilters(dataset, state) {
   renderYearPills(dataset, state);
   renderTeamSelect(dataset, state);
   renderExtraFilters(dataset, state);
-  renderDemoRangeFilters(dataset, state);
-  renderStatGroups(dataset, state);
   elements.searchInput.value = state.search;
   elements.searchInput.disabled = Boolean(dataset.id === "grassroots" && state._grassrootsLoadingScope);
   const searchLabel = document.querySelector('label[for="searchInput"]');
@@ -6113,11 +6139,26 @@ function renderFilters(dataset, state) {
     : "Player name";
 }
 
+function renderSecondaryFilters(dataset, state) {
+  renderDemoRangeFilters(dataset, state);
+  renderStatGroups(dataset, state);
+}
+
 function renderYearPills(dataset, state) {
   const careerMode = dataset?.id === "grassroots" && state?.extraSelects?.view_mode === "career";
   const years = careerMode ? getGrassrootsCareerYears(dataset, state) : getAvailableYears(dataset);
   const loadedYears = getLoadedYearSet(dataset);
   const activeYears = state.years;
+  const shellKey = [
+    dataset?.id,
+    careerMode ? "career" : "season",
+    years.join("|"),
+    careerMode ? "" : Array.from(loadedYears).sort(compareYears).join("|"),
+  ].join("||");
+  if (elements.yearPills.dataset.shellKey === shellKey) {
+    syncYearPillSelectionState(activeYears, loadedYears, careerMode);
+    return;
+  }
   elements.yearPills.innerHTML = years
     .map((year) => {
       const active = activeYears.has(year) ? "is-active" : "";
@@ -6125,6 +6166,7 @@ function renderYearPills(dataset, state) {
       return `<button class="pill-toggle ${active}${loaded}" data-year="${escapeHtml(year)}" type="button">${escapeHtml(formatYearValueLabel(year))}</button>`;
     })
     .join("");
+  elements.yearPills.dataset.shellKey = shellKey;
 
   elements.yearPills.querySelectorAll("[data-year]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -6174,6 +6216,29 @@ function renderYearPills(dataset, state) {
   });
 }
 
+function syncYearPillSelectionState(activeYears, loadedYears, careerMode) {
+  elements.yearPills.querySelectorAll("[data-year]").forEach((button) => {
+    const year = getStringValue(button.dataset.year);
+    button.classList.toggle("is-active", activeYears.has(year));
+    button.classList.toggle("is-unloaded", !careerMode && !loadedYears.has(year));
+  });
+}
+
+function ensureTeamSelectValue(current) {
+  const targetValue = getStringValue(current) || "all";
+  let option = Array.from(elements.teamSelect.options || []).find((candidate) => candidate.value === targetValue);
+  if (!option && targetValue !== "all") {
+    option = document.createElement("option");
+    option.value = targetValue;
+    option.textContent = targetValue;
+    elements.teamSelect.appendChild(option);
+  }
+  elements.teamSelect.value = targetValue;
+  if (elements.teamSelect.value !== targetValue) {
+    elements.teamSelect.value = "all";
+  }
+}
+
 function renderTeamSelect(dataset, state) {
   elements.teamSelect.disabled = false;
   const current = state.team;
@@ -6184,12 +6249,11 @@ function renderTeamSelect(dataset, state) {
     Number(dataset?._rowVersion) || 0,
     getStringValue(state?.extraSelects?.view_mode || "player"),
     Array.from(state?.years || []).sort(compareYears).join("|"),
-    getStringValue(current),
     serializeSingleFilterState(dataset, state),
     serializeMultiFilterState(dataset, state),
   ].join("||");
-  if (cache.teamSelectKey === cacheKey && cache.teamSelectHtml) {
-    elements.teamSelect.innerHTML = cache.teamSelectHtml;
+  if (cache.teamSelectKey === cacheKey && cache.teamSelectHtml && elements.teamSelect.dataset.optionsKey === cacheKey) {
+    ensureTeamSelectValue(current);
     return;
   }
   const teamRows = dataset.id === "grassroots"
@@ -6227,6 +6291,8 @@ function renderTeamSelect(dataset, state) {
   cache.teamSelectKey = cacheKey;
   cache.teamSelectHtml = options.join("");
   elements.teamSelect.innerHTML = cache.teamSelectHtml;
+  elements.teamSelect.dataset.optionsKey = cacheKey;
+  ensureTeamSelectValue(current);
 }
 
 function renderExtraFilters(dataset, state) {
@@ -6495,6 +6561,29 @@ function renderDemoRangeFilters(dataset, state) {
   if (elements.demoControls) elements.demoControls.hidden = !columns.length;
   if (!columns.length) {
     elements.demoRangeFilters.innerHTML = "";
+    elements.demoRangeFilters.dataset.shellKey = "";
+    return;
+  }
+  const shellKey = [
+    dataset?.id,
+    columns.join("|"),
+    columns.map((column) => `${column}:${filterMeta.get(column)?.type || ""}:${filterMeta.has(column) ? "1" : "0"}`).join("|"),
+  ].join("||");
+  if (elements.demoRangeFilters.dataset.shellKey === shellKey) {
+    elements.demoRangeFilters.querySelectorAll("[data-demo-column]").forEach((button) => {
+      const column = getStringValue(button.dataset.demoColumn);
+      button.classList.toggle("is-active", Boolean(state.visibleColumns[column]));
+    });
+    elements.demoRangeFilters.querySelectorAll("[data-demo-min]").forEach((input) => {
+      const column = getStringValue(input.dataset.demoMin);
+      const nextValue = getStringValue(state.demoFilters[column]?.min);
+      if (input.value !== nextValue) input.value = nextValue;
+    });
+    elements.demoRangeFilters.querySelectorAll("[data-demo-max]").forEach((input) => {
+      const column = getStringValue(input.dataset.demoMax);
+      const nextValue = getStringValue(state.demoFilters[column]?.max);
+      if (input.value !== nextValue) input.value = nextValue;
+    });
     return;
   }
   elements.demoRangeFilters.innerHTML = columns
@@ -6513,6 +6602,7 @@ function renderDemoRangeFilters(dataset, state) {
       `;
     })
     .join("");
+  elements.demoRangeFilters.dataset.shellKey = shellKey;
 
   elements.demoRangeFilters.querySelectorAll("[data-demo-column]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -6553,8 +6643,41 @@ function getDemoControlColumns(dataset) {
 
 function renderStatGroups(dataset, state) {
   const numericColumnSet = dataset.meta.numericColumnSet || new Set(dataset.meta.numericColumns || []);
-  elements.statGroups.innerHTML = dataset.meta.groups
-    .filter((group) => !(dataset.id === "d1" && group.id === "playtype_analysis"))
+  const groups = dataset.meta.groups
+    .filter((group) => !(dataset.id === "d1" && group.id === "playtype_analysis"));
+  const shellKey = [
+    dataset?.id,
+    Number(dataset?._rowVersion) || 0,
+    groups.map((group) => `${group.id}:${group.columns.join(",")}`).join("|"),
+    Array.from(numericColumnSet).sort(compareFilterValues).join("|"),
+  ].join("||");
+  if (elements.statGroups.dataset.shellKey === shellKey) {
+    elements.statGroups.querySelectorAll("[data-group-cycle]").forEach((button) => {
+      const groupId = getStringValue(button.dataset.groupCycle);
+      const group = groups.find((item) => item.id === groupId);
+      if (!group) return;
+      button.classList.toggle("is-active", group.columns.some((column) => state.visibleColumns[column]));
+      const groupState = getGroupSelectionState(dataset, group, state);
+      const note = button.querySelector(".cycle-note");
+      if (note) note.textContent = `(${groupState})`;
+    });
+    elements.statGroups.querySelectorAll("[data-stat-column]").forEach((button) => {
+      const column = getStringValue(button.dataset.statColumn);
+      button.classList.toggle("is-active", Boolean(state.visibleColumns[column]));
+    });
+    elements.statGroups.querySelectorAll("[data-stat-min]").forEach((input) => {
+      const column = getStringValue(input.dataset.statMin);
+      const nextValue = getStringValue(state.numericFilters[column]?.min);
+      if (input.value !== nextValue) input.value = nextValue;
+    });
+    elements.statGroups.querySelectorAll("[data-stat-max]").forEach((input) => {
+      const column = getStringValue(input.dataset.statMax);
+      const nextValue = getStringValue(state.numericFilters[column]?.max);
+      if (input.value !== nextValue) input.value = nextValue;
+    });
+    return;
+  }
+  elements.statGroups.innerHTML = groups
     .map((group) => {
       const groupState = getGroupSelectionState(dataset, group, state);
       const rowsHtml = group.columns
@@ -6568,6 +6691,7 @@ function renderStatGroups(dataset, state) {
       return `<section class="stat-group"><div class="stat-group__header"><button class="group-cycle-button ${group.columns.some((column) => state.visibleColumns[column]) ? "is-active" : ""}" type="button" data-group-cycle="${escapeAttribute(group.id)}">${escapeHtml(group.label)} <span class="cycle-note">(${escapeHtml(groupState)})</span></button></div><div class="stat-group__body">${rowsHtml}</div></section>`;
     })
     .join("");
+  elements.statGroups.dataset.shellKey = shellKey;
 
   elements.statGroups.querySelectorAll("[data-stat-min]").forEach((input) => {
     bindCommittedFilterInput(input, () => {
