@@ -1,6 +1,7 @@
 const LOAD_STEP = 40;
 const SEARCH_RENDER_DEBOUNCE_MS = 120;
 const FILTER_RENDER_DEBOUNCE_MS = 120;
+const PLAYER_CAREER_YEAR_LOAD_BATCH_SIZE = 4;
 const HOME_ID = "home";
 const HOME_PAGES = [
   { id: "d1", label: "D1" },
@@ -18,8 +19,42 @@ const MINUTES_DEFAULT = 200;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 2000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260405-prof-linkage-v31";
+const APP_BUILD_VERSION = "20260405-prof-linkage-v35";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
+const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
+  ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
+  : "";
+const LOCAL_DATA_ASSET_PREFIXES = [];
+const UNIVERSAL_SEARCH_COLUMNS = [
+  "player_name",
+  "player",
+  "player_search_text",
+  "player_aliases",
+  "team_name",
+  "team_full",
+  "team_alias",
+  "team_alias_all",
+  "conference",
+  "coach",
+  "team_search_text",
+  "coach_search_text",
+  "competition_label",
+  "division",
+  "level",
+  "region",
+  "league",
+  "circuit",
+  "event_name",
+  "event_group",
+  "event_raw_name",
+  "state",
+  "class_year",
+  "profile_levels",
+  "career_path",
+  "high_school",
+  "hometown",
+  "nationality",
+];
 const SHARED_SINGLE_FILTERS = [
   {
     id: "view_mode",
@@ -537,11 +572,22 @@ function buildD1Config() {
     title: "D1",
     subtitle: "",
     dataScript: "data/d1_enriched_all_seasons.js",
+    multipartDataScript: {
+      type: "multipart-script",
+      manifestScript: "data/vendor/d1_enriched_all_seasons_manifest.js",
+      manifestGlobalName: "D1_ENRICHED_ALL_SEASONS_PARTS",
+      partTemplate: "data/vendor/d1_enriched_all_seasons_parts/{part}.js",
+    },
     mobileDataManifestScript: "data/vendor/d1_year_manifest.js",
     mobileDataScriptTemplate: "data/vendor/d1_year_chunks/{season}.js",
     mobileInitialYears: 1,
     deferredExtraScripts: [
-      "data/vendor/d1_frontend_data.js",
+      {
+        type: "multipart-script",
+        manifestScript: "data/vendor/d1_frontend_data_manifest.js",
+        manifestGlobalName: "D1_FRONTEND_DATA_PARTS",
+        partTemplate: "data/vendor/d1_frontend_data_parts/{part}.js",
+      },
       "data/vendor/d1_drives.js",
       "data/vendor/d1_extras.js",
       "data/vendor/d1_rosters.js",
@@ -848,9 +894,13 @@ function buildPlayerCareerConfig() {
     chunkTemplate: `data/vendor/player_career_chunks/{chunk}.js?v=${SCRIPT_CACHE_BUST}`,
     chunkOrderGlobalName: "PLAYER_CAREER_CHUNK_ORDER",
     chunkStoreGlobalName: "PLAYER_CAREER_CSV_CHUNKS",
+    chunkMultipartGlobalName: "PLAYER_CAREER_CHUNK_MULTIPART",
+    chunkMultipartTemplate: `data/vendor/player_career_chunk_parts/{part}.js?v=${SCRIPT_CACHE_BUST}`,
     yearManifestScript: `data/vendor/player_career_year_manifest.js?v=${SCRIPT_CACHE_BUST}`,
     yearChunkTemplate: `data/vendor/player_career_year_chunks/{season}.js?v=${SCRIPT_CACHE_BUST}`,
+    yearChunkMultipartTemplate: `data/vendor/player_career_year_chunk_parts/{part}.js?v=${SCRIPT_CACHE_BUST}`,
     deferredScriptTemplate: `data/vendor/player_career_year_supplement_chunks/{season}.js?v=${SCRIPT_CACHE_BUST}`,
+    deferredMultipartTemplate: `data/vendor/player_career_year_supplement_chunk_parts/{part}.js?v=${SCRIPT_CACHE_BUST}`,
     deferredHydrationMode: "supplement",
     autoHydrateDeferred: false,
     globalName: "PLAYER_CAREER_ALL_CSV",
@@ -1189,6 +1239,12 @@ const DATASETS = {
     title: "NAIA",
     subtitle: "",
     dataScript: "data/vendor/naia_all_seasons.js",
+    multipartDataScript: {
+      type: "multipart-script",
+      manifestScript: "data/vendor/naia_all_seasons_manifest.js",
+      manifestGlobalName: "NAIA_ALL_SEASONS_PARTS",
+      partTemplate: "data/vendor/naia_all_seasons_parts/{part}.js",
+    },
     extraScripts: ["data/vendor/naia_massey_team_ratings.js", "data/vendor/naia_divisions.js"],
     globalName: "NAIA_ALL_CSV",
     yearColumn: "season",
@@ -1453,6 +1509,7 @@ const DATASETS = {
       { id: "age_range", label: "Age", column: "age_range", options: [{ value: "all", label: "All Ages" }, { value: "17U", label: "17U" }, { value: "16U", label: "16U" }, { value: "15U", label: "15U" }] },
       { id: "class_year", label: "Class", column: "class_year" },
       { id: "event_name", label: "Event", column: "event_name" },
+      { id: "status_path", label: "Status", options: [{ value: "all", label: "All" }, { value: "d1", label: "D1" }, { value: "nba", label: "NBA" }] },
     ]),
     multiFilters: [
       { id: "circuit", label: "Circuit", column: "circuit", sort: GRASSROOTS_CIRCUIT_ORDER },
@@ -2377,7 +2434,7 @@ async function ensureDatasetHydrated(datasetId) {
   }
 
   const promise = (async () => {
-    await Promise.all((dataset.deferredExtraScripts || []).map((src) => loadScriptOnce(src)));
+    await Promise.all((dataset.deferredExtraScripts || []).map((entry) => loadScriptEntry(entry)));
     if (dataset.deferredHydrationMode === "supplement") {
       dataset._supplementScriptsLoaded = true;
     } else if (!dataset.precomputed) {
@@ -2418,10 +2475,10 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
 
   const config = DATASETS[datasetId];
   if (config.extraScripts?.length) {
-    await Promise.all(config.extraScripts.map((src) => loadScriptOnce(src)));
+    await Promise.all(config.extraScripts.map((entry) => loadScriptEntry(entry)));
   }
   if (options.requireHydrated && supportsDeferredHydration(config)) {
-    await Promise.all((config.deferredExtraScripts || []).map((src) => loadScriptOnce(src)));
+    await Promise.all((config.deferredExtraScripts || []).map((entry) => loadScriptEntry(entry)));
   }
   let usePlayerCareerChunks = datasetId === "player_career" && Boolean(config.yearManifestScript && config.yearChunkTemplate);
   let useGrassrootsChunks = datasetId === "grassroots" && Boolean(config.yearChunkTemplate);
@@ -2628,16 +2685,72 @@ function companionNbaCareerScore(row) {
 }
 
 function getCacheBustedScriptUrl(src) {
-  const url = new URL(src, window.location.href);
-  if (url.origin === window.location.origin) {
-    url.searchParams.set("v", String(SCRIPT_CACHE_BUST));
-  }
+  const srcValue = getStringValue(src).trim();
+  const useLocalOverride = LOCAL_DATA_ASSET_PREFIXES.some((prefix) => srcValue === prefix || srcValue.startsWith(prefix));
+  const resolvedSrc = (/^data\//i.test(srcValue) && DATA_ASSET_BASE && !useLocalOverride)
+    ? `${DATA_ASSET_BASE}/${srcValue.replace(/^\/+/, "")}`
+    : srcValue;
+  const url = new URL(resolvedSrc, window.location.href);
+  url.searchParams.set("v", String(SCRIPT_CACHE_BUST));
   return url.href;
 }
 
 function getChunkScriptPath(template, chunk) {
   if (!template || !chunk) return "";
   return template.replace("{chunk}", chunk);
+}
+
+function isMultipartScriptEntry(entry) {
+  return Boolean(entry && typeof entry === "object" && entry.type === "multipart-script");
+}
+
+function getMultipartScriptPartPaths(entry) {
+  if (!isMultipartScriptEntry(entry)) return [];
+  const manifest = entry.manifestGlobalName ? window[entry.manifestGlobalName] : null;
+  const parts = Array.isArray(manifest?.parts)
+    ? manifest.parts
+    : (Array.isArray(manifest) ? manifest : []);
+  if (!parts.length || !entry.partTemplate) return [];
+  return parts
+    .map((part) => getStringValue(part).trim())
+    .filter(Boolean)
+    .map((part) => entry.partTemplate.replace("{part}", part));
+}
+
+async function loadScriptEntry(entry) {
+  if (!entry) return;
+  if (!isMultipartScriptEntry(entry)) {
+    await loadScriptOnce(entry);
+    return;
+  }
+  if (entry.manifestScript) {
+    await loadScriptOnce(entry.manifestScript);
+  }
+  const partPaths = getMultipartScriptPartPaths(entry);
+  if (!partPaths.length) {
+    throw new Error(`Missing multipart script parts for ${entry.manifestGlobalName || entry.manifestScript || entry.partTemplate || "entry"}`);
+  }
+  await Promise.all(partPaths.map((partPath) => loadScriptOnce(partPath)));
+}
+
+function getChunkMultipartParts(config, chunk) {
+  if (!config?.chunkMultipartGlobalName) return [];
+  const partMap = window[config.chunkMultipartGlobalName];
+  const values = partMap && Array.isArray(partMap[chunk]) ? partMap[chunk] : [];
+  return values.map((value) => getStringValue(value).trim()).filter(Boolean);
+}
+
+function getChunkMultipartScriptPath(config, part) {
+  if (!config?.chunkMultipartTemplate || !part) return "";
+  return config.chunkMultipartTemplate.replace("{part}", part);
+}
+
+async function loadChunkValueFromMultipart(config, chunk) {
+  const parts = getChunkMultipartParts(config, chunk);
+  if (!parts.length) return "";
+  await Promise.all(parts.map((part) => loadScriptOnce(getChunkMultipartScriptPath(config, part))));
+  const chunkStore = window[config.chunkStoreGlobalName] || {};
+  return getStringValue(chunkStore[chunk]);
 }
 
 async function loadChunkedCsvPayload(config) {
@@ -2647,15 +2760,32 @@ async function loadChunkedCsvPayload(config) {
     ? window[config.chunkOrderGlobalName].map((value) => getStringValue(value).trim()).filter(Boolean)
     : [];
   if (!chunkOrder.length) return "";
-  await Promise.all(chunkOrder.map((chunk) => loadScriptOnce(getChunkScriptPath(config.chunkTemplate, chunk))));
-  const chunkStore = window[config.chunkStoreGlobalName] || {};
-  return chunkOrder.map((chunk) => getStringValue(chunkStore[chunk])).join("");
+  const payloads = await Promise.all(chunkOrder.map(async (chunk) => {
+    const multipartParts = getChunkMultipartParts(config, chunk);
+    if (multipartParts.length) {
+      return loadChunkValueFromMultipart(config, chunk);
+    }
+    await loadScriptOnce(getChunkScriptPath(config.chunkTemplate, chunk));
+    const chunkStore = window[config.chunkStoreGlobalName] || {};
+    return getStringValue(chunkStore[chunk]);
+  }));
+  return payloads.join("");
 }
 
 async function loadDatasetCsvPayload(config) {
   if (config?.chunkManifestScript && config?.chunkTemplate) {
     const chunkedPayload = await loadChunkedCsvPayload(config);
     if (chunkedPayload) return chunkedPayload;
+  }
+  if (config?.multipartDataScript) {
+    try {
+      await loadScriptEntry(config.multipartDataScript);
+      const rawPayload = window[config.globalName] ?? "";
+      const csvText = Array.isArray(rawPayload) ? rawPayload.join("\n") : String(rawPayload);
+      if (csvText) return csvText;
+    } catch (error) {
+      console.warn(`Falling back to direct dataset script for ${config.id || config.globalName}`, error);
+    }
   }
   await loadScriptOnce(config.dataScript);
   const rawPayload = window[config.globalName] ?? "";
@@ -2771,6 +2901,30 @@ function getPlayerCareerInitialYears(config) {
 
 function getPlayerCareerYearChunkPath(config, season) {
   return buildYearChunkPath(config?.yearChunkTemplate, season);
+}
+
+function getPlayerCareerYearChunkPartPaths(config, season) {
+  const manifest = getPlayerCareerManifest();
+  const partKeys = Array.isArray(manifest?.multipartYearChunks?.[season])
+    ? manifest.multipartYearChunks[season]
+    : [];
+  if (!partKeys.length || !config?.yearChunkMultipartTemplate) return [];
+  return partKeys
+    .map((part) => getStringValue(part).trim())
+    .filter(Boolean)
+    .map((part) => config.yearChunkMultipartTemplate.replace("{part}", part));
+}
+
+function getPlayerCareerSupplementChunkPartPaths(config, season) {
+  const manifest = getPlayerCareerManifest();
+  const partKeys = Array.isArray(manifest?.multipartSupplementChunks?.[season])
+    ? manifest.multipartSupplementChunks[season]
+    : [];
+  if (!partKeys.length || !config?.deferredMultipartTemplate) return [];
+  return partKeys
+    .map((part) => getStringValue(part).trim())
+    .filter(Boolean)
+    .map((part) => config.deferredMultipartTemplate.replace("{part}", part));
 }
 
 function getPlayerCareerRequestedYears(dataset, state) {
@@ -3313,32 +3467,39 @@ async function loadPlayerCareerRowsForYears(dataset, config, years, options = {}
     .sort(compareYears);
   if (!pendingYears.length) return dataset;
 
-  pendingYears.forEach((season) => {
-    if (dataset._loadedYears.has(season) || dataset._playerCareerRowLoads.has(season)) return;
-    const promise = (async () => {
-      const src = getPlayerCareerYearChunkPath(config, season);
-      if (!src) throw new Error(`Missing Player/Career chunk for ${season}`);
-      await loadScriptOnce(src);
-      const chunkMap = window.PLAYER_CAREER_YEAR_CSV_CHUNKS || {};
-      const csvText = chunkMap[season];
-      if (!csvText) throw new Error(`Missing Player/Career rows for ${season}`);
-      return parseDatasetRows(csvText, dataset.id, config, { ...options, skipEnhance: true });
-    })();
-    dataset._playerCareerRowLoads.set(season, promise);
-  });
+  for (let index = 0; index < pendingYears.length; index += PLAYER_CAREER_YEAR_LOAD_BATCH_SIZE) {
+    const batchYears = pendingYears.slice(index, index + PLAYER_CAREER_YEAR_LOAD_BATCH_SIZE);
+    batchYears.forEach((season) => {
+      if (dataset._loadedYears.has(season) || dataset._playerCareerRowLoads.has(season)) return;
+      const promise = (async () => {
+        const src = getPlayerCareerYearChunkPath(config, season);
+        if (!src) throw new Error(`Missing Player/Career chunk for ${season}`);
+        await loadScriptOnce(src);
+        const partPaths = getPlayerCareerYearChunkPartPaths(config, season);
+        if (partPaths.length) {
+          await Promise.all(partPaths.map((partPath) => loadScriptOnce(partPath)));
+        }
+        const chunkMap = window.PLAYER_CAREER_YEAR_CSV_CHUNKS || {};
+        const csvText = chunkMap[season];
+        if (!csvText) throw new Error(`Missing Player/Career rows for ${season}`);
+        return parseDatasetRows(csvText, dataset.id, config, { ...options, skipEnhance: true });
+      })();
+      dataset._playerCareerRowLoads.set(season, promise);
+    });
 
-  const loadedChunks = await Promise.all(pendingYears.map(async (season) => ({
-    season,
-    rows: await dataset._playerCareerRowLoads.get(season),
-  })));
-  loadedChunks.sort((left, right) => compareYears(left.season, right.season));
-  loadedChunks.forEach(({ season, rows }) => {
-    rowsToAppend.push(...rows);
-    dataset._playerCareerRowsByYear.set(season, rows);
-    dataset._loadedYears.add(season);
-    dataset._playerCareerRowLoads.delete(season);
-  });
-  await new Promise((resolve) => window.setTimeout(resolve, 0));
+    const loadedChunks = await Promise.all(batchYears.map(async (season) => ({
+      season,
+      rows: await dataset._playerCareerRowLoads.get(season),
+    })));
+    loadedChunks.sort((left, right) => compareYears(left.season, right.season));
+    loadedChunks.forEach(({ season, rows }) => {
+      rowsToAppend.push(...rows);
+      dataset._playerCareerRowsByYear.set(season, rows);
+      dataset._loadedYears.add(season);
+      dataset._playerCareerRowLoads.delete(season);
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  }
 
   if (!rowsToAppend.length) return dataset;
   dataset.rows = finalizeDatasetRows(dataset.rows.concat(rowsToAppend), config);
@@ -3367,40 +3528,47 @@ async function loadPlayerCareerSupplementRowsForYears(dataset, config, years, op
     await loadPlayerCareerRowsForYears(dataset, config, missingBaseYears, options);
   }
 
-  pendingYears.forEach((season) => {
-    if (dataset._playerCareerSupplementLoads.has(season)) return;
-    const promise = (async () => {
-      const src = buildDeferredSupplementScriptPath(config, season);
-      if (!src) return [];
-      await loadScriptOnce(src);
-      const chunkMap = window.PLAYER_CAREER_YEAR_SUPPLEMENT_CSV_CHUNKS || {};
-      const csvText = chunkMap[season];
-      if (!csvText) return [];
-      return parseDatasetRows(csvText, dataset.id, config, { ...options, skipEnhance: true });
-    })();
-    dataset._playerCareerSupplementLoads.set(season, promise);
-  });
+  for (let index = 0; index < pendingYears.length; index += PLAYER_CAREER_YEAR_LOAD_BATCH_SIZE) {
+    const batchYears = pendingYears.slice(index, index + PLAYER_CAREER_YEAR_LOAD_BATCH_SIZE);
+    batchYears.forEach((season) => {
+      if (dataset._playerCareerSupplementLoads.has(season)) return;
+      const promise = (async () => {
+        const src = buildDeferredSupplementScriptPath(config, season);
+        if (!src) return [];
+        await loadScriptOnce(src);
+        const partPaths = getPlayerCareerSupplementChunkPartPaths(config, season);
+        if (partPaths.length) {
+          await Promise.all(partPaths.map((partPath) => loadScriptOnce(partPath)));
+        }
+        const chunkMap = window.PLAYER_CAREER_YEAR_SUPPLEMENT_CSV_CHUNKS || {};
+        const csvText = chunkMap[season];
+        if (!csvText) return [];
+        return parseDatasetRows(csvText, dataset.id, config, { ...options, skipEnhance: true });
+      })();
+      dataset._playerCareerSupplementLoads.set(season, promise);
+    });
 
-  const loadedSupplements = await Promise.all(pendingYears.map(async (season) => ({
-    season,
-    rows: await dataset._playerCareerSupplementLoads.get(season),
-  })));
-  loadedSupplements.sort((left, right) => compareYears(left.season, right.season));
-  loadedSupplements.forEach(({ season, rows: supplementRows }) => {
-    const yearRows = dataset._playerCareerRowsByYear.get(season) || [];
-    if (supplementRows.length && yearRows.length) {
-      const rowCount = Math.min(yearRows.length, supplementRows.length);
-      for (let index = 0; index < rowCount; index += 1) {
-        Object.assign(yearRows[index], supplementRows[index]);
+    const loadedSupplements = await Promise.all(batchYears.map(async (season) => ({
+      season,
+      rows: await dataset._playerCareerSupplementLoads.get(season),
+    })));
+    loadedSupplements.sort((left, right) => compareYears(left.season, right.season));
+    loadedSupplements.forEach(({ season, rows: supplementRows }) => {
+      const yearRows = dataset._playerCareerRowsByYear.get(season) || [];
+      if (supplementRows.length && yearRows.length) {
+        const rowCount = Math.min(yearRows.length, supplementRows.length);
+        for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+          Object.assign(yearRows[rowIndex], supplementRows[rowIndex]);
+        }
+        if (rowCount !== yearRows.length || rowCount !== supplementRows.length) {
+          console.warn(`Player/Career supplement row mismatch for ${season}: base=${yearRows.length}, supplement=${supplementRows.length}`);
+        }
       }
-      if (rowCount !== yearRows.length || rowCount !== supplementRows.length) {
-        console.warn(`Player/Career supplement row mismatch for ${season}: base=${yearRows.length}, supplement=${supplementRows.length}`);
-      }
-    }
-    dataset._loadedSupplementYears.add(season);
-    dataset._playerCareerSupplementLoads.delete(season);
-  });
-  await new Promise((resolve) => window.setTimeout(resolve, 0));
+      dataset._loadedSupplementYears.add(season);
+      dataset._playerCareerSupplementLoads.delete(season);
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  }
 
   dataset._rowVersion = (dataset._rowVersion || 0) + 1;
   invalidateDatasetDerivedCaches(dataset.id);
@@ -3542,14 +3710,12 @@ async function upgradeMobileD1Dataset(dataset, options = {}) {
   if (!dataset || dataset.id !== "d1" || !dataset._mobileLite) return dataset;
   const config = DATASETS.d1;
   if (config.extraScripts?.length) {
-    await Promise.all(config.extraScripts.map((src) => loadScriptOnce(src)));
+    await Promise.all(config.extraScripts.map((entry) => loadScriptEntry(entry)));
   }
   if (options.requireHydrated && supportsDeferredHydration(config)) {
-    await Promise.all((config.deferredExtraScripts || []).map((src) => loadScriptOnce(src)));
+    await Promise.all((config.deferredExtraScripts || []).map((entry) => loadScriptEntry(entry)));
   }
-  await loadScriptOnce(config.dataScript);
-  const rawPayload = window[config.globalName] ?? "";
-  const csvText = Array.isArray(rawPayload) ? rawPayload.join("\n") : String(rawPayload);
+  const csvText = await loadDatasetCsvPayload(config);
   const rows = finalizeDatasetRows(parseDatasetRows(csvText, dataset.id, config, options), config);
   dataset.rows = rows;
   dataset.meta = buildDatasetMeta(rows, config);
@@ -3769,9 +3935,13 @@ function getStatusSourceRows(dataset) {
   const sourceRows = dataset.id === "d1"
     ? dataset.rows.filter((row) => row._trustedD1 !== false)
     : dataset.rows.slice();
-  if (dataset.id === "fiba") return sourceRows;
-  const qualified = sourceRows.filter((row) => getMinutesValue(row) >= MINUTES_DEFAULT || rowHasExplicitProjectedD1Data(row));
-  return qualified.length ? qualified : sourceRows;
+  const identifiedRows = sourceRows.filter((row) => hasStatusIdentity(row));
+  if (dataset.id === "grassroots") return identifiedRows;
+  if (dataset.id === "fiba") return identifiedRows.length ? identifiedRows : sourceRows;
+  if (!identifiedRows.length) return sourceRows;
+  if (dataset.id === "nba") return identifiedRows;
+  const qualified = identifiedRows.filter((row) => getMinutesValue(row) >= MINUTES_DEFAULT || rowHasExplicitProjectedD1Data(row));
+  return qualified.length ? qualified : identifiedRows;
 }
 
 function getPreferredStatusName(rows) {
@@ -5919,7 +6089,7 @@ function renderResultsOnly(dataset = getCurrentDataset(), state = getCurrentUiSt
   maybeScheduleVisibleDeferredSupplementLoad(dataset, state);
   const filtered = getFilteredRows(dataset, state);
   const visibleColumns = getVisibleColumns(dataset, state);
-  const colorScale = getColorScale(dataset, state, visibleColumns, filtered);
+  const colorScale = getColorScale(dataset, state, visibleColumns);
   renderTable(dataset, state, filtered, { visibleColumns, colorScale });
   renderFinderBar(dataset, state);
   updateSummary(dataset, state, filtered);
@@ -6532,11 +6702,8 @@ function renderTableLegend(dataset, state) {
 
 function getFilteredRows(dataset, state) {
   const cache = getRenderCache(state);
-  const baseKey = [
+  const filterKey = [
     getDisplayRowsCacheKey(dataset, state),
-    getStringValue(state.sortBy),
-    getStringValue(state.sortDir),
-    getStringValue(state.sortBlankMode),
     getStringValue(state.team),
     state.search.trim().toLowerCase(),
     serializeSingleFilterState(dataset, state),
@@ -6544,12 +6711,19 @@ function getFilteredRows(dataset, state) {
     serializeRangeFilters(dataset.meta.demoFilterMeta.map((item) => item.column), state.demoFilters),
     serializeRangeFilters(dataset.meta.numericColumns || [], state.numericFilters),
   ].join("||");
-  if (cache.filteredRowsKey === baseKey) return cache.filteredRows;
-  const sortedDisplayRows = getSortedDisplayRows(dataset, state, getDisplayRows(dataset, state));
-  const filtered = state.extraSelects.view_mode === "career"
-    ? getCareerFilteredRows(dataset, state, sortedDisplayRows, baseKey)
-    : getBaseFilteredRows(dataset, state, sortedDisplayRows, baseKey);
-  cache.filteredRowsKey = baseKey;
+  const sortKey = [
+    filterKey,
+    getStringValue(state.sortBy),
+    getStringValue(state.sortDir),
+    getStringValue(state.sortBlankMode),
+  ].join("||");
+  if (cache.filteredRowsKey === sortKey) return cache.filteredRows;
+  const displayRows = getDisplayRows(dataset, state);
+  const filteredBase = state.extraSelects.view_mode === "career"
+    ? getCareerFilteredRows(dataset, state, displayRows, filterKey)
+    : getBaseFilteredRows(dataset, state, displayRows, filterKey);
+  const filtered = sortRows(filteredBase, state.sortBy, state.sortDir, dataset, state.sortBlankMode);
+  cache.filteredRowsKey = sortKey;
   cache.filteredRows = filtered;
   return filtered;
 }
@@ -6641,7 +6815,7 @@ function getFilterContextRows(dataset, state, options = {}) {
         continue;
       }
       if (filter.id === "status_path") {
-        if (!row._statusFlags?.[selected]) return false;
+        if (!hasStatusIdentity(row) || !row._statusFlags?.[selected]) return false;
         continue;
       }
       if (dataset.id === "player_career" && filter.id === "competition_level" && selected === "Professional") {
@@ -6949,16 +7123,22 @@ function scheduleGrassrootsSearchWarmup(dataset, rows, cacheKey) {
 
 function getRowSearchHaystack(dataset, row) {
   if (!row) return "";
-  if (!dataset?._searchCacheColumnsKey) dataset._searchCacheColumnsKey = ["player_name", "player", "player_search_text", "player_aliases"].join("|");
-  const searchKey = dataset?._searchCacheColumnsKey || "";
+  const columns = getSearchHaystackColumns(dataset);
+  const searchKey = columns.join("|");
   if (row._searchCacheKey !== searchKey) {
     row._searchCacheKey = searchKey;
-    row._searchHaystack = [row?.[dataset?.playerColumn], row?.player_name, row?.player, row?.player_search_text, row?.player_aliases]
+    row._searchHaystack = columns
+      .map((column) => row?.[column])
       .map((value) => normalizeSearchPhrase(value))
       .filter(Boolean)
       .join(" ");
   }
   return row._searchHaystack || "";
+}
+
+function getSearchHaystackColumns(dataset) {
+  const configured = Array.isArray(dataset?.searchColumns) ? dataset.searchColumns : [];
+  return Array.from(new Set([...configured, ...UNIVERSAL_SEARCH_COLUMNS])).filter(Boolean);
 }
 
 function getRenderCache(state) {
@@ -8387,18 +8567,10 @@ function getColumnWidth(column, dataset) {
   return 44;
 }
 
-function getColorPopulation(dataset, state, rowsHint = null) {
+function getColorPopulation(dataset, state) {
   const cache = getRenderCache(state);
-  if (Array.isArray(rowsHint)) {
-    const hintKey = `${cache.filteredRowsKey || ""}|${rowsHint.length}|${getQualifiedMinuteThreshold(dataset, state)}`;
-    if (cache.colorRowsKey === hintKey) return cache.colorRows;
-    const sampled = sampleColorRows(rowsHint);
-    cache.colorRowsKey = hintKey;
-    cache.colorRows = sampled;
-    return sampled;
-  }
   if (dataset.id === "grassroots") {
-    const minuteThreshold = getQualifiedMinuteThreshold(dataset, state);
+    const minuteThreshold = getColorMinuteThreshold(dataset);
     const scope = getGrassrootsDisplayScope(dataset, state) || "player";
     const sourceRows = getGrassrootsActiveScopeRows(dataset, state);
     const key = `${scope}|${Number(dataset?._rowVersion) || 0}|${Array.isArray(sourceRows) ? sourceRows.length : 0}|${minuteThreshold}`;
@@ -8411,9 +8583,9 @@ function getColorPopulation(dataset, state, rowsHint = null) {
     return cache.colorRows;
   }
   const scoped = getDisplayRows(dataset, state);
-  const key = `${cache.displayRowsKey || getDisplayRowsCacheKey(dataset, state)}|${getQualifiedMinuteThreshold(dataset, state)}`;
+  const key = `${cache.displayRowsKey || getDisplayRowsCacheKey(dataset, state)}|${getColorMinuteThreshold(dataset)}`;
   if (cache.colorRowsKey === key) return cache.colorRows;
-  const qualified = scoped.filter((row) => getMinutesValue(row) >= getQualifiedMinuteThreshold(dataset, state));
+  const qualified = scoped.filter((row) => getMinutesValue(row) >= getColorMinuteThreshold(dataset));
   const rows = qualified.length ? qualified : scoped;
   cache.colorRowsKey = key;
   cache.colorRows = sampleColorRows(rows);
@@ -8434,6 +8606,10 @@ function sampleColorRows(rows, limit = COLOR_SCALE_MAX_ROWS) {
 function getDatasetMinuteThreshold(dataset) {
   const value = Number(dataset?.minuteDefault);
   return Number.isFinite(value) && value > 0 ? value : MINUTES_DEFAULT;
+}
+
+function getColorMinuteThreshold(dataset) {
+  return getDatasetMinuteThreshold(dataset);
 }
 
 function getQualifiedMinuteThreshold(dataset, state) {
@@ -8487,7 +8663,7 @@ function renderBodyCell(dataset, state, column, row, index, colorScale) {
   const display = formatValue(dataset, column, rawValue, row);
   const classes = [];
   if (isLeftAligned(dataset, column)) classes.push("cell-left");
-  if (isWrapColumn(dataset, column)) classes.push("cell-wrap");
+  if (isWrapColumn(dataset, column)) classes.push("cell-wrap", "cell-compact-text");
   if (isTeamDisplayColumn(dataset, column)) classes.push("cell-team-text");
   if (dataset.id === "grassroots" && ["team_name", "team_full", "event_name", "event_group", "event_raw_name", "circuit"].includes(column)) {
     classes.push("cell-small-text");
@@ -8535,13 +8711,13 @@ function buildColumnScales(dataset, state, visibleColumns, rows) {
   return scales;
 }
 
-function getColorScale(dataset, state, visibleColumns, rowsHint = null) {
+function getColorScale(dataset, state, visibleColumns) {
   const colorColumns = visibleColumns.filter((column) => shouldColorColumn(dataset, column));
   if (!colorColumns.length) return {};
   const cache = getRenderCache(state);
-  const colorRows = getColorPopulation(dataset, state, rowsHint);
+  const colorRows = getColorPopulation(dataset, state);
   const key = [
-    cache.colorRowsKey || `${getDisplayRowsCacheKey(dataset, state)}|${getQualifiedMinuteThreshold(dataset, state)}`,
+    cache.colorRowsKey || `${getDisplayRowsCacheKey(dataset, state)}|${getColorMinuteThreshold(dataset)}`,
     getStringValue(state.extraSelects?.color_mode || "year"),
     colorColumns.join("|"),
   ].join("||");
@@ -9208,8 +9384,7 @@ function enhanceD2Row(row) {
   row.three_pa_per100 = d2Per100Value(row["3pa"], row);
   row.ortg = ortgEstimate(row);
   populateAstTo(row);
-  populateDefensiveRateStats(row);
-  fillMissingRateStats(row, ["orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct"]);
+  fillMissingRateStats(row, ["orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "usg_pct"]);
   scalePercentRatioColumns(row);
   populateImpactMetrics(row);
 }
@@ -10680,14 +10855,7 @@ function isTeamDisplayColumn(dataset, column) {
 }
 
 function isLeftAligned(dataset, column) {
-  return column === "profile_levels"
-    || column === "career_path"
-    || column === "coach"
-    || column === "competition_label"
-    || column === "event_name"
-    || column === "event_group"
-    || column === "event_raw_name"
-    || column === "circuit";
+  return false;
 }
 
 function isWrapColumn(dataset, column) {
@@ -10724,6 +10892,10 @@ function getExplicitIdentityId(row) {
   const legacyId = getStringValue(row.player_id || row.pid || row.id).trim();
   if (legacyId) return `legacy:${legacyId}`;
   return "";
+}
+
+function hasStatusIdentity(row) {
+  return Boolean(getStringValue(row?.realgm_player_id).trim());
 }
 
 function copyExplicitIdentityFields(target, source) {
