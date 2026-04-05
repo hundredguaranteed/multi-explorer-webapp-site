@@ -19,7 +19,7 @@ const MINUTES_DEFAULT = 200;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 2000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260405-supabase-live-v36";
+const APP_BUILD_VERSION = "20260405-supabase-pathfix-v37";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -2688,7 +2688,7 @@ function getCacheBustedScriptUrl(src) {
   const srcValue = getStringValue(src).trim();
   const useLocalOverride = LOCAL_DATA_ASSET_PREFIXES.some((prefix) => srcValue === prefix || srcValue.startsWith(prefix));
   const resolvedSrc = (/^data\//i.test(srcValue) && DATA_ASSET_BASE && !useLocalOverride)
-    ? `${DATA_ASSET_BASE}/${srcValue.replace(/^\/+/, "")}`
+    ? `${DATA_ASSET_BASE}/${srcValue.replace(/^\/+/, "").replace(/^data\//i, "")}`
     : srcValue;
   const url = new URL(resolvedSrc, window.location.href);
   url.searchParams.set("v", String(SCRIPT_CACHE_BUST));
