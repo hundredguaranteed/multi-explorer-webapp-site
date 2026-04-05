@@ -19,7 +19,7 @@ const MINUTES_DEFAULT = 200;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 2000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260405-runtime-groundtruth-v42";
+const APP_BUILD_VERSION = "20260405-d2-ratefix-v43";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -10173,11 +10173,24 @@ function datasetPercentColumnsStoredAsRatios(datasetId = "") {
 
 function scaleRateColumns(row, columns, datasetId = "") {
   if (!datasetPercentColumnsStoredAsRatios(datasetId)) return;
+  let scaledStandardPercentColumn = false;
   columns.forEach((column) => {
     if (typeof row[column] === "number" && Number.isFinite(row[column]) && Math.abs(row[column]) <= 1) {
       row[column] = row[column] * 100;
+      scaledStandardPercentColumn = true;
     }
   });
+  if (!scaledStandardPercentColumn || !row || typeof row !== "object") return;
+  if (Object.prototype.hasOwnProperty.call(row, "_standardPercentColumnsScaled")) {
+    row._standardPercentColumnsScaled = true;
+  } else {
+    Object.defineProperty(row, "_standardPercentColumnsScaled", {
+      value: true,
+      configurable: true,
+      enumerable: false,
+      writable: true,
+    });
+  }
 }
 
 function scalePercentRatioColumns(row) {
@@ -10215,6 +10228,7 @@ function normalizePercentLikeColumns(row, datasetId = "") {
     }
     if (!(looksPercentColumn(column) || /^min_per$/i.test(column))) return;
     if (scaleStandardPercentColumns) {
+      if (row._standardPercentColumnsScaled) return;
       if (Math.abs(row[column]) <= 1) row[column] = row[column] * 100;
       return;
     }
