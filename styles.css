@@ -16,7 +16,7 @@
   --small-col-width: 36px;
   --season-col-width: 52px;
   --text-col-width: 96px;
-  --player-col-width: 156px;
+  --player-col-width: 132px;
 }
 
 * {
@@ -467,9 +467,9 @@ a,
 
 #statsTable th.cell-name-text,
 #statsTable td.cell-name-text {
-  font-size: 8.35px;
+  font-size: 8px;
   line-height: 1.05;
-  letter-spacing: -0.02px;
+  letter-spacing: -0.12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

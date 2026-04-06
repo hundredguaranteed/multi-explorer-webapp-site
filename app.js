@@ -18,14 +18,15 @@ const D1_HMM_CONFS = new Set(["WCC", "A10", "MWC"]);
 const MINUTES_DEFAULT = 200;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 2000;
+const STATUS_REALGM_INDEX_SCRIPT = "data/vendor/status_realgm_index.js";
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260405-status-directflags-v46";
+const APP_BUILD_VERSION = "20260406-realgm-status-v47";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
   : "";
 const LOCAL_DATA_ASSET_PREFIXES = [];
-const STATIC_PERCENTILE_MINUTES = 200;
+const STATIC_PERCENTILE_MINUTES = 500;
 const SEARCH_INDEX_ROW_LIMIT = 120000;
 const SEARCH_WARMUP_ROW_LIMIT = 80000;
 const PLAYER_CAREER_LEVEL_FILTER_ORDER = ["Grassroots", "JUCO", "D2", "NAIA", "D1", "College", "FIBA", "International", "G League", "Professional", "NBA"];
@@ -1872,6 +1873,10 @@ const appState = {
   currentId: null,
   scriptLoads: new Map(),
   statusLoads: new Map(),
+  statusRealgmIndexKey: "",
+  statusRealgmIndex: null,
+  statusRealgmStaticIndex: undefined,
+  statusRealgmStaticIndexLoad: null,
   precomputedStatusAnnotations: undefined,
   statusAnnotationScriptLoad: null,
   hydrationLoads: new Map(),
@@ -2081,7 +2086,7 @@ async function handleRoute() {
   elements.resultsSubtitle.textContent = "";
   elements.filtersSummary.textContent = "";
   if (config.singleFilters?.some((filter) => filter.id === "status_path")) {
-    loadPrecomputedStatusAnnotations().catch(() => {});
+    loadStatusRealgmIndex().catch(() => {});
   }
 
   try {
@@ -2378,7 +2383,6 @@ function needsStatusAnnotationsForState(dataset, state) {
   if (!dataset || dataset._statusAnnotated) return false;
   if (!dataset.singleFilters?.some((filter) => filter.id === "status_path")) return false;
   const selectedStatus = getStringValue(state?.extraSelects?.status_path);
-  if (datasetHasDirectStatusFlags(dataset)) return false;
   return Boolean(selectedStatus && selectedStatus !== "all");
 }
 
@@ -2478,7 +2482,6 @@ function reapplyDatasetPostProcessing(rows, config) {
   applyCalculatedRatings(rows, config.id);
   rows.forEach((row) => populateImpactMetrics(row));
   applyPerNormalization(rows, config.id);
-  applyDirectStatusFlags(rows, config.id);
   populateDefenseRatePercentiles(rows, config.id);
   return rows;
 }
@@ -3921,26 +3924,505 @@ async function ensureStatusAnnotations(datasetId) {
     const source = datasetId === "d1" && isMobileLiteD1Dataset(appState.datasetCache[datasetId])
       ? await ensureDatasetLoaded(datasetId, { requireHydrated: true })
       : (appState.datasetCache[datasetId] || await ensureDatasetLoaded(datasetId, datasetId === "d1" ? { requireHydrated: true } : {}));
+    if (datasetId === "grassroots") {
+      await resolveGrassrootsStatusIdentities(source);
+    }
+    const staticIndex = await loadStatusRealgmIndex();
+    if (applyStatusFlagsFromStaticRealgmIndex(source, staticIndex)) {
+      source._rowVersion = (source._rowVersion || 0) + 1;
+      invalidateDatasetDerivedCaches(source.id);
+      source._statusAnnotated = true;
+      return;
+    }
     const precomputed = await loadPrecomputedStatusAnnotations();
     if (applyPrecomputedStatusAnnotations(source, precomputed)) {
       source._rowVersion = (source._rowVersion || 0) + 1;
       invalidateDatasetDerivedCaches(source.id);
+      source._statusAnnotated = true;
       return;
     }
-    const requiredIds = datasetId === "d1"
-      ? ["d1", "d2", "naia", "juco", "nba"]
-      : [datasetId, "d1", "nba"];
+    const requiredIds = getStatusLinkedDatasetIds(datasetId);
     const datasets = await Promise.all(requiredIds.map((id) => ensureDatasetLoaded(id, id === "d1" ? { requireHydrated: true } : {})));
+    const fallbackSource = datasets.find((dataset) => dataset.id === datasetId) || source;
     const graph = buildStatusGraph(datasets);
-    const fallbackSource = datasets.find((dataset) => dataset.id === datasetId);
-    annotateStatusFlags(fallbackSource, graph);
     annotateLinkedStatusMetrics(fallbackSource, graph);
+    annotateStatusFlagsFromRealgmIndex(fallbackSource, datasets);
     fallbackSource._rowVersion = (fallbackSource._rowVersion || 0) + 1;
     invalidateDatasetDerivedCaches(fallbackSource.id);
+    fallbackSource._statusAnnotated = true;
   })();
 
   appState.statusLoads.set(datasetId, promise);
-  await promise;
+  try {
+    await promise;
+  } finally {
+    if (appState.statusLoads.get(datasetId) === promise) {
+      appState.statusLoads.delete(datasetId);
+    }
+  }
+}
+
+function getStatusLinkedDatasetIds(datasetId) {
+  if (datasetId === "d1") return ["d1", "d2", "naia", "juco", "nba"];
+  if (datasetId === "fiba") return ["fiba", "d1", "nba"];
+  return [datasetId, "d1", "nba"];
+}
+
+function getStaticStatusSlotLookup(bundle) {
+  if (!bundle) return null;
+  if (bundle._slotLookup) return bundle._slotLookup;
+  const slotLookup = {};
+  const slotNames = Array.isArray(bundle.slots) ? bundle.slots : [];
+  slotNames.forEach((slotName, index) => {
+    slotLookup[String(slotName)] = index;
+  });
+  bundle._slotLookup = slotLookup;
+  return slotLookup;
+}
+
+function buildGrassrootsStaticIdentityLookup(bundle) {
+  if (!bundle?.players || !bundle?.profiles) return null;
+  if (bundle._grassrootsIdentityLookup) return bundle._grassrootsIdentityLookup;
+  const strict = new Map();
+  const loose = new Map();
+  Object.entries(bundle.profiles || {}).forEach(([realgmId, profile]) => {
+    const seasonEntry = bundle.players?.[realgmId];
+    if (!Array.isArray(seasonEntry)) return;
+    const [rawName, rawDob, rawHeights] = Array.isArray(profile) ? profile : ["", "", []];
+    const name = getStringValue(rawName).trim();
+    if (!name) return;
+    const candidate = {
+      realgmId: getStringValue(realgmId).trim(),
+      canonicalId: `rgm_${getStringValue(realgmId).trim()}`,
+      name,
+      dob: getStringValue(rawDob).trim(),
+      heights: (Array.isArray(rawHeights) ? rawHeights : [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value)),
+      seasons: seasonEntry,
+    };
+    const strictName = normalizeNameKey(name);
+    const looseName = normalizeLooseNameKey(name);
+    if (strictName) {
+      if (!strict.has(strictName)) strict.set(strictName, []);
+      strict.get(strictName).push(candidate);
+    }
+    if (looseName) {
+      if (!loose.has(looseName)) loose.set(looseName, []);
+      loose.get(looseName).push(candidate);
+    }
+  });
+  bundle._grassrootsIdentityLookup = { strict, loose };
+  return bundle._grassrootsIdentityLookup;
+}
+
+function collectGrassrootsStaticIdentityCandidates(lookup, value) {
+  if (!lookup) return [];
+  const strictName = normalizeNameKey(value);
+  const looseName = normalizeLooseNameKey(value);
+  const candidates = new Map();
+  (lookup.strict?.get(strictName) || []).forEach((candidate) => candidates.set(candidate.realgmId, candidate));
+  if (!candidates.size) {
+    (lookup.loose?.get(looseName) || []).forEach((candidate) => candidates.set(candidate.realgmId, candidate));
+  }
+  return Array.from(candidates.values());
+}
+
+function scoreGrassrootsToStaticD1IdentityCandidate(sourceGroup, candidate, slotLookup) {
+  if (!sourceGroup || !candidate) return Number.NEGATIVE_INFINITY;
+  const sourceRow = sourceGroup.representative || sourceGroup.rows?.[0] || {};
+  const sourceName = normalizeNameKey(getPreferredStatusName(sourceGroup.rows));
+  const sourceLooseName = normalizeLooseNameKey(getPreferredStatusName(sourceGroup.rows));
+  const candidateName = normalizeNameKey(candidate.name);
+  const candidateLooseName = normalizeLooseNameKey(candidate.name);
+  if (!sourceName || !candidateName) return Number.NEGATIVE_INFINITY;
+  if (sourceName !== candidateName && sourceLooseName !== candidateLooseName) return Number.NEGATIVE_INFINITY;
+
+  const d1FirstYear = getStaticStatusRangeValue(candidate.seasons, slotLookup, "d1_min");
+  if (!Number.isFinite(d1FirstYear)) return Number.NEGATIVE_INFINITY;
+
+  const sourceDob = getStringValue(sourceRow?.dob).trim();
+  if (sourceDob && candidate.dob && sourceDob !== candidate.dob) return Number.NEGATIVE_INFINITY;
+
+  const sourceHeight = getGrassrootsCareerInches(sourceRow);
+  const heightGap = Number.isFinite(sourceHeight) && candidate.heights.length
+    ? Math.min(...candidate.heights.map((height) => Math.abs(sourceHeight - height)).filter(Number.isFinite))
+    : Number.NaN;
+  if (Number.isFinite(heightGap) && heightGap > 2) return Number.NEGATIVE_INFINITY;
+
+  const expectedFreshmanYear = getProjectedCollegeFreshmanYear(sourceRow);
+  if (Number.isFinite(expectedFreshmanYear) && Math.abs(d1FirstYear - expectedFreshmanYear) > 1) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  let score = sourceName === candidateName ? 250 : 200;
+  if (sourceDob && candidate.dob && sourceDob === candidate.dob) score += 280;
+  if (Number.isFinite(heightGap)) score += Math.max(0, 90 - (heightGap * 35));
+  if (Number.isFinite(expectedFreshmanYear)) {
+    score += Math.max(0, 160 - (Math.abs(d1FirstYear - expectedFreshmanYear) * 90));
+  }
+  return score;
+}
+
+function scoreGrassrootsToStaticNbaIdentityCandidate(sourceGroup, candidate, slotLookup) {
+  if (!sourceGroup || !candidate) return Number.NEGATIVE_INFINITY;
+  const sourceRow = sourceGroup.representative || sourceGroup.rows?.[0] || {};
+  const sourceName = normalizeNameKey(getPreferredStatusName(sourceGroup.rows));
+  const sourceLooseName = normalizeLooseNameKey(getPreferredStatusName(sourceGroup.rows));
+  const candidateName = normalizeNameKey(candidate.name);
+  const candidateLooseName = normalizeLooseNameKey(candidate.name);
+  if (!sourceName || !candidateName) return Number.NEGATIVE_INFINITY;
+  if (sourceName !== candidateName && sourceLooseName !== candidateLooseName) return Number.NEGATIVE_INFINITY;
+
+  const nbaFirstYear = getStaticStatusRangeValue(candidate.seasons, slotLookup, "nba_min");
+  if (!Number.isFinite(nbaFirstYear)) return Number.NEGATIVE_INFINITY;
+
+  const sourceDob = getStringValue(sourceRow?.dob).trim();
+  if (sourceDob && candidate.dob && sourceDob !== candidate.dob) return Number.NEGATIVE_INFINITY;
+
+  const sourceHeight = getGrassrootsCareerInches(sourceRow);
+  const heightGap = Number.isFinite(sourceHeight) && candidate.heights.length
+    ? Math.min(...candidate.heights.map((height) => Math.abs(sourceHeight - height)).filter(Number.isFinite))
+    : Number.NaN;
+  if (Number.isFinite(heightGap) && heightGap > 2) return Number.NEGATIVE_INFINITY;
+
+  const expectedFreshmanYear = getProjectedCollegeFreshmanYear(sourceRow);
+  if (Number.isFinite(expectedFreshmanYear)) {
+    const rookieGap = nbaFirstYear - expectedFreshmanYear;
+    if (rookieGap < -1 || rookieGap > 8) return Number.NEGATIVE_INFINITY;
+  }
+
+  let score = sourceName === candidateName ? 235 : 185;
+  if (sourceDob && candidate.dob && sourceDob === candidate.dob) score += 280;
+  if (Number.isFinite(heightGap)) score += Math.max(0, 90 - (heightGap * 35));
+  if (Number.isFinite(expectedFreshmanYear)) {
+    score += Math.max(0, 120 - (Math.abs(nbaFirstYear - expectedFreshmanYear) * 18));
+  }
+  return score;
+}
+
+function getIdentityResolverGroups(dataset) {
+  if (!dataset?.rows?.length) return [];
+  const cacheKey = `${Number(dataset?._rowVersion) || 0}|${dataset.rows.length}`;
+  if (dataset._identityResolverGroupsKey === cacheKey) return dataset._identityResolverGroups || [];
+  const grouped = new Map();
+  const sourceRows = dataset.id === "d1"
+    ? dataset.rows.filter((row) => row?._trustedD1 !== false && hasStatusIdentity(row))
+    : dataset.rows.filter((row) => hasStatusIdentity(row));
+  sourceRows.forEach((row, index) => {
+    const key = getCareerGroupKey(dataset, row) || `${dataset.id}|identity|${index}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  });
+  const groups = mergeCareerRowGroups(dataset, Array.from(grouped.values())).map((rows, index) => {
+    const meta = buildCareerGroupMeta(dataset, rows);
+    const preferredName = getPreferredStatusName(rows);
+    return {
+      ...meta,
+      datasetId: dataset.id,
+      nodeId: `${dataset.id}:identity:${index}`,
+      nameKey: normalizeNameKey(preferredName),
+      nameKeys: buildStatusNameKeys(preferredName),
+      rows,
+    };
+  });
+  dataset._identityResolverGroupsKey = cacheKey;
+  dataset._identityResolverGroups = groups;
+  return groups;
+}
+
+function getStatusGroupRepresentative(group) {
+  const rows = Array.isArray(group?.rows) ? group.rows : [];
+  if (!rows.length) return {};
+  return rows
+    .slice()
+    .sort((left, right) => duplicateRowScore(right) - duplicateRowScore(left))[0] || rows[0] || {};
+}
+
+function buildExactStatusGroupNameLookup(groups) {
+  const strict = new Map();
+  const loose = new Map();
+  (groups || []).forEach((group) => {
+    const preferredName = getPreferredStatusName(group?.rows || []);
+    const strictName = normalizeNameKey(preferredName);
+    const looseName = normalizeLooseNameKey(preferredName);
+    if (strictName) {
+      if (!strict.has(strictName)) strict.set(strictName, []);
+      strict.get(strictName).push(group);
+    }
+    if (looseName) {
+      if (!loose.has(looseName)) loose.set(looseName, []);
+      loose.get(looseName).push(group);
+    }
+  });
+  return { strict, loose };
+}
+
+function collectExactStatusGroupNameCandidates(lookup, value) {
+  if (!lookup) return [];
+  const strictName = normalizeNameKey(value);
+  const looseName = normalizeLooseNameKey(value);
+  const candidates = new Map();
+  (lookup.strict?.get(strictName) || []).forEach((group) => candidates.set(group.nodeId, group));
+  if (!candidates.size) {
+    (lookup.loose?.get(looseName) || []).forEach((group) => candidates.set(group.nodeId, group));
+  }
+  return Array.from(candidates.values());
+}
+
+function getGrassrootsStatusIdentityGroups(dataset) {
+  if (!dataset?.rows?.length) return [];
+  const cacheKey = `${Number(dataset?._rowVersion) || 0}|${dataset.rows.length}`;
+  if (dataset._grassrootsStatusIdentityGroupsKey === cacheKey) return dataset._grassrootsStatusIdentityGroups || [];
+  const grouped = new Map();
+  dataset.rows.forEach((row, index) => {
+    const key = getCareerGroupKey(dataset, row) || `grassroots|${index}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  });
+  const groups = mergeCareerRowGroups(dataset, Array.from(grouped.values())).map((rows, index) => {
+    const meta = buildCareerGroupMeta(dataset, rows);
+    const representative = rows
+      .slice()
+      .sort((left, right) => grassrootsAliasRowScore(right) - grassrootsAliasRowScore(left))[0] || rows[0] || {};
+    return {
+      ...meta,
+      datasetId: dataset.id,
+      nodeId: `${dataset.id}:status-identity:${index}`,
+      rows,
+      representative,
+      teamTokens: rows.reduce((set, row) => {
+        getGrassrootsCareerTeamTokens(row).forEach((token) => set.add(token));
+        return set;
+      }, new Set()),
+      nameKey: normalizeNameKey(getPreferredStatusName(rows)),
+      looseNameKey: normalizeLooseNameKey(getPreferredStatusName(rows)),
+    };
+  });
+  dataset._grassrootsStatusIdentityGroupsKey = cacheKey;
+  dataset._grassrootsStatusIdentityGroups = groups;
+  return groups;
+}
+
+function scoreGrassrootsToD1IdentityCandidate(sourceGroup, targetGroup) {
+  if (!sourceGroup || !targetGroup || targetGroup.datasetId !== "d1") return Number.NEGATIVE_INFINITY;
+  const sourceRow = sourceGroup.representative || sourceGroup.rows?.[0] || {};
+  const sourceName = normalizeNameKey(getPreferredStatusName(sourceGroup.rows));
+  const sourceLooseName = normalizeLooseNameKey(getPreferredStatusName(sourceGroup.rows));
+  const targetName = normalizeNameKey(getPreferredStatusName(targetGroup.rows));
+  const targetLooseName = normalizeLooseNameKey(getPreferredStatusName(targetGroup.rows));
+  if (!sourceName || !targetName) return Number.NEGATIVE_INFINITY;
+  if (sourceName !== targetName && sourceLooseName !== targetLooseName) return Number.NEGATIVE_INFINITY;
+
+  const sourceDob = getStringValue(sourceRow?.dob).trim();
+  if (sourceDob && targetGroup.dobs?.length && !targetGroup.dobs.includes(sourceDob)) return Number.NEGATIVE_INFINITY;
+
+  const sourceHeight = getGrassrootsCareerInches(sourceRow);
+  const heightGap = Number.isFinite(sourceHeight) && targetGroup.heights?.length
+    ? Math.min(...targetGroup.heights.map((height) => Math.abs(sourceHeight - Number(height))).filter(Number.isFinite))
+    : Number.NaN;
+  if (Number.isFinite(heightGap) && heightGap > 2) return Number.NEGATIVE_INFINITY;
+
+  const expectedFreshmanYear = getProjectedCollegeFreshmanYear(sourceRow);
+  const candidateFreshmanYear = Number(targetGroup?.minYear);
+  if (Number.isFinite(expectedFreshmanYear) && Number.isFinite(candidateFreshmanYear) && Math.abs(candidateFreshmanYear - expectedFreshmanYear) > 1) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  let score = sourceName === targetName ? 250 : 200;
+  if (sourceDob && targetGroup.dobs?.includes(sourceDob)) score += 280;
+  if (Number.isFinite(heightGap)) score += Math.max(0, 90 - (heightGap * 35));
+  if (Number.isFinite(expectedFreshmanYear) && Number.isFinite(candidateFreshmanYear)) {
+    score += Math.max(0, 160 - (Math.abs(candidateFreshmanYear - expectedFreshmanYear) * 90));
+  }
+  return score;
+}
+
+function scoreGrassrootsToNbaIdentityCandidate(sourceGroup, targetGroup) {
+  if (!sourceGroup || !targetGroup || targetGroup.datasetId !== "nba") return Number.NEGATIVE_INFINITY;
+  const sourceRow = sourceGroup.representative || sourceGroup.rows?.[0] || {};
+  const sourceName = normalizeNameKey(getPreferredStatusName(sourceGroup.rows));
+  const sourceLooseName = normalizeLooseNameKey(getPreferredStatusName(sourceGroup.rows));
+  const targetName = normalizeNameKey(getPreferredStatusName(targetGroup.rows));
+  const targetLooseName = normalizeLooseNameKey(getPreferredStatusName(targetGroup.rows));
+  if (!sourceName || !targetName) return Number.NEGATIVE_INFINITY;
+  if (sourceName !== targetName && sourceLooseName !== targetLooseName) return Number.NEGATIVE_INFINITY;
+
+  const sourceDob = getStringValue(sourceRow?.dob).trim();
+  if (sourceDob && targetGroup.dobs?.length && !targetGroup.dobs.includes(sourceDob)) return Number.NEGATIVE_INFINITY;
+
+  const sourceHeight = getGrassrootsCareerInches(sourceRow);
+  const heightGap = Number.isFinite(sourceHeight) && targetGroup.heights?.length
+    ? Math.min(...targetGroup.heights.map((height) => Math.abs(sourceHeight - Number(height))).filter(Number.isFinite))
+    : Number.NaN;
+  if (Number.isFinite(heightGap) && heightGap > 2) return Number.NEGATIVE_INFINITY;
+
+  const expectedFreshmanYear = getProjectedCollegeFreshmanYear(sourceRow);
+  const rookieYear = Number.isFinite(targetGroup?.minYear) ? Number(targetGroup.minYear) : firstFinite(...(targetGroup?.rookieYears || []), Number.NaN);
+  if (Number.isFinite(expectedFreshmanYear) && Number.isFinite(rookieYear)) {
+    const rookieGap = rookieYear - expectedFreshmanYear;
+    if (rookieGap < -1 || rookieGap > 8) return Number.NEGATIVE_INFINITY;
+  }
+
+  let score = sourceName === targetName ? 235 : 185;
+  if (sourceDob && targetGroup.dobs?.includes(sourceDob)) score += 280;
+  if (Number.isFinite(heightGap)) score += Math.max(0, 90 - (heightGap * 35));
+  if (Number.isFinite(expectedFreshmanYear) && Number.isFinite(rookieYear)) {
+    score += Math.max(0, 120 - (Math.abs(rookieYear - expectedFreshmanYear) * 18));
+  }
+  return score;
+}
+
+function selectBestScoredIdentityCandidate(candidates, scorer, minimumScore, ambiguityGap = 35) {
+  let best = null;
+  let secondBest = Number.NEGATIVE_INFINITY;
+  (candidates || []).forEach((candidate) => {
+    const score = scorer(candidate);
+    if (!Number.isFinite(score)) return;
+    if (!best || score > best.score) {
+      secondBest = best ? best.score : secondBest;
+      best = { candidate, score };
+    } else if (score > secondBest) {
+      secondBest = score;
+    }
+  });
+  if (!best || best.score < minimumScore) return null;
+  if (secondBest > Number.NEGATIVE_INFINITY && (best.score - secondBest) < ambiguityGap) return null;
+  return best.candidate;
+}
+
+function resolveGrassrootsIdentityCandidate(sourceGroup, d1Lookup, nbaLookup) {
+  const preferredName = getPreferredStatusName(sourceGroup?.rows || []);
+  const d1Candidates = collectExactStatusGroupNameCandidates(d1Lookup, preferredName)
+    .filter((group) => Boolean(getStatusIdentityId(getStatusGroupRepresentative(group))));
+  const bestD1 = selectBestScoredIdentityCandidate(
+    d1Candidates,
+    (candidate) => scoreGrassrootsToD1IdentityCandidate(sourceGroup, candidate),
+    280,
+  );
+  if (bestD1) return getStatusGroupRepresentative(bestD1);
+
+  const nbaCandidates = collectExactStatusGroupNameCandidates(nbaLookup, preferredName)
+    .filter((group) => Boolean(getStatusIdentityId(getStatusGroupRepresentative(group))));
+  const bestNba = selectBestScoredIdentityCandidate(
+    nbaCandidates,
+    (candidate) => scoreGrassrootsToNbaIdentityCandidate(sourceGroup, candidate),
+    250,
+  );
+  return bestNba ? getStatusGroupRepresentative(bestNba) : null;
+}
+
+async function resolveGrassrootsStatusIdentities(dataset) {
+  if (!dataset?.rows?.length || dataset.id !== "grassroots") return;
+  const cacheKey = `${Number(dataset?._rowVersion) || 0}|${dataset.rows.length}`;
+  if (dataset._grassrootsStatusIdentityResolvedKey === cacheKey) return;
+
+  const staticBundle = await loadStatusRealgmIndex();
+  const slotLookup = getStaticStatusSlotLookup(staticBundle);
+  const identityLookup = buildGrassrootsStaticIdentityLookup(staticBundle);
+  if (!slotLookup || !identityLookup) return;
+
+  getGrassrootsStatusIdentityGroups(dataset).forEach((group) => {
+    if ((group.rows || []).some((row) => hasStatusIdentity(row))) return;
+    const candidates = collectGrassrootsStaticIdentityCandidates(identityLookup, getPreferredStatusName(group.rows));
+    const identitySource = selectBestScoredIdentityCandidate(
+      candidates,
+      (candidate) => scoreGrassrootsToStaticD1IdentityCandidate(group, candidate, slotLookup),
+      280,
+    );
+    const fallbackSource = identitySource || selectBestScoredIdentityCandidate(
+      candidates,
+      (candidate) => scoreGrassrootsToStaticNbaIdentityCandidate(group, candidate, slotLookup),
+      250,
+    );
+    const realgmId = getStringValue((fallbackSource || {}).realgmId).trim();
+    if (!realgmId) return;
+    const canonicalId = getStringValue((fallbackSource || {}).canonicalId).trim() || `rgm_${realgmId}`;
+    (group.rows || []).forEach((row) => {
+      if (!getStringValue(row.realgm_player_id).trim()) row.realgm_player_id = realgmId;
+      if (!getStringValue(row.canonical_player_id).trim()) row.canonical_player_id = canonicalId;
+    });
+  });
+
+  dataset._grassrootsStatusIdentityResolvedKey = cacheKey;
+}
+
+function getStaticStatusRangeValue(entry, slotLookup, slotName) {
+  if (!Array.isArray(entry) || !slotLookup) return Number.NaN;
+  const slotIndex = slotLookup[slotName];
+  const value = typeof slotIndex === "number" ? Number(entry[slotIndex]) : Number.NaN;
+  return Number.isFinite(value) ? value : Number.NaN;
+}
+
+function hasStaticStatusSeasonBefore(entry, slotLookup, datasetId, season) {
+  const minSeason = getStaticStatusRangeValue(entry, slotLookup, `${datasetId}_min`);
+  return Number.isFinite(minSeason) && minSeason < season;
+}
+
+function hasStaticStatusSeasonAfter(entry, slotLookup, datasetId, season) {
+  const maxSeason = getStaticStatusRangeValue(entry, slotLookup, `${datasetId}_max`);
+  return Number.isFinite(maxSeason) && maxSeason > season;
+}
+
+function hasAnyStaticStatusSeason(entry, slotLookup, datasetId) {
+  return Number.isFinite(getStaticStatusRangeValue(entry, slotLookup, `${datasetId}_min`))
+    || Number.isFinite(getStaticStatusRangeValue(entry, slotLookup, `${datasetId}_max`));
+}
+
+function getStrictStatusFlagsFromStaticRealgmIndex(datasetId, row, bundle, slotLookup) {
+  const flags = createEmptyStatusFlags(datasetId);
+  const realgmId = getStatusIdentityId(row);
+  const season = extractLeadingYear(row?.season);
+  if (!realgmId || !Number.isFinite(season) || !bundle?.players) return flags;
+  const entry = bundle.players[realgmId];
+  if (!entry) return flags;
+  if (datasetId === "d1") {
+    flags.nba = hasStaticStatusSeasonAfter(entry, slotLookup, "nba", season);
+    flags.former_juco = hasStaticStatusSeasonBefore(entry, slotLookup, "juco", season);
+    flags.former_d2 = hasStaticStatusSeasonBefore(entry, slotLookup, "d2", season);
+    flags.former_naia = hasStaticStatusSeasonBefore(entry, slotLookup, "naia", season);
+    return flags;
+  }
+  if (datasetId === "fiba") {
+    flags.d1 = hasAnyStaticStatusSeason(entry, slotLookup, "d1");
+    flags.nba = hasAnyStaticStatusSeason(entry, slotLookup, "nba");
+    return flags;
+  }
+  flags.d1 = hasStaticStatusSeasonAfter(entry, slotLookup, "d1", season);
+  flags.formerd1 = hasStaticStatusSeasonBefore(entry, slotLookup, "d1", season);
+  flags.nba = hasStaticStatusSeasonAfter(entry, slotLookup, "nba", season);
+  return flags;
+}
+
+function applyStatusFlagsFromStaticRealgmIndex(sourceDataset, bundle) {
+  if (!sourceDataset?.rows?.length || !bundle?.players) return false;
+  const slotLookup = getStaticStatusSlotLookup(bundle);
+  if (!slotLookup) return false;
+  (sourceDataset.rows || []).forEach((row) => {
+    row._statusFlags = hasStatusIdentity(row)
+      ? getStrictStatusFlagsFromStaticRealgmIndex(sourceDataset.id, row, bundle, slotLookup)
+      : createEmptyStatusFlags(sourceDataset.id);
+  });
+  return true;
+}
+
+async function loadStatusRealgmIndex() {
+  if (appState.statusRealgmStaticIndex !== undefined) {
+    return appState.statusRealgmStaticIndex;
+  }
+  if (window.STATUS_REALGM_INDEX?.players) {
+    appState.statusRealgmStaticIndex = window.STATUS_REALGM_INDEX;
+    return appState.statusRealgmStaticIndex;
+  }
+  if (!appState.statusRealgmStaticIndexLoad) {
+    appState.statusRealgmStaticIndexLoad = loadScriptOnce(STATUS_REALGM_INDEX_SCRIPT).catch((error) => {
+      console.warn("Static RealGM status index failed to load.", error);
+      return null;
+    });
+  }
+  await appState.statusRealgmStaticIndexLoad;
+  appState.statusRealgmStaticIndex = window.STATUS_REALGM_INDEX?.players ? window.STATUS_REALGM_INDEX : null;
+  return appState.statusRealgmStaticIndex;
 }
 
 async function loadPrecomputedStatusAnnotations() {
@@ -3972,7 +4454,7 @@ function applyPrecomputedStatusAnnotations(sourceDataset, bundle) {
     const entry = entries[getStatusAnnotationGroupKey(group)] || null;
     const flags = entry
       ? decodeStatusAnnotationFlags(entry?.b, sourceDataset.id)
-      : inferDirectStatusFlags(sourceDataset.id, group.rows);
+      : createEmptyStatusFlags(sourceDataset.id);
     if (entry) matchedGroups += 1;
     group.rows.forEach((row) => {
       row._statusFlags = { ...flags };
@@ -4017,6 +4499,22 @@ function decodeStatusAnnotationFlags(bitmask, datasetId) {
     d1: Boolean(bits & 2),
     formerd1: Boolean(bits & 4),
     nba: Boolean(bits & 1),
+  };
+}
+
+function createEmptyStatusFlags(datasetId) {
+  if (datasetId === "d1") {
+    return {
+      nba: false,
+      former_juco: false,
+      former_d2: false,
+      former_naia: false,
+    };
+  }
+  return {
+    d1: false,
+    formerd1: false,
+    nba: false,
   };
 }
 
@@ -4088,6 +4586,90 @@ function datasetHasDirectStatusFlags(dataset) {
   const sourceRows = getStatusSourceRows(dataset);
   if (!sourceRows.length) return false;
   return sourceRows.every((row) => row?._statusFlags && Object.keys(row._statusFlags).length);
+}
+
+function getStatusIndexRows(dataset) {
+  if (!dataset?.rows?.length) return [];
+  const baseRows = dataset.id === "d1"
+    ? dataset.rows.filter((row) => row._trustedD1 !== false)
+    : dataset.rows;
+  return baseRows.filter((row) => hasStatusIdentity(row) && Number.isFinite(extractLeadingYear(row?.season)));
+}
+
+function getCachedStatusRealgmIndex(datasets) {
+  const key = (datasets || [])
+    .filter(Boolean)
+    .map((dataset) => `${dataset.id}:${Number(dataset?._rowVersion) || 0}:${Array.isArray(dataset?.rows) ? dataset.rows.length : 0}`)
+    .sort()
+    .join("|");
+  if (appState.statusRealgmIndexKey === key && appState.statusRealgmIndex) return appState.statusRealgmIndex;
+  const index = new Map();
+  (datasets || []).forEach((dataset) => {
+    getStatusIndexRows(dataset).forEach((row) => {
+      const realgmId = getStatusIdentityId(row);
+      const season = extractLeadingYear(row?.season);
+      if (!realgmId || !Number.isFinite(season)) return;
+      if (!index.has(realgmId)) index.set(realgmId, {});
+      const bucket = index.get(realgmId);
+      if (!bucket[dataset.id]) bucket[dataset.id] = [];
+      bucket[dataset.id].push(season);
+    });
+  });
+  index.forEach((bucket) => {
+    Object.keys(bucket).forEach((datasetId) => {
+      bucket[datasetId] = Array.from(new Set(bucket[datasetId].filter(Number.isFinite))).sort((left, right) => left - right);
+    });
+  });
+  appState.statusRealgmIndexKey = key;
+  appState.statusRealgmIndex = index;
+  return index;
+}
+
+function hasStatusSeasonBefore(statusBucket, datasetId, season) {
+  return (statusBucket?.[datasetId] || []).some((value) => value < season);
+}
+
+function hasStatusSeasonAfter(statusBucket, datasetId, season) {
+  return (statusBucket?.[datasetId] || []).some((value) => value > season);
+}
+
+function hasAnyStatusSeason(statusBucket, datasetId) {
+  return Boolean(statusBucket?.[datasetId]?.length);
+}
+
+function getStrictStatusFlags(datasetId, row, statusIndex) {
+  const flags = createEmptyStatusFlags(datasetId);
+  const realgmId = getStatusIdentityId(row);
+  const season = extractLeadingYear(row?.season);
+  if (!realgmId || !Number.isFinite(season)) return flags;
+  const statusBucket = statusIndex.get(realgmId);
+  if (!statusBucket) return flags;
+  if (datasetId === "d1") {
+    flags.nba = hasStatusSeasonAfter(statusBucket, "nba", season);
+    flags.former_juco = hasStatusSeasonBefore(statusBucket, "juco", season);
+    flags.former_d2 = hasStatusSeasonBefore(statusBucket, "d2", season);
+    flags.former_naia = hasStatusSeasonBefore(statusBucket, "naia", season);
+    return flags;
+  }
+  if (datasetId === "fiba") {
+    flags.d1 = hasAnyStatusSeason(statusBucket, "d1");
+    flags.nba = hasAnyStatusSeason(statusBucket, "nba");
+    return flags;
+  }
+  flags.d1 = hasStatusSeasonAfter(statusBucket, "d1", season);
+  flags.formerd1 = hasStatusSeasonBefore(statusBucket, "d1", season);
+  flags.nba = hasStatusSeasonAfter(statusBucket, "nba", season);
+  return flags;
+}
+
+function annotateStatusFlagsFromRealgmIndex(sourceDataset, datasets) {
+  if (!sourceDataset?.rows?.length) return;
+  const statusIndex = getCachedStatusRealgmIndex(datasets);
+  (sourceDataset.rows || []).forEach((row) => {
+    row._statusFlags = hasStatusIdentity(row)
+      ? getStrictStatusFlags(sourceDataset.id, row, statusIndex)
+      : createEmptyStatusFlags(sourceDataset.id);
+  });
 }
 
 function getStatusAnnotationGroupKey(group) {
@@ -9054,7 +9636,7 @@ function getColumnWidth(column, dataset) {
   if (baseColumn === "ast_stl_pg" || baseColumn === "ast_stl_per40") return 58;
   if (baseColumn === "blk_pf" || baseColumn === "stl_pf" || baseColumn === "stocks_pf") return 54;
   if (baseColumn === "three_pr_plus_ftm_fga") return 72;
-  if (/player/i.test(baseColumn)) return 148;
+  if (/player/i.test(baseColumn)) return 132;
   if (baseColumn === "competition_label") return 94;
   if (/^nationality$|^team_code$/.test(baseColumn)) return 52;
   if (baseColumn === "coach") return 96;
@@ -9082,7 +9664,7 @@ function getColorPopulation(dataset, state) {
     getMinutesValue(row) >= minuteThreshold
       && (dataset.id !== "grassroots" || getGamesValue(row) >= 2)
   ));
-  const rows = Array.isArray(scoped) ? (qualified.length ? qualified : scoped) : [];
+  const rows = qualified;
   cache.colorRowsKey = key;
   cache.colorRows = sampleColorRows(rows);
   return cache.colorRows;
@@ -9188,13 +9770,17 @@ function buildColumnScales(dataset, state, visibleColumns, rows) {
       if (shouldSkipPercentileColor(row, column)) return;
       const bucketKey = getCachedColorBucketKey(state, row);
       if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+      if (bucketKey !== "all" && !buckets.has("all")) buckets.set("all", []);
       if (weighted) {
         const weight = getPercentileWeight(row, column, dataset);
         if (!(weight > 0)) return;
-        buckets.get(bucketKey).push({ value, weight });
+        const weightedEntry = { value, weight };
+        buckets.get(bucketKey).push(weightedEntry);
+        if (bucketKey !== "all") buckets.get("all").push(weightedEntry);
         return;
       }
       buckets.get(bucketKey).push(value);
+      if (bucketKey !== "all") buckets.get("all").push(value);
     });
     const sortedBuckets = {};
     buckets.forEach((values, key) => {
@@ -10187,7 +10773,7 @@ function populateDefenseRatePercentiles(rows, datasetId = "", options = {}) {
       if (datasetId === "grassroots" && !(getGamesValue(row) >= 2)) return false;
       return true;
     });
-    const percentileSourceRows = qualifiedRows.length ? qualifiedRows : referenceRows;
+    const percentileSourceRows = qualifiedRows;
     const values = percentileSourceRows
       .map((row) => Number(row?.[source]))
       .filter((value) => Number.isFinite(value))
@@ -10363,9 +10949,6 @@ function normalizePercentLikeColumns(row, datasetId = "") {
       if (row._standardPercentColumnsScaled) return;
       if (Math.abs(row[column]) <= 1) row[column] = row[column] * 100;
       return;
-    }
-    if (datasetId !== "grassroots" && Math.abs(row[column]) <= 1.5) {
-      row[column] = row[column] * 100;
     }
   });
 }
@@ -11451,8 +12034,16 @@ function getExplicitIdentityId(row) {
   return "";
 }
 
+function getStatusIdentityId(row) {
+  const explicitRealgmId = getStringValue(row?.realgm_player_id).trim();
+  if (explicitRealgmId) return explicitRealgmId;
+  const canonicalId = getStringValue(row?.canonical_player_id).trim();
+  const canonicalMatch = canonicalId.match(/^rgm_(.+)$/i);
+  return canonicalMatch ? canonicalMatch[1] : "";
+}
+
 function hasStatusIdentity(row) {
-  return Boolean(getStringValue(row?.realgm_player_id).trim());
+  return Boolean(getStatusIdentityId(row));
 }
 
 function copyExplicitIdentityFields(target, source) {
