@@ -1,6 +1,6 @@
 const LOAD_STEP = 40;
-const SEARCH_RENDER_DEBOUNCE_MS = 120;
-const FILTER_RENDER_DEBOUNCE_MS = 120;
+const SEARCH_RENDER_DEBOUNCE_MS = 60;
+const FILTER_RENDER_DEBOUNCE_MS = 70;
 const PLAYER_CAREER_YEAR_LOAD_BATCH_SIZE = 4;
 const HOME_ID = "home";
 const HOME_PAGES = [
@@ -19,7 +19,7 @@ const MINUTES_DEFAULT = 200;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 2000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260405-multipart-orderfix-v44";
+const APP_BUILD_VERSION = "20260405-status-directflags-v46";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -1300,7 +1300,7 @@ const DATASETS = {
     singleFilters: withSharedSingleFilters([
       { id: "division", label: "Division", column: "division" },
       { id: "conference", label: "Conference", column: "conference" },
-      { id: "status_path", label: "Status", options: [{ value: "all", label: "All" }, { value: "d1", label: "D1" }, { value: "formerd1", label: "Former D1" }] },
+      { id: "status_path", label: "Status", options: [{ value: "all", label: "All" }, { value: "d1", label: "D1" }, { value: "formerd1", label: "Former D1" }, { value: "nba", label: "NBA" }] },
     ]),
     minYear: 2011,
     defaultVisible: ["rank", "season", "player_name", "team_name", "division", "age", "height_in", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
@@ -1872,6 +1872,8 @@ const appState = {
   currentId: null,
   scriptLoads: new Map(),
   statusLoads: new Map(),
+  precomputedStatusAnnotations: undefined,
+  statusAnnotationScriptLoad: null,
   hydrationLoads: new Map(),
   scheduledTasks: new Map(),
   datasetCache: {},
@@ -1906,7 +1908,7 @@ function renderNav() {
 
 function wireGlobalEvents() {
   window.addEventListener("resize", scheduleAdaptiveTeamTextSizing);
-  elements.searchInput.addEventListener("input", () => {
+  elements.searchInput.addEventListener("input", async () => {
     const state = getCurrentUiState();
     const dataset = getCurrentDataset();
     if (!state || !dataset) return;
@@ -1917,6 +1919,8 @@ function wireGlobalEvents() {
     }
     if (!changed && !playerCareerYearsChanged) return;
     if (changed?.filtersChanged || playerCareerYearsChanged) {
+      await ensureStatusReadyForState(dataset, state);
+      if (appState.currentId !== dataset.id) return;
       renderCurrentDataset();
       return;
     }
@@ -2104,16 +2108,8 @@ async function handleRoute() {
       resetUiCaches(appState.uiState[datasetId]);
     }
 
-    const needsStatus = dataset.singleFilters?.some((filter) => filter.id === "status_path");
-    const selectedStatus = getStringValue(state?.extraSelects?.status_path);
-    const shouldBlockForStatus = needsStatus && selectedStatus && selectedStatus !== "all" && !dataset._statusAnnotated;
-
-    if (shouldBlockForStatus) {
-      elements.statusPill.textContent = `Loading ${config.navLabel} status`;
-      await ensureStatusAnnotations(datasetId);
-      if (appState.currentId !== datasetId) return;
-      resetUiCaches(appState.uiState[datasetId]);
-    }
+    await ensureStatusReadyForState(dataset, state);
+    if (appState.currentId !== datasetId) return;
 
     renderCurrentDataset();
     scheduleStatusAnnotations(datasetId);
@@ -2378,6 +2374,23 @@ function scheduleStatusAnnotations(datasetId) {
   // Compute status annotations only when the user explicitly asks for them.
 }
 
+function needsStatusAnnotationsForState(dataset, state) {
+  if (!dataset || dataset._statusAnnotated) return false;
+  if (!dataset.singleFilters?.some((filter) => filter.id === "status_path")) return false;
+  const selectedStatus = getStringValue(state?.extraSelects?.status_path);
+  if (datasetHasDirectStatusFlags(dataset)) return false;
+  return Boolean(selectedStatus && selectedStatus !== "all");
+}
+
+async function ensureStatusReadyForState(dataset, state) {
+  if (!needsStatusAnnotationsForState(dataset, state)) return false;
+  elements.statusPill.textContent = `Loading ${dataset.navLabel} status`;
+  await ensureStatusAnnotations(dataset.id);
+  if (appState.currentId !== dataset.id) return false;
+  resetUiCaches(state);
+  return true;
+}
+
 function buildDeferredSupplementScriptPath(dataset, season) {
   if (!dataset?.deferredScriptTemplate) return "";
   return dataset.deferredScriptTemplate.replace("{season}", sanitizeDeferredSeasonKey(season));
@@ -2465,6 +2478,7 @@ function reapplyDatasetPostProcessing(rows, config) {
   applyCalculatedRatings(rows, config.id);
   rows.forEach((row) => populateImpactMetrics(row));
   applyPerNormalization(rows, config.id);
+  applyDirectStatusFlags(rows, config.id);
   populateDefenseRatePercentiles(rows, config.id);
   return rows;
 }
@@ -2739,6 +2753,20 @@ function getCacheBustedScriptUrl(src) {
   return url.href;
 }
 
+function getLocalCacheBustedScriptUrl(src) {
+  const srcValue = getStringValue(src).trim().replace(/^\/+/, "");
+  const url = new URL(srcValue, window.location.href);
+  url.searchParams.set("v", String(SCRIPT_CACHE_BUST));
+  return url.href;
+}
+
+function shouldUseLocalDataFallback(src) {
+  const srcValue = getStringValue(src).trim();
+  if (!/^data\//i.test(srcValue)) return false;
+  if (!DATA_ASSET_BASE) return false;
+  return !LOCAL_DATA_ASSET_PREFIXES.some((prefix) => srcValue === prefix || srcValue.startsWith(prefix));
+}
+
 function getChunkScriptPath(template, chunk) {
   if (!template || !chunk) return "";
   return template.replace("{chunk}", chunk);
@@ -2845,21 +2873,31 @@ async function loadDatasetCsvPayload(config) {
 
 function loadScriptOnce(src) {
   const cacheBustedSrc = getCacheBustedScriptUrl(src);
+  const localFallbackSrc = shouldUseLocalDataFallback(src) ? getLocalCacheBustedScriptUrl(src) : "";
 
   if (appState.scriptLoads.has(cacheBustedSrc)) {
     return appState.scriptLoads.get(cacheBustedSrc);
   }
 
-  const promise = new Promise((resolve, reject) => {
+  const appendScript = (url) => new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = cacheBustedSrc;
-    script.async = true;
+    script.src = url;
+    script.async = false;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`Failed to load ${cacheBustedSrc}`));
+    script.onerror = () => {
+      script.remove();
+      reject(new Error(`Failed to load ${url}`));
+    };
     document.head.appendChild(script);
+  });
+  const promise = appendScript(cacheBustedSrc).catch(async (error) => {
+    if (!localFallbackSrc || localFallbackSrc === cacheBustedSrc) throw error;
+    console.warn(`Falling back to local asset for ${src}`, error);
+    return appendScript(localFallbackSrc);
   });
 
   appState.scriptLoads.set(cacheBustedSrc, promise);
+  if (localFallbackSrc) appState.scriptLoads.set(localFallbackSrc, promise);
   return promise;
 }
 
@@ -3906,19 +3944,36 @@ async function ensureStatusAnnotations(datasetId) {
 }
 
 async function loadPrecomputedStatusAnnotations() {
-  return null;
+  if (appState.precomputedStatusAnnotations !== undefined) {
+    return appState.precomputedStatusAnnotations;
+  }
+  if (window.STATUS_ANNOTATIONS?.datasets) {
+    appState.precomputedStatusAnnotations = window.STATUS_ANNOTATIONS;
+    return appState.precomputedStatusAnnotations;
+  }
+  if (!appState.statusAnnotationScriptLoad) {
+    appState.statusAnnotationScriptLoad = loadScriptOnce(STATUS_ANNOTATIONS_SCRIPT).catch((error) => {
+      console.warn("Status annotations failed to load.", error);
+      return null;
+    });
+  }
+  await appState.statusAnnotationScriptLoad;
+  appState.precomputedStatusAnnotations = window.STATUS_ANNOTATIONS?.datasets ? window.STATUS_ANNOTATIONS : null;
+  return appState.precomputedStatusAnnotations;
 }
 
 function applyPrecomputedStatusAnnotations(sourceDataset, bundle) {
   if (!sourceDataset?.rows?.length || !bundle?.datasets?.[sourceDataset.id]?.entries) return false;
   const datasetBundle = bundle.datasets[sourceDataset.id];
   const sourceGroups = getStatusGroups(sourceDataset);
-  if (Number.isFinite(datasetBundle.groupCount) && datasetBundle.groupCount !== sourceGroups.length) return false;
-
   const entries = datasetBundle.entries || {};
+  let matchedGroups = 0;
   sourceGroups.forEach((group) => {
     const entry = entries[getStatusAnnotationGroupKey(group)] || null;
-    const flags = decodeStatusAnnotationFlags(entry?.b, sourceDataset.id);
+    const flags = entry
+      ? decodeStatusAnnotationFlags(entry?.b, sourceDataset.id)
+      : inferDirectStatusFlags(sourceDataset.id, group.rows);
+    if (entry) matchedGroups += 1;
     group.rows.forEach((row) => {
       row._statusFlags = { ...flags };
       if (Number.isFinite(entry?.p)) row.d1_peak_prpg = entry.p;
@@ -3934,8 +3989,10 @@ function applyPrecomputedStatusAnnotations(sourceDataset, bundle) {
     });
   });
 
+  const coverage = sourceGroups.length ? (matchedGroups / sourceGroups.length) : 0;
+  if (!matchedGroups || coverage < 0.5) return false;
   sourceDataset._statusAnnotated = true;
-  sourceDataset._linkedStatusMetricsAnnotated = true;
+  sourceDataset._linkedStatusMetricsAnnotated = matchedGroups > 0;
   return true;
 }
 
@@ -3961,6 +4018,76 @@ function decodeStatusAnnotationFlags(bitmask, datasetId) {
     formerd1: Boolean(bits & 4),
     nba: Boolean(bits & 1),
   };
+}
+
+function getStatusPathTokens(rows) {
+  const tokens = new Set();
+  (rows || []).forEach((row) => {
+    [
+      row?.profile_levels,
+      row?.profile_career_path,
+      row?.career_path,
+      row?.competition_level,
+      row?.competition_label,
+      row?.source_dataset,
+    ].forEach((value) => {
+      getStringValue(value)
+        .split(/[\/,|]+/)
+        .map((part) => normalizeDirectiveValue(part))
+        .filter(Boolean)
+        .forEach((token) => tokens.add(token));
+    });
+    if (getStringValue(row?.current_nba_status).trim()) tokens.add("nba");
+  });
+  return tokens;
+}
+
+function inferDirectStatusFlags(datasetId, rows) {
+  const tokens = getStatusPathTokens(rows);
+  const hasProjectedD1 = (rows || []).some((row) => rowHasExplicitProjectedD1Data(row));
+  const hasD1 = hasProjectedD1 || tokens.has("d1");
+  const hasNba = tokens.has("nba");
+  const hasJuco = tokens.has("juco");
+  const hasD2 = tokens.has("d2");
+  const hasNaia = tokens.has("naia");
+  if (datasetId === "d1") {
+    return {
+      nba: hasNba,
+      former_juco: hasJuco,
+      former_d2: hasD2,
+      former_naia: hasNaia,
+    };
+  }
+  if (datasetId === "fiba") {
+    return {
+      d1: hasD1,
+      formerd1: false,
+      nba: hasNba,
+    };
+  }
+  return {
+    d1: hasD1,
+    formerd1: hasD1,
+    nba: hasNba,
+  };
+}
+
+function applyDirectStatusFlags(rows, datasetId) {
+  (rows || []).forEach((row) => {
+    if (!row) return;
+    if (!hasStatusIdentity(row) && !(datasetId === "grassroots" && rowHasExplicitProjectedD1Data(row))) return;
+    row._statusFlags = {
+      ...(row._statusFlags || {}),
+      ...inferDirectStatusFlags(datasetId, [row]),
+    };
+  });
+}
+
+function datasetHasDirectStatusFlags(dataset) {
+  if (!dataset?.rows?.length) return false;
+  const sourceRows = getStatusSourceRows(dataset);
+  if (!sourceRows.length) return false;
+  return sourceRows.every((row) => row?._statusFlags && Object.keys(row._statusFlags).length);
 }
 
 function getStatusAnnotationGroupKey(group) {
@@ -6512,14 +6639,8 @@ function renderExtraFilters(dataset, state) {
           }
           resetUiCaches(state);
         }
-      if (filterId === "status_path" && select.value !== "all") {
-        if (!dataset._statusAnnotated) {
-          elements.statusPill.textContent = `Loading ${dataset.navLabel} status`;
-          await ensureStatusAnnotations(dataset.id);
-            if (appState.currentId !== dataset.id) return;
-            resetUiCaches(state);
-          }
-        }
+        await ensureStatusReadyForState(dataset, state);
+        if (appState.currentId !== dataset.id) return;
         renderCurrentDataset();
       } catch (error) {
         elements.statusPill.textContent = `${dataset.navLabel} load failed`;
@@ -8882,19 +9003,21 @@ function syncAdaptiveTeamTextSizing() {
   const table = elements.statsTable;
   if (!table) return;
   table.querySelectorAll("th, td").forEach((cell) => {
-    if (!cell.matches("th.cell-wrap, td.cell-wrap, th.cell-team-text, td.cell-team-text, th.cell-compact-text, td.cell-compact-text")) {
+    if (!cell.matches("th.cell-wrap, td.cell-wrap, th.cell-team-text, td.cell-team-text, th.cell-name-text, td.cell-name-text, th.cell-compact-text, td.cell-compact-text")) {
       return;
     }
     cell.classList.remove("cell-team-overflow");
     cell.classList.remove("cell-text-overflow-sm");
     cell.classList.remove("cell-text-overflow-xs");
-    if (cell.scrollWidth > cell.clientWidth + 1) {
+    const availableWidth = Math.max(cell.clientWidth, 1);
+    const overflowRatio = cell.scrollWidth / availableWidth;
+    if (!(overflowRatio > 1.03)) return;
+    if (overflowRatio >= 1.34) {
+      cell.classList.add("cell-text-overflow-xs");
+    } else if (overflowRatio >= 1.12) {
       cell.classList.add("cell-text-overflow-sm");
     }
-    if (cell.scrollWidth > cell.clientWidth + 1) {
-      cell.classList.add("cell-text-overflow-xs");
-    }
-    if (cell.matches("td.cell-team-text") && cell.scrollWidth > cell.clientWidth + 1) {
+    if (cell.matches("td.cell-team-text, td.cell-name-text") && overflowRatio >= 1.16) {
       cell.classList.add("cell-team-overflow");
     }
   });
@@ -8905,11 +9028,18 @@ function getColumnWidth(column, dataset) {
   if (column === "rank") return 18;
   if (baseColumn === dataset.yearColumn || baseColumn === "season") return 48;
   if (baseColumn === "age_range") return 52;
+  if (isPlayerDisplayColumn(dataset, column)) {
+    if (dataset.id === "nba") return 162;
+    if (dataset.id === "player_career") return 160;
+    if (dataset.id === "grassroots") return 160;
+    return 152;
+  }
   if (isTeamDisplayColumn(dataset, column)) {
-    if (baseColumn === "team_full" || baseColumn === "current_team" || baseColumn === "pre_draft_team") return 122;
-    if (dataset.id === "grassroots") return 96;
-    if (dataset.id === "player_career") return 108;
-    return 102;
+    if (baseColumn === "team_full" || baseColumn === "current_team" || baseColumn === "pre_draft_team") return 128;
+    if (dataset.id === "nba" && baseColumn === "team_name") return 62;
+    if (dataset.id === "grassroots") return 98;
+    if (dataset.id === "player_career") return 104;
+    return 96;
   }
   if (dataset.id === "player_career" && baseColumn === "profile_levels") return 108;
   if (dataset.id === "player_career" && baseColumn === "career_path") return 188;
@@ -9007,12 +9137,11 @@ function renderHeaderCell(dataset, state, column) {
   const classes = sortable ? ["is-sortable"] : [];
   const label = displayLabel(dataset, column);
   if (isWrapColumn(dataset, column)) classes.push("cell-wrap");
+  if (isPlayerDisplayColumn(dataset, column)) classes.push("cell-name-text");
   if (isTeamDisplayColumn(dataset, column)) classes.push("cell-team-text");
+  if (isCompactTextColumn(dataset, column)) classes.push("cell-compact-text");
   if (dataset.id === "grassroots" && ["team_name", "team_full", "event_name", "event_group", "event_raw_name", "circuit"].includes(column)) {
     classes.push("cell-small-text");
-  }
-  if (dataset.id === "player_career" && ["team_name", "team_full", "profile_levels"].includes(column)) {
-    classes.push("cell-compact-text");
   }
   if (isD1PlaytypeColumn(column) || /^ncaa_|^nba_/i.test(column) || label.length >= 11) classes.push("cell-header-small");
   return `<th class="${classes.join(" ")}"${sortable ? ` data-sort="${escapeAttribute(column)}"` : ""}>${escapeHtml(label)}</th>`;
@@ -9029,16 +9158,13 @@ function renderBodyCell(dataset, state, column, row, index, colorScale) {
   const display = sanitizeCellDisplayValue(formatValue(dataset, column, rawValue, row));
   const classes = [];
   if (isLeftAligned(dataset, column)) classes.push("cell-left");
-  if (isWrapColumn(dataset, column)) classes.push("cell-wrap", "cell-compact-text");
+  if (isWrapColumn(dataset, column)) classes.push("cell-wrap");
+  if (isPlayerDisplayColumn(dataset, column)) classes.push("cell-name-text");
   if (isTeamDisplayColumn(dataset, column)) classes.push("cell-team-text");
+  if (isCompactTextColumn(dataset, column)) classes.push("cell-compact-text");
   if (dataset.id === "grassroots" && ["team_name", "team_full", "event_name", "event_group", "event_raw_name", "circuit"].includes(column)) {
     classes.push("cell-small-text");
   }
-  if (dataset.id === "player_career" && ["team_name", "team_full", "profile_levels"].includes(column)) {
-    classes.push("cell-compact-text");
-  }
-  if (display.length >= 18) classes.push("cell-text-overflow-sm");
-  if (display.length >= 28) classes.push("cell-text-overflow-xs");
   if (typeof rawValue === "number" && rawValue < 0) classes.push("negative");
   const style = getCellStyle(dataset, state, column, rawValue, colorScale, row);
   const styleAttribute = style ? ` style="${escapeAttribute(style)}"` : "";
@@ -11271,6 +11397,12 @@ function isTeamDisplayColumn(dataset, column) {
   return /^(team_name|team_full|team_alias|current_team|pre_draft_team)$/i.test(baseColumn);
 }
 
+function isPlayerDisplayColumn(dataset, column) {
+  const baseColumn = stripCompanionPrefix(column);
+  if (!baseColumn) return false;
+  return column === dataset?.playerColumn || /^(player|player_name)$/i.test(baseColumn);
+}
+
 function isLeftAligned(dataset, column) {
   return false;
 }
@@ -11286,6 +11418,14 @@ function isWrapColumn(dataset, column) {
     || column === "event_group"
     || column === "event_raw_name"
     || column === "circuit";
+}
+
+function isCompactTextColumn(dataset, column) {
+  const baseColumn = stripCompanionPrefix(column);
+  if (!baseColumn) return false;
+  if (["profile_levels", "career_path", "event_group", "event_raw_name"].includes(baseColumn)) return true;
+  if (dataset?.id === "player_career" && ["team_name", "team_full"].includes(baseColumn)) return true;
+  return false;
 }
 
 function isD1PlaytypeColumn(column) {

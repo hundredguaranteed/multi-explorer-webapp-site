@@ -2555,7 +2555,7 @@ def apply_college_rim_dataset(dataset_id: str, rows: list[dict[str, object]], co
             continue
         for rim_row in load_plain_csv_rows(file_path):
             total += 1
-            match = resolve_rim_match(index, dataset_id, season, rim_row.get("Player"), rim_row.get("Team"), team_alias_map)
+            match = resolve_rim_match(index, dataset_id, season, rim_row.get("Player"), rim_row.get("Team"), team_alias_map, rim_row.get("GP"))
             if not match:
                 missing += 1
                 continue
@@ -2585,7 +2585,7 @@ def apply_fiba_rim_dataset(rows: list[dict[str, object]], config: dict[str, obje
                 continue
             for rim_row in load_plain_csv_rows(file_path):
                 total += 1
-                match = resolve_rim_match(index, "fiba", season, rim_row.get("Player"), rim_row.get("Team"), team_alias_map, competition_key)
+                match = resolve_rim_match(index, "fiba", season, rim_row.get("Player"), rim_row.get("Team"), team_alias_map, rim_row.get("GP"), competition_key)
                 if not match:
                     missing += 1
                     continue
@@ -2602,30 +2602,52 @@ def apply_fiba_rim_dataset(rows: list[dict[str, object]], config: dict[str, obje
     return {"total": total, "matched": matched, "ambiguous": ambiguous, "missing": missing}
 
 
-def build_rim_row_index(rows: list[dict[str, object]], dataset_id: str, player_column: str, team_column: str, team_alias_map: dict[str, dict[str, object]]) -> dict[str, list[dict[str, object]]]:
-    index: dict[str, list[dict[str, object]]] = defaultdict(list)
+def build_rim_row_index(rows: list[dict[str, object]], dataset_id: str, player_column: str, team_column: str, team_alias_map: dict[str, dict[str, object]]) -> dict[str, object]:
+    by_name: dict[str, list[dict[str, object]]] = defaultdict(list)
+    by_last: dict[str, list[dict[str, object]]] = defaultdict(list)
     for row in rows:
         season = clean_text(row.get("season"))
         if not season:
             continue
-        name_keys = {normalize_name_key(row.get(player_column)), normalize_loose_name_key(row.get(player_column))}
+        player_name = clean_display_name(row.get(player_column))
+        player_tokens = tokenize_person_name(player_name)
+        name_keys = {normalize_name_key(player_name), normalize_loose_name_key(player_name)}
         team_keys = build_row_team_keys(dataset_id, row, team_alias_map)
         prefix = f"{season}|{clean_text(row.get('competition_key'))}|" if dataset_id == "fiba" else f"{season}|"
+        entry = {
+            "row": row,
+            "team_keys": team_keys,
+            "player_name": player_name,
+            "gp": first_number(row.get("gp"), row.get("g")),
+        }
+        last_name = player_tokens[-1] if player_tokens else ""
+        if last_name:
+            by_last[prefix + last_name].append(entry)
         for name_key in name_keys:
             if not name_key:
                 continue
-            index[prefix + name_key].append({"row": row, "team_keys": team_keys})
-    return index
+            by_name[prefix + name_key].append(entry)
+    return {
+        "by_name": by_name,
+        "by_last": by_last,
+    }
 
 
-def resolve_rim_match(index: dict[str, list[dict[str, object]]], dataset_id: str, season: str, player_name: object, team_name: object, team_alias_map: dict[str, dict[str, object]], competition_key: str = "") -> dict[str, object] | None:
+def resolve_rim_match(index: dict[str, object], dataset_id: str, season: str, player_name: object, team_name: object, team_alias_map: dict[str, dict[str, object]], rim_gp: object = None, competition_key: str = "") -> dict[str, object] | None:
     prefix = f"{season}|{competition_key}|" if dataset_id == "fiba" else f"{season}|"
     candidate_rows: dict[int, dict[str, object]] = {}
+    name_index = index.get("by_name", {})
     for name_key in {normalize_name_key(player_name), normalize_loose_name_key(player_name)}:
         if not name_key:
             continue
-        for candidate in index.get(prefix + name_key, []):
+        for candidate in name_index.get(prefix + name_key, []):
             candidate_rows[id(candidate["row"])] = candidate
+    if not candidate_rows:
+        player_tokens = tokenize_person_name(player_name)
+        last_name = player_tokens[-1] if player_tokens else ""
+        if last_name:
+            for candidate in index.get("by_last", {}).get(prefix + last_name, []):
+                candidate_rows[id(candidate["row"])] = candidate
     if not candidate_rows:
         return None
 
@@ -2633,19 +2655,106 @@ def resolve_rim_match(index: dict[str, list[dict[str, object]]], dataset_id: str
     scored = []
     for candidate in candidate_rows.values():
         score = score_team_key_sets(candidate["team_keys"], rim_team_keys)
-        scored.append({"row": candidate["row"], "score": score})
+        name_score = score_fuzzy_rim_name_match(candidate.get("player_name"), player_name)
+        gp_score = score_rim_gp_match(candidate.get("gp"), rim_gp)
+        if name_score < 60:
+            continue
+        if score < 0.55 and name_score < 96:
+            continue
+        scored.append({
+            "row": candidate["row"],
+            "team_score": score,
+            "name_score": name_score,
+            "gp_score": gp_score,
+            "score": (score * 100.0) + name_score + gp_score,
+        })
+    if not scored:
+        return None
     scored.sort(key=lambda item: item["score"], reverse=True)
     best = scored[0]
     second = scored[1] if len(scored) > 1 else None
-    if best["score"] <= 0:
+    if best["team_score"] <= 0 and best["name_score"] < 96:
         return None
     if not second:
+        if best["team_score"] >= 0.82 and best["name_score"] >= 72:
+            return {"row": best["row"], "ambiguous": False}
+        if best["team_score"] >= 0.66 and best["name_score"] >= 84:
+            return {"row": best["row"], "ambiguous": False}
+        if best["name_score"] >= 96 and best["team_score"] > 0:
+            return {"row": best["row"], "ambiguous": False}
+        return None
+    if best["team_score"] >= 0.82 and best["name_score"] >= 72 and (best["score"] - second["score"]) >= 8:
         return {"row": best["row"], "ambiguous": False}
-    if best["score"] >= 0.82 and (best["score"] - second["score"]) >= 0.12:
+    if best["team_score"] >= 0.66 and best["name_score"] >= 84 and (best["score"] - second["score"]) >= 10:
         return {"row": best["row"], "ambiguous": False}
-    if best["score"] > second["score"] and second["score"] == 0:
+    if best["name_score"] >= 96 and best["team_score"] > second["team_score"] and (best["score"] - second["score"]) >= 4:
         return {"row": best["row"], "ambiguous": False}
     return {"row": None, "ambiguous": True}
+
+
+def score_fuzzy_rim_name_match(site_name: object, rim_name: object) -> float:
+    site_name_key = normalize_name_key(site_name)
+    rim_name_key = normalize_name_key(rim_name)
+    site_loose = normalize_loose_name_key(site_name)
+    rim_loose = normalize_loose_name_key(rim_name)
+    if site_name_key and site_name_key == rim_name_key:
+        return 100.0
+    if site_loose and site_loose == rim_loose:
+        return 92.0
+
+    site_tokens = tokenize_person_name(site_name)
+    rim_tokens = tokenize_person_name(rim_name)
+    if len(site_tokens) < 2 or len(rim_tokens) < 2:
+        return 0.0
+
+    site_first = site_tokens[0]
+    site_last = site_tokens[-1]
+    rim_first = rim_tokens[0]
+    rim_last = rim_tokens[-1]
+    same_first = first_name_matches_with_nickname(site_first, rim_first)
+    same_initial = site_first[:1] == rim_first[:1]
+    first_ratio = name_similarity_ratio(site_first, rim_first)
+    last_ratio = name_similarity_ratio(site_last, rim_last)
+    full_ratio = name_similarity_ratio(" ".join(site_tokens), " ".join(rim_tokens))
+    loose_ratio = name_similarity_ratio(site_loose, rim_loose)
+    shared_tokens = set(site_tokens) & set(rim_tokens)
+
+    if same_first and site_last == rim_last:
+        return 88.0
+    if first_ratio >= 0.84 and site_last == rim_last:
+        return 86.0
+    if same_first and last_ratio >= 0.84:
+        return 84.0
+    if first_ratio >= 0.84 and last_ratio >= 0.88:
+        return 82.0
+    if same_initial and site_last == rim_last:
+        return 78.0
+    if same_first and loose_ratio >= 0.82:
+        return 76.0
+    if full_ratio >= 0.92:
+        return 72.0
+    if same_first and len(shared_tokens) >= 2:
+        return 70.0
+    if same_initial and last_ratio >= 0.88:
+        return 66.0
+    return 0.0
+
+
+def score_rim_gp_match(site_gp: object, rim_gp: object) -> float:
+    site_value = first_number(site_gp)
+    rim_value = first_number(rim_gp)
+    if site_value is None or rim_value is None:
+        return 0.0
+    gap = abs(site_value - rim_value)
+    if gap <= 0.1:
+        return 6.0
+    if gap <= 0.5:
+        return 4.0
+    if gap <= 1.5:
+        return 2.0
+    if gap <= 3.0:
+        return 1.0
+    return 0.0
 
 
 def build_rim_supplement(row: dict[str, object], rim_row: dict[str, object], two_att_fn, two_made_fn) -> dict[str, object] | None:

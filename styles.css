@@ -460,34 +460,47 @@ a,
 
 #statsTable th.cell-compact-text,
 #statsTable td.cell-compact-text {
-  font-size: 7px;
+  font-size: 7.4px;
   line-height: 1.02;
   letter-spacing: -0.08px;
 }
 
+#statsTable th.cell-name-text,
+#statsTable td.cell-name-text {
+  font-size: 8.35px;
+  line-height: 1.05;
+  letter-spacing: -0.02px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 #statsTable th.cell-team-text,
 #statsTable td.cell-team-text {
+  font-size: 8.15px;
+  line-height: 1.04;
+  letter-spacing: -0.03px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 #statsTable td.cell-team-overflow {
-  font-size: 7px;
+  font-size: 7.55px;
   line-height: 1.02;
   letter-spacing: -0.08px;
 }
 
 #statsTable th.cell-text-overflow-sm,
 #statsTable td.cell-text-overflow-sm {
-  font-size: 7px;
+  font-size: 7.7px;
   line-height: 1;
   letter-spacing: -0.1px;
 }
 
 #statsTable th.cell-text-overflow-xs,
 #statsTable td.cell-text-overflow-xs {
-  font-size: 6px;
+  font-size: 6.95px;
   line-height: 0.98;
   letter-spacing: -0.15px;
 }
