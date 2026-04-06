@@ -19,7 +19,7 @@ const MINUTES_DEFAULT = 200;
 const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 2000;
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260405-d2-ratefix-v43";
+const APP_BUILD_VERSION = "20260405-multipart-orderfix-v44";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -2761,6 +2761,12 @@ function getMultipartScriptPartPaths(entry) {
     .map((part) => entry.partTemplate.replace("{part}", part));
 }
 
+async function loadScriptsInOrder(paths) {
+  for (const path of paths) {
+    await loadScriptOnce(path);
+  }
+}
+
 async function loadScriptEntry(entry) {
   if (!entry) return;
   if (!isMultipartScriptEntry(entry)) {
@@ -2774,7 +2780,7 @@ async function loadScriptEntry(entry) {
   if (!partPaths.length) {
     throw new Error(`Missing multipart script parts for ${entry.manifestGlobalName || entry.manifestScript || entry.partTemplate || "entry"}`);
   }
-  await Promise.all(partPaths.map((partPath) => loadScriptOnce(partPath)));
+  await loadScriptsInOrder(partPaths);
 }
 
 function getChunkMultipartParts(config, chunk) {
@@ -2794,7 +2800,7 @@ async function loadChunkValueFromMultipart(config, chunk) {
   if (!parts.length) return "";
   const chunkStore = window[config.chunkStoreGlobalName] = window[config.chunkStoreGlobalName] || {};
   chunkStore[chunk] = "";
-  await Promise.all(parts.map((part) => loadScriptOnce(getChunkMultipartScriptPath(config, part))));
+  await loadScriptsInOrder(parts.map((part) => getChunkMultipartScriptPath(config, part)));
   return getStringValue(chunkStore[chunk]);
 }
 
@@ -3573,7 +3579,7 @@ async function loadPlayerCareerRowsForYears(dataset, config, years, options = {}
         const chunkMap = window.PLAYER_CAREER_YEAR_CSV_CHUNKS = window.PLAYER_CAREER_YEAR_CSV_CHUNKS || {};
         if (partPaths.length) {
           chunkMap[season] = "";
-          await Promise.all(partPaths.map((partPath) => loadScriptOnce(partPath)));
+          await loadScriptsInOrder(partPaths);
         } else {
           const src = getPlayerCareerYearChunkPath(config, season);
           if (!src) throw new Error(`Missing Player/Career chunk for ${season}`);
@@ -3641,7 +3647,7 @@ async function loadPlayerCareerSupplementRowsForYears(dataset, config, years, op
         const chunkMap = window.PLAYER_CAREER_YEAR_SUPPLEMENT_CSV_CHUNKS = window.PLAYER_CAREER_YEAR_SUPPLEMENT_CSV_CHUNKS || {};
         if (partPaths.length) {
           chunkMap[season] = "";
-          await Promise.all(partPaths.map((partPath) => loadScriptOnce(partPath)));
+          await loadScriptsInOrder(partPaths);
         } else {
           const src = buildDeferredSupplementScriptPath(config, season);
           if (!src) return [];
