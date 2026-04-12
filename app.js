@@ -2,6 +2,8 @@ const LOAD_STEP = 40;
 const SEARCH_RENDER_DEBOUNCE_MS = 60;
 const FILTER_RENDER_DEBOUNCE_MS = 70;
 const PLAYER_CAREER_YEAR_LOAD_BATCH_SIZE = 4;
+const PLAYER_CAREER_BACKGROUND_YEAR_BATCH_SIZE = 1;
+const GRASSROOTS_BACKGROUND_YEAR_BATCH_SIZE = 1;
 const HOME_ID = "home";
 const HOME_PAGES = [
   { id: "d1", label: "D1" },
@@ -20,7 +22,7 @@ const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 2000;
 const STATUS_REALGM_INDEX_SCRIPT = "data/vendor/status_realgm_index.js";
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260406-realgm-status-v47";
+const APP_BUILD_VERSION = "20260412-reset-fast-status-v49";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -56,6 +58,15 @@ const CORE_SEARCH_INDEX_COLUMNS = [
   "event_group",
   "circuit",
   "class_year",
+];
+const PLAYER_SEARCH_INDEX_COLUMNS = [
+  "player_name",
+  "player",
+  "player_search_text",
+  "player_aliases",
+  "nba_name",
+  "realgm_player_name",
+  "name",
 ];
 const UNIVERSAL_SEARCH_COLUMNS = [
   "player_name",
@@ -122,6 +133,13 @@ const SHARED_SINGLE_FILTERS = [
     ],
   },
 ];
+const STATUS_EVER_FILTER_OPTIONS = [
+  { value: "all", label: "All" },
+  { value: "d1", label: "D1" },
+  { value: "formerd1", label: "Former D1" },
+  { value: "nba", label: "NBA" },
+];
+const STANDARD_POSITION_SORT = ["PG", "G", "SG", "G/F", "SF", "F", "PF", "F/C", "C"];
 const MASCOT_TOKENS = new Set([
   "aces", "aggies", "anteaters", "aztecs", "bears", "bearcats", "beavers", "bison", "bisons", "blazers", "blue", "bluebirds",
   "bluejays", "bobcats", "bonnies", "braves", "broncos", "bruins", "bulldogs", "bulls", "buccaneers", "buckeyes", "camels",
@@ -355,6 +373,7 @@ const D1_SHOT_PROFILE_COLUMNS = [
   { key: "mid_att", label: "Mid Att", defaultVisible: false },
   { key: "mid_pct", label: "Mid%", defaultVisible: true },
   { key: "mid_ast_pct", label: "Mid Ast%", defaultVisible: true },
+  { key: "rim_to_mid_att_ratio", label: "Rim/Long 2", defaultVisible: true },
   { key: "two_p_made", label: "2P Made", defaultVisible: false },
   { key: "two_p_att", label: "2P Att", defaultVisible: false },
   { key: "two_p_pct", label: "2P%", defaultVisible: true },
@@ -994,10 +1013,10 @@ function buildPlayerCareerConfig() {
         defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
       },
     ],
-    singleFilters: withSharedSingleFilters([]),
+    singleFilters: withSharedSingleFilters([{ id: "status_path", label: "Status", options: STATUS_EVER_FILTER_OPTIONS }]),
     multiFilters: [
       { id: "competition_level", label: "Level", column: "competition_level", sort: PLAYER_CAREER_LEVEL_FILTER_ORDER },
-      { id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C", "G", "F", "G/F", "F/C", "C/F"] },
+      { id: "pos", label: "Pos", column: "pos", sort: STANDARD_POSITION_SORT },
       { id: "path_levels", label: "Path", column: "profile_levels", sort: PLAYER_CAREER_LEVEL_FILTER_ORDER },
     ],
     defaultVisible: ["rank", "season", "player_name", "competition_level", "profile_levels", "team_name", "pos", "class_year", "gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "tov_pg", "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
@@ -1101,56 +1120,7 @@ function isPlayerCareerPlaytypeExtraColumn(column) {
 }
 
 function buildPlayerCareerExtraGroups(availableColumns, groupedColumns) {
-  const remaining = (availableColumns || []).filter((column) => column && column !== "rank" && !groupedColumns.has(column));
-  if (!remaining.length) return [];
-
-  const groupDefs = [
-    {
-      id: "identity_plus",
-      label: "Identity+",
-      match: (column) => /^(source_player_id|player_profile_key|nationality|hometown|high_school|pre_draft_team|current_team|current_nba_status|competition_key|competition_label|edition_id|team_code|seasontype|conference|division|region|level|team_id)$/i.test(stripCompanionPrefix(column)),
-    },
-    {
-      id: "playtype_plus",
-      label: "Playtype+",
-      match: (column) => isPlayerCareerPlaytypeExtraColumn(column),
-    },
-    {
-      id: "shooting_plus",
-      label: "Shooting+",
-      match: (column) => /(^fga_75$|^fta_75$|^fg3a_75$|^fga_rim_75$|^fga_mid_75$|rim_|mid_|dunk_|two_p_|three_p_|fgpct_|fg2pct$|fg3pct$|ftpct$|tspct$|^efg$|_ast_pct$|rim_mid_ratio|three_p_per100|three_pa_per100|three_pa_per40|two_pa_per40|ftm_fga|three_pr_plus_ftm_fga)/i.test(stripCompanionPrefix(column)),
-    },
-    {
-      id: "advanced_plus",
-      label: "Advanced+",
-      match: (column) => /(_pct$|pct$|rate$|freq$|share$|percentile$|_per100$|_per75$|_75$|_ppp$|impact|spi|wins_added|bpm|epm|porpag|adjoe|adrtg|ortg|drtg|usg|ast_to|plus_minus|eff|ewins|^per$|^ppr$|^fic$)/i.test(stripCompanionPrefix(column)),
-    },
-    {
-      id: "tracking_plus",
-      label: "Tracking+",
-      match: (column) => /(_poss$|^start$|^roster_games$|^plus_minus_pg$|^eff_pg$|_per_g$|^min_per_g$)/i.test(stripCompanionPrefix(column)),
-    },
-    {
-      id: "more_plus",
-      label: "More",
-      match: () => true,
-    },
-  ];
-
-  const groups = [];
-  const assigned = new Set();
-  groupDefs.forEach((groupDef) => {
-    const columns = remaining.filter((column) => !assigned.has(column) && groupDef.match(column));
-    if (!columns.length) return;
-    columns.forEach((column) => assigned.add(column));
-    groups.push({
-      id: groupDef.id,
-      label: groupDef.label,
-      columns,
-      defaultColumns: [],
-    });
-  });
-  return groups;
+  return [];
 }
 
 const DATASETS = {
@@ -1290,6 +1260,7 @@ const DATASETS = {
     demoColumns: ["division", "conference", "age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg"],
     demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg"],
     groups: [
+      { id: "info", label: "Info", columns: ["division", "conference"], defaultColumns: ["division"] },
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag"] },
       { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "tpm", "tpa", "tp_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"] },
@@ -1402,6 +1373,7 @@ const DATASETS = {
     demoColumns: ["level", "region", "age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg"],
     demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "gp", "min", "mpg", "dob"],
     groups: [
+      { id: "info", label: "Info", columns: ["level", "region"], defaultColumns: ["level", "region"] },
       { id: "summary", label: "Summary", columns: ["adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["adjoe", "adrtg", "porpag", "dporpag"] },
       { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "stl_pct_percentile", "blk_pct_percentile"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "tpm", "tpa", "tp_pct", "ftm", "fta", "ft_pct", "ts_pct", "efg_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr"] },
@@ -1551,7 +1523,7 @@ const DATASETS = {
     ]),
     multiFilters: [
       { id: "circuit", label: "Circuit", column: "circuit", sort: GRASSROOTS_CIRCUIT_ORDER },
-      { id: "pos", label: "Pos", column: "pos", sort: ["PG", "G", "SG", "G/F", "F", "SF", "PF", "C"] },
+      { id: "pos", label: "Pos", column: "pos", sort: STANDARD_POSITION_SORT },
     ],
     defaultVisible: ["rank", "season", "circuit", "player_name", "pos", "height_in", "gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "fg_pct", "2p_pct", "tp_pct", "three_pr", "ftm_fga", "three_pr_plus_ftm_fga", "tpm_pg", "ftm_pg", "usg_pct", "ram", "c_ram", "psp", "three_pe", "dsi", "blk_pf", "stl_pf", "stocks_pf", "adj_bpm"],
     labels: {
@@ -1662,7 +1634,7 @@ const DATASETS = {
       { id: "competition_label", label: "Competition", column: "competition_label" },
       { id: "status_path", label: "Status", options: [{ value: "all", label: "All" }, { value: "d1", label: "D1" }, { value: "nba", label: "NBA" }] },
     ]), "color_mode", "competition_position"),
-    multiFilters: [{ id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C", "G", "F", "C/F", "F/C"] }],
+    multiFilters: [{ id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C", "G", "F", "F/C"] }],
     defaultVisible: ["rank", "season", "player_name", "team_name", "competition_label", "pos", "min", "mpg", "eff_pg", "plus_minus_pg", "min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"],
     labels: {
       rank: "",
@@ -1923,13 +1895,33 @@ function wireGlobalEvents() {
       schedulePlayerCareerSearchPrefetch(dataset, state);
     }
     if (!changed && !playerCareerYearsChanged) return;
-    if (changed?.filtersChanged || playerCareerYearsChanged) {
+    if (!changed && playerCareerYearsChanged) {
+      if (document.activeElement === elements.searchInput) return;
+      renderCurrentDataset();
+      return;
+    }
+    if (changed?.filtersChanged) {
       await ensureStatusReadyForState(dataset, state);
       if (appState.currentId !== dataset.id) return;
       renderCurrentDataset();
       return;
     }
     scheduleSearchResultsRender(dataset, state);
+  });
+  elements.searchInput.addEventListener("change", async () => {
+    const state = getCurrentUiState();
+    const dataset = getCurrentDataset();
+    if (!state || !dataset) return;
+    const changed = applySearchInputValue(dataset, state, elements.searchInput.value);
+    syncPlayerCareerSearchYears(dataset, state);
+    if (!changed) return;
+    if (changed.filtersChanged) {
+      await ensureStatusReadyForState(dataset, state);
+      if (appState.currentId !== dataset.id) return;
+      renderCurrentDataset();
+      return;
+    }
+    renderResultsOnly(dataset, state);
   });
 
   elements.teamSelect.addEventListener("change", () => {
@@ -1952,8 +1944,23 @@ function wireGlobalEvents() {
         renderCurrentDataset();
         return;
       }
+      if (dataset.id === "grassroots" && dataset._grassrootsChunked) {
+        state.years = new Set(years);
+        resetUiCaches(state);
+        renderCurrentDataset();
+        return;
+      }
+      if (dataset.id === "player_career" && dataset._playerCareerChunked) {
+        state.years = new Set(years);
+        resetUiCaches(state);
+        schedulePlayerCareerSelectedYearLoad(dataset, state);
+        renderCurrentDataset();
+        return;
+      }
       await ensureDatasetYearsLoaded(dataset, years);
       state.years = new Set(years);
+      await ensureStatusReadyForState(dataset, state);
+      if (appState.currentId !== dataset.id) return;
       renderCurrentDataset();
     } catch (error) {
       elements.statusPill.textContent = `${dataset.navLabel} load failed`;
@@ -1978,6 +1985,8 @@ function wireGlobalEvents() {
       state.years = new Set(latestYear ? [latestYear] : []);
     }
     resetUiCaches(state);
+    await ensureStatusReadyForState(dataset, state);
+    if (appState.currentId !== dataset.id) return;
     renderCurrentDataset();
   });
 
@@ -2080,20 +2089,27 @@ async function handleRoute() {
   elements.tableContent.style.display = "";
   elements.pageTitle.textContent = "100guaranteed";
   elements.pageSubtitle.textContent = config.subtitle || "";
-  renderDatasetLoadingState(config);
-  elements.statusPill.textContent = `Loading ${config.navLabel}`;
-  elements.resultsCount.textContent = "Loading dataset...";
-  elements.resultsSubtitle.textContent = "";
-  elements.filtersSummary.textContent = "";
-  if (config.singleFilters?.some((filter) => filter.id === "status_path")) {
-    loadStatusRealgmIndex().catch(() => {});
+  const cachedDataset = appState.datasetCache[datasetId];
+  let stateResetForRoute = false;
+  if (cachedDataset) {
+    appState.uiState[datasetId] = createInitialUiState(cachedDataset);
+    stateResetForRoute = true;
+    renderCurrentDataset();
+  } else {
+    renderDatasetLoadingState(config);
+    elements.statusPill.textContent = `Loading ${config.navLabel}`;
+    elements.resultsCount.textContent = "";
+    elements.resultsSubtitle.textContent = "";
+    elements.filtersSummary.textContent = "";
   }
 
   try {
     const dataset = await ensureDatasetLoaded(datasetId);
     if (appState.currentId !== datasetId) return;
 
-    if (!appState.uiState[datasetId]) {
+    if (!stateResetForRoute) {
+      appState.uiState[datasetId] = createInitialUiState(dataset);
+    } else if (!appState.uiState[datasetId]) {
       appState.uiState[datasetId] = createInitialUiState(dataset);
     }
 
@@ -2543,7 +2559,7 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
   }
   let usePlayerCareerChunks = datasetId === "player_career" && Boolean(config.yearManifestScript && config.yearChunkTemplate);
   let useGrassrootsChunks = datasetId === "grassroots" && Boolean(config.yearChunkTemplate);
-  let useMobileLite = datasetId === "d1" && isCompactViewport() && !options.requireHydrated && config.mobileDataScriptTemplate;
+  let useMobileLite = datasetId === "d1" && !options.requireHydrated && config.mobileDataScriptTemplate;
   let rows;
   let availableYears = [];
   try {
@@ -3036,6 +3052,15 @@ function getPlayerCareerPendingYearsKey(state) {
   return getStringValue(state?._playerCareerLoadingYearsKey || state?._playerCareerQueuedYearsKey);
 }
 
+function renderPlayerCareerYearLoadProgress(dataset, state) {
+  if (appState.currentId !== dataset?.id) return;
+  if (document.activeElement === elements.searchInput) {
+    renderResultsOnly(dataset, state);
+    return;
+  }
+  renderCurrentDataset();
+}
+
 function schedulePlayerCareerSelectedYearLoad(dataset, state) {
   if (dataset?.id !== "player_career" || !dataset?._playerCareerChunked || !state) return false;
   const missingYears = getPlayerCareerMissingSelectedYears(dataset, state).sort(compareYears);
@@ -3054,18 +3079,19 @@ function schedulePlayerCareerSelectedYearLoad(dataset, state) {
   if (state._playerCareerLoadTimer) window.clearTimeout(state._playerCareerLoadTimer);
   state._playerCareerLoadTimer = window.setTimeout(async () => {
     state._playerCareerLoadTimer = 0;
-    const yearsToLoad = getPlayerCareerMissingSelectedYears(dataset, state).sort(compareYears);
-    const yearsKey = yearsToLoad.join("|");
+    const allYearsToLoad = getPlayerCareerMissingSelectedYears(dataset, state).sort(compareYears);
+    const yearsToLoad = allYearsToLoad.slice(0, PLAYER_CAREER_BACKGROUND_YEAR_BATCH_SIZE);
+    const yearsKey = allYearsToLoad.join("|");
     state._playerCareerQueuedYearsKey = "";
     if (!yearsToLoad.length) {
       resetUiCaches(state);
-      if (appState.currentId === dataset.id) renderCurrentDataset();
+      renderPlayerCareerYearLoadProgress(dataset, state);
       return;
     }
     state._playerCareerLoadingYearsKey = yearsKey;
-    if (appState.currentId === dataset.id) renderCurrentDataset();
+    renderPlayerCareerYearLoadProgress(dataset, state);
     try {
-      await ensureDatasetYearsLoaded(dataset, yearsToLoad);
+      await ensureDatasetYearsLoaded(dataset, yearsToLoad, { background: true });
     } catch (error) {
       if (appState.currentId === dataset.id) {
         elements.statusPill.textContent = `${dataset.navLabel} load failed`;
@@ -3076,11 +3102,11 @@ function schedulePlayerCareerSelectedYearLoad(dataset, state) {
       state._playerCareerLoadingYearsKey = "";
     }
     resetUiCaches(state);
-    if (getPlayerCareerMissingSelectedYears(dataset, state).length) {
+    if (!state.search.trim() && getPlayerCareerMissingSelectedYears(dataset, state).length) {
       schedulePlayerCareerSelectedYearLoad(dataset, state);
       return;
     }
-    if (appState.currentId === dataset.id) renderCurrentDataset();
+    renderPlayerCareerYearLoadProgress(dataset, state);
   }, 180);
   return true;
 }
@@ -3114,8 +3140,17 @@ function getGrassrootsMissingSelectedYears(dataset, state) {
   return getGrassrootsRequestedYears(dataset, state).filter((season) => !loadedYears.has(getStringValue(season)));
 }
 
+function renderGrassrootsYearLoadProgress(dataset, state) {
+  if (appState.currentId !== dataset?.id) return;
+  if (document.activeElement === elements.searchInput) {
+    renderResultsOnly(dataset, state);
+    return;
+  }
+  renderCurrentDataset();
+}
+
 function maybeStartGrassrootsCareerYearLoad(dataset, state) {
-  if (dataset?.id !== "grassroots" || state?.extraSelects?.view_mode !== "career" || !dataset?._grassrootsChunked) return false;
+  if (dataset?.id !== "grassroots" || !dataset?._grassrootsChunked) return false;
   const missingYears = getGrassrootsMissingSelectedYears(dataset, state).sort(compareYears);
   const loadKey = missingYears.join("|");
   if (!missingYears.length) {
@@ -3131,7 +3166,8 @@ function maybeStartGrassrootsCareerYearLoad(dataset, state) {
   state._grassrootsLoadingYearsKey = loadKey;
   Promise.resolve().then(async () => {
     try {
-      await ensureDatasetYearsLoaded(dataset, missingYears);
+      const yearsToLoad = missingYears.slice(0, GRASSROOTS_BACKGROUND_YEAR_BATCH_SIZE);
+      await ensureDatasetYearsLoaded(dataset, yearsToLoad, { background: true });
       state._grassrootsFailedYearsKey = "";
     } catch (error) {
       state._grassrootsFailedYearsKey = loadKey;
@@ -3144,9 +3180,10 @@ function maybeStartGrassrootsCareerYearLoad(dataset, state) {
         state._grassrootsLoadingYearsKey = "";
       }
       resetUiCaches(state);
-      if (appState.currentId === dataset.id) {
-        renderCurrentDataset();
+      if (!state.search.trim() && getGrassrootsMissingSelectedYears(dataset, state).length) {
+        maybeStartGrassrootsCareerYearLoad(dataset, state);
       }
+      renderGrassrootsYearLoadProgress(dataset, state);
     }
   });
   return true;
@@ -3257,10 +3294,18 @@ function switchGrassrootsViewMode(dataset, state, nextMode) {
   if (!dataset || dataset.id !== "grassroots" || !state) return state;
   const currentMode = getStringValue(state.extraSelects?.view_mode || "player");
   if (currentMode === nextMode) return state;
-  const snapshots = getGrassrootsViewSnapshots(dataset);
-  snapshots.set(currentMode, snapshotGrassrootsUiState(state));
-  const nextSnapshot = snapshots.get(nextMode);
-  const nextState = restoreGrassrootsUiState(dataset, nextSnapshot || null, nextMode);
+  const nextState = restoreGrassrootsUiState(dataset, null, nextMode);
+  appState.uiState[dataset.id] = nextState;
+  return nextState;
+}
+
+function switchDatasetViewMode(dataset, state, nextMode) {
+  if (!dataset || !state) return state;
+  if (dataset.id === "grassroots") return switchGrassrootsViewMode(dataset, state, nextMode);
+  const currentMode = getStringValue(state.extraSelects?.view_mode || "player");
+  if (currentMode === nextMode) return state;
+  const nextState = createInitialUiState(dataset);
+  nextState.extraSelects.view_mode = nextMode;
   appState.uiState[dataset.id] = nextState;
   return nextState;
 }
@@ -3522,7 +3567,7 @@ function renderDatasetLoadingState(config) {
   elements.tableLegend.innerHTML = "";
   elements.tableLegend.dataset.legendKey = "";
   elements.loadMoreBtn.hidden = true;
-  elements.statsTable.innerHTML = '<thead id="statsTableHead"></thead><tbody id="statsTableBody"><tr class="empty-state"><td colspan="1">Loading data...</td></tr></tbody>';
+  elements.statsTable.innerHTML = `<thead id="statsTableHead"></thead><tbody id="statsTableBody"><tr class="empty-state"><td colspan="1">Loading ${escapeHtml(config?.navLabel || "dataset")}...</td></tr></tbody>`;
   elements.statsTable.dataset.shellKey = "";
   elements.statsTableHead = document.getElementById("statsTableHead");
   elements.statsTableBody = document.getElementById("statsTableBody");
@@ -3888,12 +3933,12 @@ async function ensureDatasetYearsLoaded(dataset, years, options = {}) {
   const missingYears = targetYears.filter((season) => !getLoadedYearSet(dataset).has(season));
   if (!missingYears.length) return dataset;
   if (dataset.id === "player_career" && dataset._playerCareerChunked) {
-    elements.statusPill.textContent = `Loading ${dataset.navLabel} ${missingYears.join(" / ")}`;
+    if (!options.background) elements.statusPill.textContent = `Loading ${dataset.navLabel} ${missingYears.join(" / ")}`;
     await loadPlayerCareerRowsForYears(dataset, DATASETS.player_career, missingYears, options);
     return dataset;
   }
   if (dataset.id === "grassroots" && dataset._grassrootsChunked) {
-    elements.statusPill.textContent = `Loading ${dataset.navLabel} ${missingYears.join(" / ")}`;
+    if (!options.background) elements.statusPill.textContent = `Loading ${dataset.navLabel} ${missingYears.join(" / ")}`;
     await loadGrassrootsRowsForYears(dataset, DATASETS.grassroots, missingYears, options);
     return dataset;
   }
@@ -3921,13 +3966,12 @@ async function ensureStatusAnnotations(datasetId) {
   }
 
   const promise = (async () => {
-    const source = datasetId === "d1" && isMobileLiteD1Dataset(appState.datasetCache[datasetId])
-      ? await ensureDatasetLoaded(datasetId, { requireHydrated: true })
-      : (appState.datasetCache[datasetId] || await ensureDatasetLoaded(datasetId, datasetId === "d1" ? { requireHydrated: true } : {}));
+    const source = appState.datasetCache[datasetId] || await ensureDatasetLoaded(datasetId);
     if (datasetId === "grassroots") {
       await resolveGrassrootsStatusIdentities(source);
     }
     const staticIndex = await loadStatusRealgmIndex();
+    resolveStaticStatusIdentitiesForDataset(source, staticIndex);
     if (applyStatusFlagsFromStaticRealgmIndex(source, staticIndex)) {
       source._rowVersion = (source._rowVersion || 0) + 1;
       invalidateDatasetDerivedCaches(source.id);
@@ -4026,6 +4070,101 @@ function collectGrassrootsStaticIdentityCandidates(lookup, value) {
     (lookup.loose?.get(looseName) || []).forEach((candidate) => candidates.set(candidate.realgmId, candidate));
   }
   return Array.from(candidates.values());
+}
+
+function resolveStaticStatusIdentitiesForDataset(dataset, bundle) {
+  if (!dataset?.rows?.length || !bundle?.players || !bundle?.profiles) return false;
+  const lookup = buildGrassrootsStaticIdentityLookup(bundle);
+  const slotLookup = getStaticStatusSlotLookup(bundle);
+  if (!lookup || !slotLookup) return false;
+  let changed = false;
+  (dataset.rows || []).forEach((row) => {
+    if (!row || hasStatusIdentity(row)) return;
+    const match = chooseStaticStatusIdentityCandidate(dataset.id, row, lookup, slotLookup);
+    if (!match) return;
+    row.realgm_player_id = match.realgmId;
+    row.canonical_player_id = match.canonicalId;
+    changed = true;
+  });
+  return changed;
+}
+
+function chooseStaticStatusIdentityCandidate(datasetId, row, lookup, slotLookup) {
+  const name = getStringValue(row?.player_name || row?.player || row?.nba_name || "").trim();
+  if (!name) return null;
+  const candidates = collectGrassrootsStaticIdentityCandidates(lookup, name)
+    .map((candidate) => ({
+      candidate,
+      score: scoreRowToStaticStatusIdentityCandidate(datasetId, row, candidate, slotLookup),
+    }))
+    .filter((item) => Number.isFinite(item.score))
+    .sort((left, right) => right.score - left.score);
+  if (!candidates.length) return null;
+  const [best, second] = candidates;
+  if (best.score < 250) return null;
+  if (second && best.score - second.score < 90) return null;
+  return best.candidate;
+}
+
+function scoreRowToStaticStatusIdentityCandidate(datasetId, row, candidate, slotLookup) {
+  if (!row || !candidate) return Number.NEGATIVE_INFINITY;
+  const rowName = getStringValue(row.player_name || row.player || row.nba_name || "");
+  const strictName = normalizeNameKey(rowName);
+  const looseName = normalizeLooseNameKey(rowName);
+  const candidateStrict = normalizeNameKey(candidate.name);
+  const candidateLoose = normalizeLooseNameKey(candidate.name);
+  if (!strictName || !candidateStrict) return Number.NEGATIVE_INFINITY;
+  if (strictName !== candidateStrict && looseName !== candidateLoose) return Number.NEGATIVE_INFINITY;
+
+  const season = extractLeadingYear(row.season);
+  const slotDatasetId = getStaticStatusDatasetSlotId(datasetId, row);
+  if (hasStaticStatusDatasetSlot(slotDatasetId, slotLookup) && !candidateHasStaticStatusSeason(candidate, slotLookup, slotDatasetId, season)) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const rowDob = getStringValue(row.dob || row.birth_date || "").trim();
+  if (rowDob && candidate.dob && rowDob !== candidate.dob) return Number.NEGATIVE_INFINITY;
+  const heightGap = getStaticStatusIdentityHeightGap(row, candidate);
+  if (Number.isFinite(heightGap) && heightGap > 1.5) return Number.NEGATIVE_INFINITY;
+  if (!rowDob && !Number.isFinite(heightGap)) return Number.NEGATIVE_INFINITY;
+
+  let score = strictName === candidateStrict ? 260 : 210;
+  if (rowDob && candidate.dob && rowDob === candidate.dob) score += 300;
+  if (Number.isFinite(heightGap)) score += Math.max(0, 100 - (heightGap * 45));
+  return score;
+}
+
+function getStaticStatusDatasetSlotId(datasetId, row) {
+  const rawId = getStringValue(datasetId).toLowerCase();
+  if (["d1", "d2", "naia", "juco", "nba"].includes(rawId)) return rawId;
+  if (rawId === "player_career") {
+    const level = normalizeKey(row?.competition_level || row?.source_dataset || "");
+    if (level === "d1") return "d1";
+    if (level === "d2") return "d2";
+    if (level === "naia") return "naia";
+    if (level === "juco") return "juco";
+    if (level === "nba") return "nba";
+  }
+  return rawId;
+}
+
+function hasStaticStatusDatasetSlot(datasetId, slotLookup) {
+  return Object.prototype.hasOwnProperty.call(slotLookup || {}, `${datasetId}_min`)
+    && Object.prototype.hasOwnProperty.call(slotLookup || {}, `${datasetId}_max`);
+}
+
+function candidateHasStaticStatusSeason(candidate, slotLookup, datasetId, season) {
+  const min = getStaticStatusRangeValue(candidate.seasons, slotLookup, `${datasetId}_min`);
+  const max = getStaticStatusRangeValue(candidate.seasons, slotLookup, `${datasetId}_max`);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return false;
+  if (!Number.isFinite(season)) return true;
+  return season >= min && season <= max;
+}
+
+function getStaticStatusIdentityHeightGap(row, candidate) {
+  const rowHeight = firstFinite(row.height_in, row.inches, parseHeightToInches(row.height), Number.NaN);
+  if (!Number.isFinite(rowHeight) || !candidate?.heights?.length) return Number.NaN;
+  return Math.min(...candidate.heights.map((height) => Math.abs(Number(height) - rowHeight)).filter(Number.isFinite));
 }
 
 function scoreGrassrootsToStaticD1IdentityCandidate(sourceGroup, candidate, slotLookup) {
@@ -4377,7 +4516,7 @@ function getStrictStatusFlagsFromStaticRealgmIndex(datasetId, row, bundle, slotL
   const entry = bundle.players[realgmId];
   if (!entry) return flags;
   if (datasetId === "d1") {
-    flags.nba = hasStaticStatusSeasonAfter(entry, slotLookup, "nba", season);
+    flags.nba = hasAnyStaticStatusSeason(entry, slotLookup, "nba");
     flags.former_juco = hasStaticStatusSeasonBefore(entry, slotLookup, "juco", season);
     flags.former_d2 = hasStaticStatusSeasonBefore(entry, slotLookup, "d2", season);
     flags.former_naia = hasStaticStatusSeasonBefore(entry, slotLookup, "naia", season);
@@ -4390,7 +4529,7 @@ function getStrictStatusFlagsFromStaticRealgmIndex(datasetId, row, bundle, slotL
   }
   flags.d1 = hasStaticStatusSeasonAfter(entry, slotLookup, "d1", season);
   flags.formerd1 = hasStaticStatusSeasonBefore(entry, slotLookup, "d1", season);
-  flags.nba = hasStaticStatusSeasonAfter(entry, slotLookup, "nba", season);
+  flags.nba = hasAnyStaticStatusSeason(entry, slotLookup, "nba");
   return flags;
 }
 
@@ -4645,7 +4784,7 @@ function getStrictStatusFlags(datasetId, row, statusIndex) {
   const statusBucket = statusIndex.get(realgmId);
   if (!statusBucket) return flags;
   if (datasetId === "d1") {
-    flags.nba = hasStatusSeasonAfter(statusBucket, "nba", season);
+    flags.nba = hasAnyStatusSeason(statusBucket, "nba");
     flags.former_juco = hasStatusSeasonBefore(statusBucket, "juco", season);
     flags.former_d2 = hasStatusSeasonBefore(statusBucket, "d2", season);
     flags.former_naia = hasStatusSeasonBefore(statusBucket, "naia", season);
@@ -4658,7 +4797,7 @@ function getStrictStatusFlags(datasetId, row, statusIndex) {
   }
   flags.d1 = hasStatusSeasonAfter(statusBucket, "d1", season);
   flags.formerd1 = hasStatusSeasonBefore(statusBucket, "d1", season);
-  flags.nba = hasStatusSeasonAfter(statusBucket, "nba", season);
+  flags.nba = hasAnyStatusSeason(statusBucket, "nba");
   return flags;
 }
 
@@ -4694,7 +4833,7 @@ function annotateStatusFlags(sourceDataset, graph) {
   sourceGroups.forEach((group) => {
     const flags = sourceDataset.id === "d1"
       ? {
-        nba: hasStatusPath(group, graph, "nba", "forward"),
+        nba: hasAnyStatusPath(group, graph, "nba"),
         former_juco: hasStatusPath(group, graph, "juco", "backward"),
         former_d2: hasStatusPath(group, graph, "d2", "backward"),
         former_naia: hasStatusPath(group, graph, "naia", "backward"),
@@ -4708,7 +4847,7 @@ function annotateStatusFlags(sourceDataset, graph) {
         : {
           d1: hasStatusPath(group, graph, "d1", "forward"),
           formerd1: hasStatusPath(group, graph, "d1", "backward"),
-          nba: hasStatusPath(group, graph, "nba", "forward"),
+          nba: hasAnyStatusPath(group, graph, "nba"),
         };
     if (sourceDataset.id !== "d1" && sourceDataset.id !== "fiba" && group.rows.some((row) => rowHasExplicitProjectedD1Data(row))) {
       flags.d1 = true;
@@ -6571,20 +6710,34 @@ function normalizePosLabel(value) {
   if (!text) return "";
   const compact = text.replace(/[^A-Z]/g, "");
   if (!compact || compact === "NA") return "";
+  if (/^\s*(PG|POINT GUARD)\s*[\/,&|+-]\s*(SG|SHOOTING GUARD)\s*$/.test(text)
+    || /^\s*(SG|SHOOTING GUARD)\s*[\/,&|+-]\s*(PG|POINT GUARD)\s*$/.test(text)
+    || /^G$|^GUARD$|^CG$|^COMBOG$|^COMBOGUARD$/.test(compact)) return "G";
+  if (/^\s*(SG|SHOOTING GUARD)\s*[\/,&|+-]\s*(SF|SMALL FORWARD)\s*$/.test(text)
+    || /^\s*(SF|SMALL FORWARD)\s*[\/,&|+-]\s*(SG|SHOOTING GUARD)\s*$/.test(text)
+    || /^GF$|^FG$/.test(compact)) return "G/F";
+  if (/^\s*(SF|SMALL FORWARD)\s*[\/,&|+-]\s*(PF|POWER FORWARD)\s*$/.test(text)
+    || /^\s*(PF|POWER FORWARD)\s*[\/,&|+-]\s*(SF|SMALL FORWARD)\s*$/.test(text)
+    || /^F$|^FORWARD$|^FORWARDS$/.test(compact)) return "F";
+  if (/^\s*(PF|POWER FORWARD|F|FORWARD)\s*[\/,&|+-]\s*(C|CENTER|CENTRE)\s*$/.test(text)
+    || /^\s*(C|CENTER|CENTRE)\s*[\/,&|+-]\s*(PF|POWER FORWARD|F|FORWARD)\s*$/.test(text)
+    || /^FC$|^CF$/.test(compact)) return "F/C";
   if (/\bPOINT GUARD\b/.test(text)) return "PG";
   if (/\bPG\b|PURE PG/.test(text)) return "PG";
   if (/\bSHOOTING GUARD\b/.test(text)) return "SG";
   if (/\bSG\b|SCORING PG|COMBO G/.test(text)) return "SG";
   if (/\bSMALL FORWARD\b/.test(text)) return "SF";
-  if (/\bSF\b|WING/.test(text)) return "SF";
+  if (/\bWING\b/.test(text)) return "G/F";
+  if (/\bSF\b/.test(text)) return "SF";
   if (/\bPOWER FORWARD\b/.test(text)) return "PF";
   if (/\bPF\b|STRETCH 4/.test(text)) return "PF";
   if (/^\s*(G\/F|F\/G|GUARD\/FORWARD|FORWARD\/GUARD)\s*$/.test(text)) return "G/F";
   if (/^\s*GUARD\s*$/.test(text)) return "G";
   if (/^\s*FORWARD\s*$/.test(text)) return "F";
   if (/^\s*CENTER\s*$/.test(text)) return "C";
+  if (compact === "PG" || compact === "SG" || compact === "SF" || compact === "PF" || compact === "C") return compact;
   if (/\bC\b/.test(text)) return "C";
-  return getStringValue(value);
+  return text;
 }
 
 function refreshDerivedBiography(row) {
@@ -6877,11 +7030,11 @@ function renderCurrentDataset() {
   scheduleSecondaryFiltersRender(dataset, state);
   scheduleDeferredHydration(dataset.id);
   if (dataset.id === "grassroots" && state._grassrootsLoadingYearsKey) {
-    elements.statusPill.textContent = `Loading ${dataset.navLabel} ${formatSelectedYearSummary(state._grassrootsLoadingYearsKey.split("|").filter(Boolean))}`;
+    elements.statusPill.textContent = `${dataset.navLabel} ready`;
   } else if (dataset.id === "grassroots" && state._grassrootsLoadingScope) {
     elements.statusPill.textContent = `Loading ${dataset.navLabel} ${state._grassrootsLoadingScope.replace(/_/g, " ")}`;
   } else if (dataset.id === "player_career" && getPlayerCareerPendingYearsKey(state)) {
-    elements.statusPill.textContent = `Loading ${dataset.navLabel} ${formatSelectedYearSummary(getPlayerCareerPendingYearsKey(state).split("|").filter(Boolean))}`;
+    elements.statusPill.textContent = `${dataset.navLabel} ready`;
   } else {
     elements.statusPill.textContent = `${dataset.navLabel} ready`;
   }
@@ -7039,6 +7192,8 @@ function renderYearPills(dataset, state) {
           await ensureDatasetYearsLoaded(dataset, [year]);
           state.years.add(year);
         }
+        await ensureStatusReadyForState(dataset, state);
+        if (appState.currentId !== dataset.id) return;
         renderCurrentDataset();
       } catch (error) {
         elements.statusPill.textContent = `${dataset.navLabel} load failed`;
@@ -7175,8 +7330,8 @@ function renderExtraFilters(dataset, state) {
     button.addEventListener("click", async () => {
       const nextMode = button.dataset.viewMode;
       if (!nextMode) return;
+      const nextState = switchDatasetViewMode(dataset, state, nextMode);
       if (dataset.id === "grassroots") {
-        const nextState = switchGrassrootsViewMode(dataset, state, nextMode);
         const scope = getGrassrootsDisplayScope(dataset, nextState);
         nextState._grassrootsLoadingScope = scope || "";
         if (scope) {
@@ -7185,8 +7340,7 @@ function renderExtraFilters(dataset, state) {
         renderCurrentDataset();
         return;
       }
-      state.extraSelects.view_mode = nextMode;
-      state.team = "all";
+      if (dataset.id === "player_career") schedulePlayerCareerSelectedYearLoad(dataset, nextState);
       renderCurrentDataset();
     });
   });
@@ -7195,10 +7349,9 @@ function renderExtraFilters(dataset, state) {
     select.addEventListener("change", async () => {
       try {
         const filterId = select.dataset.singleFilter;
-        state.extraSelects[filterId] = select.value;
         if (filterId === "view_mode") {
+          const nextState = switchDatasetViewMode(dataset, state, select.value);
           if (dataset.id === "grassroots") {
-            const nextState = switchGrassrootsViewMode(dataset, state, select.value);
             const scope = getGrassrootsDisplayScope(dataset, nextState);
             nextState._grassrootsLoadingScope = scope || "";
             if (scope) {
@@ -7207,8 +7360,12 @@ function renderExtraFilters(dataset, state) {
             renderCurrentDataset();
             return;
           }
-          state.team = "all";
-        } else if (filterId === "setting") {
+          if (dataset.id === "player_career") schedulePlayerCareerSelectedYearLoad(dataset, nextState);
+          renderCurrentDataset();
+          return;
+        }
+        state.extraSelects[filterId] = select.value;
+        if (filterId === "setting") {
           state.team = "all";
           state.multiSelects.circuit = new Set();
         }
@@ -7849,8 +8006,8 @@ function getFilterContextRows(dataset, state, options = {}) {
     for (const filter of activeNumericFilters) {
       const rawValue = getRowColumnValue(dataset, row, filter.column);
       const numericValue = typeof rawValue === "number"
-        ? rawValue
-        : (getStringValue(rawValue).trim() === "" ? Number.NaN : Number(rawValue));
+        ? normalizeNumericFilterInput(filter.column, rawValue)
+        : (getStringValue(rawValue).trim() === "" ? Number.NaN : normalizeNumericFilterInput(filter.column, rawValue));
       if (!Number.isFinite(numericValue)) return false;
       if (filter.hasMin && numericValue < filter.minValue) return false;
       if (filter.hasMax && numericValue > filter.maxValue) return false;
@@ -7949,17 +8106,14 @@ function normalizeSearchPhrase(value) {
 function getCompactSearchColumns(dataset) {
   const configured = Array.isArray(dataset?.searchColumns) ? dataset.searchColumns : [];
   return Array.from(new Set([
-    ...configured.filter((column) => CORE_SEARCH_INDEX_COLUMNS.includes(column)),
-    ...CORE_SEARCH_INDEX_COLUMNS,
+    dataset?.playerColumn,
+    ...configured.filter((column) => PLAYER_SEARCH_INDEX_COLUMNS.includes(column)),
+    ...PLAYER_SEARCH_INDEX_COLUMNS,
   ])).filter(Boolean);
 }
 
 function getSearchColumnsForRows(dataset, rows) {
-  const rowCount = Array.isArray(rows) ? rows.length : 0;
-  if (dataset?.id === "player_career" || rowCount > SEARCH_INDEX_ROW_LIMIT) {
-    return getCompactSearchColumns(dataset);
-  }
-  return getSearchHaystackColumns(dataset);
+  return getCompactSearchColumns(dataset);
 }
 
 function shouldUseLinearSearchScan(dataset, rows) {
@@ -8027,8 +8181,10 @@ function getSearchIndexForRows(dataset, rows) {
       if (!exactKey) return;
       add(exact, exactKey, rowIndex);
       exactKey.split(" ").forEach((word) => {
-        if (word.length < 3) return;
-        add(token, word, rowIndex);
+        if (word.length < 2) return;
+        for (let length = 2; length <= word.length; length += 1) {
+          add(token, word.slice(0, length), rowIndex);
+        }
       });
     });
   };
@@ -8210,6 +8366,18 @@ function getDisplayRowsCacheKey(dataset, state) {
   const settingKey = dataset?.id === "grassroots" ? getStringValue(state?.extraSelects?.setting || "all") : "";
   const rowCount = Array.isArray(dataset?.rows) ? dataset.rows.length : 0;
   const rowVersion = Number(dataset?._rowVersion) || 0;
+  if (isGrassrootsSingleYearSetting(dataset, state)) {
+    return [
+      "single_year",
+      settingKey,
+      yearsKey,
+      rowCount,
+      rowVersion,
+      getStringValue(state?.team),
+      serializeSingleFilterState(dataset, state),
+      serializeMultiFilterState(dataset, state),
+    ].join("|");
+  }
   if (viewMode !== "career") return `${viewMode}|${settingKey}|${yearsKey}|${rowCount}|${rowVersion}`;
   return [
     viewMode,
@@ -8247,6 +8415,10 @@ function serializeRangeFilters(columns, filters) {
     .join("|");
 }
 
+function isGrassrootsSingleYearSetting(dataset, state) {
+  return dataset?.id === "grassroots" && normalizeKey(state?.extraSelects?.setting) === "single year";
+}
+
 function getActiveDemoFilters(dataset, state) {
   const cache = getRenderCache(state);
   const key = serializeRangeFilters(dataset.meta.demoFilterMeta.map((item) => item.column), state.demoFilters);
@@ -8269,8 +8441,8 @@ function getActiveNumericFilters(dataset, state) {
   cache.activeNumericFilters = Object.entries(state.numericFilters || {})
     .map(([column, filter]) => {
       if (!hasActiveRangeFilter(filter)) return null;
-      const minValue = inputHasValue(filter?.min) ? Number(filter.min) : Number.NaN;
-      const maxValue = inputHasValue(filter?.max) ? Number(filter.max) : Number.NaN;
+      const minValue = inputHasValue(filter?.min) ? normalizeNumericFilterInput(column, filter.min) : Number.NaN;
+      const maxValue = inputHasValue(filter?.max) ? normalizeNumericFilterInput(column, filter.max) : Number.NaN;
       return {
         column,
         hasMin: Number.isFinite(minValue),
@@ -8281,6 +8453,13 @@ function getActiveNumericFilters(dataset, state) {
     })
     .filter(Boolean);
   return cache.activeNumericFilters;
+}
+
+function normalizeNumericFilterInput(column, value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return Number.NaN;
+  if (isShootingPercentageColumn(column) && Math.abs(numeric) <= 1.5) return numeric * 100;
+  return numeric;
 }
 
 function getVisibleColumns(dataset, state) {
@@ -8301,6 +8480,8 @@ function getDisplayRows(dataset, state) {
   if (dataset?.id === "grassroots") {
     if (state?.extraSelects?.view_mode === "career") {
       rows = buildCareerRows(dataset, state);
+    } else if (isGrassrootsSingleYearSetting(dataset, state)) {
+      rows = buildGrassrootsSingleYearRows(dataset, state);
     }
   } else if (state.extraSelects.view_mode === "career") {
     rows = buildCareerRows(dataset, state);
@@ -8357,6 +8538,50 @@ function buildCareerRows(dataset, state) {
   state._careerCache = { key: cacheKey, rows: careerRows };
   scheduleSearchWarmup(dataset, careerRows, cacheKey);
   return careerRows;
+}
+
+function buildGrassrootsSingleYearRows(dataset, state) {
+  const cacheKey = `${getCareerRowsCacheKey(dataset, state)}|single_year`;
+  if (state._grassrootsSingleYearCache?.key === cacheKey) {
+    scheduleSearchWarmup(dataset, state._grassrootsSingleYearCache.rows, cacheKey);
+    return state._grassrootsSingleYearCache.rows;
+  }
+
+  const scopedRows = getRawFilterContextRows(dataset, state, {
+    skipSort: true,
+    ignoreSearch: true,
+    ignoreDemoFilters: true,
+    ignoreNumericFilters: true,
+    ignoreSingleFilterId: "setting",
+  });
+  const groupedBySeason = new Map();
+  scopedRows.forEach((row, index) => {
+    const season = getStringValue(row?.[dataset.yearColumn]).trim();
+    const seasonKey = season || "__unknown_year";
+    if (!groupedBySeason.has(seasonKey)) groupedBySeason.set(seasonKey, new Map());
+    const grouped = groupedBySeason.get(seasonKey);
+    const key = getCareerGroupKey(dataset, row) || `row_${index}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  });
+
+  const mergedGroups = [];
+  groupedBySeason.forEach((grouped) => {
+    mergedGroups.push(...mergeCareerRowGroups(dataset, Array.from(grouped.values())));
+  });
+  const rows = mergedGroups
+    .map((groupRows) => {
+      const aggregate = aggregateCareerRows(dataset, groupRows);
+      aggregate.setting = "Single Year";
+      aggregate._grassrootsSingleYearAggregate = true;
+      return aggregate;
+    });
+  applyCalculatedRatings(rows, dataset.id);
+  applyPerNormalization(rows, dataset.id);
+  populateDefenseRatePercentiles(rows, dataset.id, { referenceRows: rows });
+  state._grassrootsSingleYearCache = { key: cacheKey, rows };
+  scheduleSearchWarmup(dataset, rows, cacheKey);
+  return rows;
 }
 
 function getStaticCareerColorRows(dataset) {
@@ -10115,10 +10340,16 @@ function hexToRgb(hex) {
 
 function updateSummary(dataset, state, filtered) {
   if (dataset?.id === "grassroots" && state?._grassrootsLoadingYearsKey) {
-    const loadingLabel = formatSelectedYearSummary(state._grassrootsLoadingYearsKey.split("|").filter(Boolean));
-    elements.filtersSummary.textContent = `Loading Years: ${loadingLabel}`;
+    const pendingYears = state._grassrootsLoadingYearsKey.split("|").filter(Boolean);
+    const selectedYears = state.years.size ? formatSelectedYearSummary(Array.from(state.years)) : "none";
+    const search = state.search.trim();
+    const showingText = filtered.length ? `Showing ${Math.min(filtered.length, state.visibleCount).toLocaleString()} of ${filtered.length.toLocaleString()}` : "";
+    const pendingText = pendingYears.length === 1
+      ? `adding ${formatSelectedYearSummary(pendingYears)} in background`
+      : `adding ${pendingYears.length.toLocaleString()} years in background`;
+    elements.filtersSummary.textContent = `Years: ${selectedYears} | Team: ${state.team === "all" ? "all" : state.team} | Search: ${search || "none"}`;
     elements.resultsCount.textContent = "";
-    elements.resultsSubtitle.textContent = `Loading ${loadingLabel}...`;
+    elements.resultsSubtitle.textContent = showingText ? `${showingText}; ${pendingText}` : pendingText;
     return;
   }
   if (dataset?.id === "grassroots" && state?._grassrootsLoadingScope) {
@@ -10135,7 +10366,16 @@ function updateSummary(dataset, state, filtered) {
   const search = state.search.trim();
   elements.filtersSummary.textContent = `Years: ${selectedYears} | Team: ${state.team === "all" ? "all" : state.team} | Search: ${search || "none"}`;
   elements.resultsCount.textContent = "";
-  elements.resultsSubtitle.textContent = filtered.length ? `Showing ${Math.min(filtered.length, state.visibleCount).toLocaleString()} of ${filtered.length.toLocaleString()}` : "";
+  const showingText = filtered.length ? `Showing ${Math.min(filtered.length, state.visibleCount).toLocaleString()} of ${filtered.length.toLocaleString()}` : "";
+  if (dataset?.id === "player_career" && getPlayerCareerPendingYearsKey(state)) {
+    const pendingYears = getPlayerCareerPendingYearsKey(state).split("|").filter(Boolean);
+    const pendingText = pendingYears.length === 1
+      ? `adding ${formatSelectedYearSummary(pendingYears)} in background`
+      : `adding ${pendingYears.length.toLocaleString()} years in background`;
+    elements.resultsSubtitle.textContent = showingText ? `${showingText}; ${pendingText}` : pendingText;
+    return;
+  }
+  elements.resultsSubtitle.textContent = showingText;
 }
 
 function renderFinderBar(dataset, state) {
@@ -10165,8 +10405,23 @@ function renderFinderBar(dataset, state) {
     }
     const targetYears = value === "all" ? years : [value];
     try {
+      if (dataset.id === "grassroots" && dataset._grassrootsChunked && value === "all") {
+        state.years = new Set(targetYears);
+        resetUiCaches(state);
+        renderCurrentDataset();
+        return;
+      }
+      if (dataset.id === "player_career" && dataset._playerCareerChunked && value === "all") {
+        state.years = new Set(targetYears);
+        resetUiCaches(state);
+        schedulePlayerCareerSelectedYearLoad(dataset, state);
+        renderCurrentDataset();
+        return;
+      }
       await ensureDatasetYearsLoaded(dataset, targetYears);
       state.years = value === "all" ? new Set(targetYears) : new Set([value]);
+      await ensureStatusReadyForState(dataset, state);
+      if (appState.currentId !== dataset.id) return;
       renderCurrentDataset();
     } catch (error) {
       elements.statusPill.textContent = `${dataset.navLabel} load failed`;
@@ -10413,6 +10668,7 @@ function enhanceD1Row(row) {
   if (row.mid_made == null && Number.isFinite(row.long2_made)) row.mid_made = row.long2_made;
   if (row.mid_att == null && Number.isFinite(row.long2_att)) row.mid_att = row.long2_att;
   if (row.mid_pct == null && Number.isFinite(row.long2_pct)) row.mid_pct = row.long2_pct;
+  row.rim_to_mid_att_ratio = firstFinite(row.rim_to_mid_att_ratio, ratioIfPossible(row.rim_att, row.mid_att), Number.NaN);
   populateDerivedShooting(row, {
     threeMadeKeys: ["three_p_made", "three_pm"],
     threeAttKeys: ["three_p_att", "three_pa"],
@@ -10886,7 +11142,7 @@ function cleanupTeamEdgeWords(value) {
 }
 
 function datasetPercentColumnsStoredAsRatios(datasetId = "") {
-  return datasetId === "d2" || datasetId === "nba";
+  return datasetId === "d2" || datasetId === "nba" || datasetId === "player_career";
 }
 
 function scaleRateColumns(row, columns, datasetId = "") {
@@ -10938,7 +11194,7 @@ function normalizePercentLikeColumns(row, datasetId = "") {
     if (isPercentRatioColumn(column)) {
       if (row._percentRatiosScaled) return;
       if (scaleStandardPercentColumns) {
-        row[column] = row[column] * 100;
+        if (Math.abs(row[column]) <= 1.5) row[column] = row[column] * 100;
       } else if (datasetId !== "grassroots" && Math.abs(row[column]) <= 1.5) {
         row[column] = row[column] * 100;
       }
@@ -11935,10 +12191,12 @@ function formatValue(dataset, column, value, row) {
   if (/_poss$/i.test(column)) return value.toFixed(1);
   if (/(_att$|_made$|_miss$)/i.test(column)) return String(Math.round(value));
   if (column === "ast_to") return value.toFixed(2);
+  if (column === "rim_to_mid_att_ratio") return value.toFixed(2);
   if (column === "blk_pf" || column === "stl_pf" || column === "stocks_pf") return value.toFixed(2);
   if (/ppp$/i.test(column)) return value.toFixed(3);
   if (/^(fic|ppr)$/i.test(column)) return value.toFixed(1);
   if (isRatioDisplayPercentColumn(dataset, column)) return (Math.abs(value) <= 1.5 ? value * 100 : value).toFixed(1);
+  if (isShootingPercentageColumn(column) && Math.abs(value) <= 1.5) return (value * 100).toFixed(1);
   if (isPercentRatioColumn(column)) return value.toFixed(1);
 
   if (looksPercentColumn(column)) {
@@ -11952,6 +12210,11 @@ function formatValue(dataset, column, value, row) {
 function looksPercentColumn(column) {
   const baseColumn = stripCompanionPrefix(column);
   return /pct|percentile|rate|usg$|freq$|share$|^efg$|^tspct$|^ftpct$|^fg2pct$|^fg3pct$|^fgpct_rim$|^fgpct_mid$|^orbpct$|^drbpct$|^astpct$|^topct$|^stlpct$|^blkpct$/.test(baseColumn);
+}
+
+function isShootingPercentageColumn(column) {
+  const baseColumn = stripCompanionPrefix(column);
+  return /(^fg_pct$|^2p_pct$|^two_p_pct$|^3p_pct$|^tp_pct$|^three_p_pct$|^ft_pct$|^efg_pct$|^ts_pct$|^fg2pct$|^fg3pct$|^ftpct$|^efg$|^tspct$|^fgpct_rim$|^fgpct_mid$|_fg_pct$|_two_p_pct$|_two_fg_pct$|_three_p_pct$|_three_fg_pct$|_efg_pct$|_ast_pct$|^rim_pct$|^mid_pct$|^dunk_pct$|^dunk_ast_pct$|^rim_ast_pct$|^mid_ast_pct$|^two_p_ast_pct$|^three_p_ast_pct$)/i.test(baseColumn);
 }
 
 function isRatioDisplayPercentColumn(dataset, column) {

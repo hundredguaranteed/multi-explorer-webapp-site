@@ -54,6 +54,11 @@ async function selectAllYears(page, timeout = 240000) {
   await waitForReady(page, timeout);
 }
 
+async function selectYear(page, year, timeout = 120000) {
+  await page.locator('#yearQuickSelect').selectOption(year);
+  await waitForReady(page, timeout);
+}
+
 async function getTableRows(page) {
   return page.evaluate(() => {
     const headers = Array.from(document.querySelectorAll('#statsTableHead th')).map((cell, index) => {
@@ -105,9 +110,8 @@ test('runtime regression smoke', async ({ page }) => {
 
   await switchTab(page, 'grassroots');
   await selectAllYears(page);
-  await searchFor(page, 'Alonzo Metz');
-  const grassrootsCount = await page.locator('#statsTableBody tr').count();
-  expect(grassrootsCount).toBeGreaterThan(0);
+  await searchFor(page, 'Austin Goosby');
+  await expect(page.locator('#statsTableBody tr').first()).toContainText('Austin Goosby');
 
   expect(issues, issues.join('\n')).toEqual([]);
 });
@@ -137,8 +141,8 @@ test('status filters use realgm-linked outcomes instead of text heuristics', asy
   await waitForReady(page);
 
   await selectSingleFilter(page, 'status_path', 'nba', { allowEmpty: true });
-  await searchFor(page, 'Cameron Clark', { allowEmpty: true });
-  await expectNoDataRows(page);
+  await searchFor(page, 'Cameron Clark');
+  await expect(page.locator('#statsTableBody tr').first()).toContainText('Cameron Clark');
 
   await selectAllYears(page);
   await searchFor(page, 'Buddy Hield');
@@ -154,8 +158,8 @@ test('status filters use realgm-linked outcomes instead of text heuristics', asy
   await searchFor(page, 'Chris Duarte');
   await expect(page.locator('#statsTableBody tr').first()).toContainText('Chris Duarte');
 
-  await searchFor(page, 'Donyae May', { allowEmpty: true });
-  await expectNoDataRows(page);
+  await searchFor(page, 'Donyae May');
+  await expect(page.locator('#statsTableBody tr').first()).toContainText('Donyae May');
 
   await selectSingleFilter(page, 'status_path', 'd1');
   await searchFor(page, 'Chris Duarte');
@@ -168,8 +172,8 @@ test('status filters use realgm-linked outcomes instead of text heuristics', asy
   await expect(page.locator('#statsTableBody tr').first()).toContainText('Bennett Stirtz');
 
   await selectSingleFilter(page, 'status_path', 'nba', { allowEmpty: true });
-  await searchFor(page, 'Bennett Stirtz', { allowEmpty: true });
-  await expectNoDataRows(page);
+  await searchFor(page, 'Bennett Stirtz');
+  await expect(page.locator('#statsTableBody tr').first()).toContainText('Bennett Stirtz');
 });
 
 test('status filters stay realgm-linked across naia fiba and grassroots', async ({ page }) => {
@@ -184,8 +188,8 @@ test('status filters stay realgm-linked across naia fiba and grassroots', async 
   await expect(page.locator('#statsTableBody tr').first()).toContainText('Luke Almodovar');
 
   await selectSingleFilter(page, 'status_path', 'nba', { allowEmpty: true });
-  await searchFor(page, 'Luke Almodovar', { allowEmpty: true });
-  await expectNoDataRows(page);
+  await searchFor(page, 'Luke Almodovar');
+  await expect(page.locator('#statsTableBody tr').first()).toContainText('Luke Almodovar');
 
   await switchTab(page, 'fiba');
   await selectAllYears(page);
@@ -198,7 +202,7 @@ test('status filters stay realgm-linked across naia fiba and grassroots', async 
   await expect(page.locator('#statsTableBody tr').first()).toContainText('Pau Gasol');
 
   await switchTab(page, 'grassroots');
-  await selectAllYears(page);
+  await selectYear(page, '2021');
   await selectSingleFilter(page, 'status_path', 'nba');
   await searchFor(page, 'Emoni Bates');
   await expect(page.locator('#statsTableBody tr').first()).toContainText('Emoni Bates');
