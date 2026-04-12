@@ -6,6 +6,30 @@
   <title>Stat Explorers</title>
   <meta name="description" content="D1, D2, NAIA, JUCO, FIBA, NBA, and Player/Career explorers in one basic webapp.">
   <link rel="stylesheet" href="styles.css?v=20260412-localdata-status-v48">
+  <script>
+window.__DATA_ASSET_BASE__ = "";
+(function () {
+  var version = "20260412-query-fast-v50";
+  var route = (window.location.hash || "#home").replace(/^#/, "").toLowerCase();
+  var preloads = {
+    d1: ["data/vendor/d1_year_manifest.js", "data/vendor/d1_year_chunks/2026.js"],
+    grassroots: ["data/vendor/grassroots_year_manifest.js", "data/vendor/grassroots_year_chunks/2026.js"],
+    player_career: [
+      "data/vendor/player_career_year_manifest.js",
+      "data/vendor/player_career_year_chunk_parts/2026-part-001.js",
+      "data/vendor/player_career_year_chunk_parts/2026-part-002.js",
+    ],
+  };
+  (preloads[route] || []).forEach(function (src) {
+    var link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "script";
+    link.href = src + "?v=" + encodeURIComponent(version);
+    document.head.appendChild(link);
+  });
+}());
+  </script>
+  <script src="app.js?v=20260412-query-fast-v50" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -126,9 +150,5 @@
     </section>
   </template>
 
-  <script>
-window.__DATA_ASSET_BASE__ = "";
-  </script>
-  <script src="app.js?v=20260412-reset-fast-status-v49" defer></script>
 </body>
 </html>
