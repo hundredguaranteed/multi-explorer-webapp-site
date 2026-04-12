@@ -41,6 +41,12 @@ async function searchFor(page, value, options = {}) {
   await waitForReady(page, options.timeout || 120000, { allowEmpty: options.allowEmpty });
 }
 
+async function setRangeInput(locator, value, options = {}) {
+  await locator.fill(value);
+  await locator.press('Tab');
+  await waitForReady(locator.page(), options.timeout || 120000, { allowEmpty: options.allowEmpty });
+}
+
 async function selectSingleFilter(page, filterId, value, options = {}) {
   await page.locator(`#single-${filterId}`).evaluate((element, nextValue) => {
     element.value = nextValue;
@@ -57,6 +63,11 @@ async function selectAllYears(page, timeout = 240000) {
 async function selectYear(page, year, timeout = 120000) {
   await page.locator('#yearQuickSelect').selectOption(year);
   await waitForReady(page, timeout);
+}
+
+async function setGrassrootsViewMode(page, mode) {
+  await page.locator(`[data-view-mode="${mode}"]`).click();
+  await waitForReady(page);
 }
 
 async function getTableRows(page) {
@@ -209,4 +220,37 @@ test('status filters stay realgm-linked across naia fiba and grassroots', async 
 
   await searchFor(page, 'Jayden Hodge', { allowEmpty: true });
   await expectNoDataRows(page);
+});
+
+test('minute filters stay attached to the active tab state while searching', async ({ page }) => {
+  test.setTimeout(10 * 60 * 1000);
+
+  const scenarios = [
+    { tab: 'd1', minuteSelector: '[data-demo-min="min"]', search: 'cooper', expectedText: 'Cooper' },
+    { tab: 'd2', minuteSelector: '[data-demo-min="min"]', search: 'bennett', expectedText: 'Bennett' },
+    { tab: 'player_career', minuteSelector: '[data-demo-min="min"]', allYears: true, search: 'shai', expectedText: 'Shai' },
+    { tab: 'nba', minuteSelector: '[data-demo-min="mp"]', allYears: true, search: 'haliburton', expectedText: 'Haliburton' },
+  ];
+
+  await page.goto('http://127.0.0.1:8787/#d1', { waitUntil: 'networkidle' });
+  await waitForReady(page);
+
+  for (const scenario of scenarios) {
+    await switchTab(page, scenario.tab);
+    if (scenario.allYears) await selectAllYears(page);
+    const minuteInput = page.locator(scenario.minuteSelector).first();
+    await setRangeInput(minuteInput, '0');
+    await searchFor(page, scenario.search);
+    await expect(minuteInput).toHaveValue('0');
+    await expect(page.locator('#statsTableBody tr').first()).toContainText(scenario.expectedText);
+  }
+
+  await switchTab(page, 'grassroots');
+  await setGrassrootsViewMode(page, 'career');
+  await selectAllYears(page);
+  const grassrootsMinuteInput = page.locator('[data-demo-min="min"]').first();
+  await setRangeInput(grassrootsMinuteInput, '0');
+  await searchFor(page, 'Tyrese Haliburton', { timeout: 180000 });
+  await expect(grassrootsMinuteInput).toHaveValue('0');
+  await expect(page.locator('#statsTableBody tr').first()).toContainText('Tyrese Haliburton', { timeout: 180000 });
 });

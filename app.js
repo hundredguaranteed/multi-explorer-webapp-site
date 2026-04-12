@@ -7,6 +7,8 @@ const GRASSROOTS_BACKGROUND_YEAR_BATCH_SIZE = 1;
 const D1_BACKGROUND_YEAR_BATCH_SIZE = 1;
 const BACKGROUND_YEAR_LOAD_DELAY_MS = 750;
 const D1_SEARCH_BACKGROUND_YEAR_LOAD_DELAY_MS = 450;
+const GRASSROOTS_BACKGROUND_YEAR_LOAD_DELAY_MS = 2200;
+const GRASSROOTS_SEARCH_BACKGROUND_YEAR_LOAD_DELAY_MS = 180;
 const HOME_ID = "home";
 const HOME_PAGES = [
   { id: "d1", label: "D1" },
@@ -25,7 +27,8 @@ const TABLE_FRAME_LIMIT = 2580;
 const COLOR_SCALE_MAX_ROWS = 2000;
 const STATUS_REALGM_INDEX_SCRIPT = "data/vendor/status_realgm_index.js";
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
-const APP_BUILD_VERSION = "20260412-query-fast-v50";
+const GRASSROOTS_PLAYER_YEAR_INDEX_SCRIPT = "data/vendor/grassroots_player_year_index.js";
+const APP_BUILD_VERSION = "20260412-mp-search-v51";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -1846,12 +1849,14 @@ const elements = {
 
 const appState = {
   currentId: null,
+  nextUiStateRenderKey: 1,
   scriptLoads: new Map(),
   statusLoads: new Map(),
   statusRealgmIndexKey: "",
   statusRealgmIndex: null,
   statusRealgmStaticIndex: undefined,
   statusRealgmStaticIndexLoad: null,
+  grassrootsPlayerYearIndexLoad: null,
   precomputedStatusAnnotations: undefined,
   statusAnnotationScriptLoad: null,
   hydrationLoads: new Map(),
@@ -2182,6 +2187,10 @@ function getCurrentUiState() {
   return appState.currentId && appState.currentId !== HOME_ID ? appState.uiState[appState.currentId] : null;
 }
 
+function getUiStateRenderKey(state) {
+  return getStringValue(state?._stateRenderKey);
+}
+
 function renderHomePage() {
   elements.queryPanel.hidden = true;
   elements.queryPanel.style.display = "none";
@@ -2353,6 +2362,10 @@ function syncSearchScopedYearLoads(dataset, state) {
   if (!dataset || !state) return false;
   if (isInteractiveSearchActive(state)) {
     if (dataset.id === "d1") return scheduleD1SelectedYearLoad(dataset, state);
+    if (dataset.id === "grassroots") {
+      scheduleGrassrootsSearchYearPrefetch(dataset, state);
+      return Boolean(getGrassrootsPendingYearsKey(state));
+    }
     return cancelQueuedSelectedYearLoads(dataset, state);
   }
   if (dataset.id === "player_career") return schedulePlayerCareerSelectedYearLoad(dataset, state);
@@ -3101,7 +3114,10 @@ function scheduleD1SelectedYearLoad(dataset, state) {
       state._d1LoadingYearsKey = "";
     }
     resetUiCaches(state);
-    if ((!isInteractiveSearchActive(state) || allowDuringSearch) && getD1MissingSelectedYears(dataset, state).length) {
+    const shouldContinueD1Load = Boolean(getD1PendingYearsKey(state))
+      || !isInteractiveSearchActive(state)
+      || Boolean(getStringValue(state.search).trim());
+    if (shouldContinueD1Load && getD1MissingSelectedYears(dataset, state).length) {
       scheduleD1SelectedYearLoad(dataset, state);
       return;
     }
@@ -3357,7 +3373,9 @@ function cancelGrassrootsCareerYearLoad(state) {
 
 function maybeStartGrassrootsCareerYearLoad(dataset, state) {
   if (dataset?.id !== "grassroots" || !dataset?._grassrootsChunked) return false;
-  const missingYears = getGrassrootsMissingSelectedYears(dataset, state).sort(compareYears);
+  const allowDuringSearch = Boolean(getStringValue(state.search).trim());
+  const priorityYears = getGrassrootsPriorityYears(state);
+  const missingYears = sortGrassrootsBackgroundYears(getGrassrootsMissingSelectedYears(dataset, state), allowDuringSearch, priorityYears);
   const loadKey = missingYears.join("|");
   if (!missingYears.length) {
     const hadPending = Boolean(state._grassrootsLoadTimer || state._grassrootsQueuedYearsKey || state._grassrootsLoadingYearsKey);
@@ -3371,19 +3389,20 @@ function maybeStartGrassrootsCareerYearLoad(dataset, state) {
     state._grassrootsQueuedYearsKey = loadKey;
     return true;
   }
-  if (isInteractiveSearchActive(state)) {
+  if (isInteractiveSearchActive(state) && !allowDuringSearch) {
     cancelGrassrootsCareerYearLoad(state);
     return false;
   }
   state._grassrootsQueuedYearsKey = loadKey;
   if (state._grassrootsLoadTimer) window.clearTimeout(state._grassrootsLoadTimer);
+  const delayMs = allowDuringSearch ? GRASSROOTS_SEARCH_BACKGROUND_YEAR_LOAD_DELAY_MS : GRASSROOTS_BACKGROUND_YEAR_LOAD_DELAY_MS;
   state._grassrootsLoadTimer = window.setTimeout(async () => {
     state._grassrootsLoadTimer = 0;
-    if (isInteractiveSearchActive(state)) {
+    if (isInteractiveSearchActive(state) && !allowDuringSearch) {
       state._grassrootsQueuedYearsKey = "";
       return;
     }
-    const allYearsToLoad = getGrassrootsMissingSelectedYears(dataset, state).sort(compareYears);
+    const allYearsToLoad = sortGrassrootsBackgroundYears(getGrassrootsMissingSelectedYears(dataset, state), allowDuringSearch, getGrassrootsPriorityYears(state));
     const yearsToLoad = allYearsToLoad.slice(0, GRASSROOTS_BACKGROUND_YEAR_BATCH_SIZE);
     const yearsKey = allYearsToLoad.join("|");
     state._grassrootsQueuedYearsKey = "";
@@ -3405,13 +3424,126 @@ function maybeStartGrassrootsCareerYearLoad(dataset, state) {
     } finally {
       state._grassrootsLoadingYearsKey = "";
       resetUiCaches(state);
-      if (!isInteractiveSearchActive(state) && getGrassrootsMissingSelectedYears(dataset, state).length) {
+      const missingAfterLoad = getGrassrootsMissingSelectedYears(dataset, state);
+      const priorityYears = getGrassrootsPriorityYears(state);
+      const hasMissingPriorityYear = priorityYears.some((year) => missingAfterLoad.includes(year));
+      const activeSearch = Boolean(getStringValue(state.search).trim());
+      const shouldContinueGrassrootsLoad = Boolean(getGrassrootsPendingYearsKey(state))
+        || !isInteractiveSearchActive(state)
+        || (activeSearch && (!priorityYears.length || hasMissingPriorityYear));
+      if (shouldContinueGrassrootsLoad && missingAfterLoad.length) {
         maybeStartGrassrootsCareerYearLoad(dataset, state);
       }
       renderGrassrootsYearLoadProgress(dataset, state);
     }
-  }, BACKGROUND_YEAR_LOAD_DELAY_MS);
+  }, delayMs);
   return true;
+}
+
+function sortGrassrootsBackgroundYears(years, preferOlderYears = false, priorityYears = []) {
+  const uniqueYears = Array.from(new Set((years || []).map((season) => getStringValue(season).trim()).filter(Boolean)));
+  const priority = new Set((priorityYears || []).map((year) => getStringValue(year).trim()).filter(Boolean));
+  return uniqueYears.sort((left, right) => {
+    const leftPriority = priority.has(left);
+    const rightPriority = priority.has(right);
+    if (leftPriority !== rightPriority) return leftPriority ? -1 : 1;
+    return preferOlderYears ? compareYears(right, left) : compareYears(left, right);
+  });
+}
+
+function getGrassrootsPriorityYears(state) {
+  return getStringValue(state?._grassrootsPriorityYearsKey).split("|").filter(Boolean);
+}
+
+function scheduleGrassrootsSearchYearPrefetch(dataset, state) {
+  if (dataset?.id !== "grassroots" || !dataset?._grassrootsChunked || !state) return false;
+  const searchKey = parseSearchTerms(state.search).join("||");
+  if (!searchKey) {
+    if (state._grassrootsSearchYearPrefetchTimer) {
+      window.clearTimeout(state._grassrootsSearchYearPrefetchTimer);
+      state._grassrootsSearchYearPrefetchTimer = 0;
+    }
+    state._grassrootsSearchYearPrefetchKey = "";
+    state._grassrootsPriorityYearsKey = "";
+    return false;
+  }
+  const requestKey = [
+    searchKey,
+    Array.from(state.years || []).sort(compareYears).join("|"),
+    Number(dataset?._rowVersion) || 0,
+  ].join("||");
+  if (state._grassrootsSearchYearPrefetchKey === requestKey) return Boolean(getGrassrootsPendingYearsKey(state));
+  state._grassrootsSearchYearPrefetchKey = requestKey;
+  if (state._grassrootsSearchYearPrefetchTimer) window.clearTimeout(state._grassrootsSearchYearPrefetchTimer);
+  state._grassrootsSearchYearPrefetchTimer = window.setTimeout(async () => {
+    state._grassrootsSearchYearPrefetchTimer = 0;
+    if (appState.currentId !== dataset.id) return;
+    if (state._grassrootsSearchYearPrefetchKey !== requestKey) return;
+    try {
+      const index = await loadGrassrootsPlayerYearIndex();
+      if (appState.currentId !== dataset.id) return;
+      if (state._grassrootsSearchYearPrefetchKey !== requestKey) return;
+      const priorityYears = getGrassrootsIndexedSearchYears(dataset, state, index);
+      state._grassrootsPriorityYearsKey = priorityYears.join("|");
+      if (priorityYears.length && state._grassrootsLoadTimer) {
+        window.clearTimeout(state._grassrootsLoadTimer);
+        state._grassrootsLoadTimer = 0;
+        state._grassrootsQueuedYearsKey = "";
+      }
+      maybeStartGrassrootsCareerYearLoad(dataset, state);
+      renderResultsOnly(dataset, state);
+    } catch (error) {
+      if (appState.currentId !== dataset.id) return;
+      state._grassrootsPriorityYearsKey = "";
+      maybeStartGrassrootsCareerYearLoad(dataset, state);
+    }
+  }, 220);
+  return true;
+}
+
+async function loadGrassrootsPlayerYearIndex() {
+  if (window.GRASSROOTS_PLAYER_YEAR_INDEX) return window.GRASSROOTS_PLAYER_YEAR_INDEX;
+  if (!appState.grassrootsPlayerYearIndexLoad) {
+    appState.grassrootsPlayerYearIndexLoad = loadScriptOnce(GRASSROOTS_PLAYER_YEAR_INDEX_SCRIPT)
+      .then(() => window.GRASSROOTS_PLAYER_YEAR_INDEX || {});
+  }
+  return appState.grassrootsPlayerYearIndexLoad;
+}
+
+function getGrassrootsIndexedSearchYears(dataset, state, index) {
+  if (!index) return [];
+  const selected = new Set(getGrassrootsRequestedYears(dataset, state));
+  const loaded = getLoadedYearSet(dataset);
+  const candidateYears = new Set();
+  parseSearchTerms(state.search).forEach((clause) => {
+    getGrassrootsIndexedYearsForClause(index, clause).forEach((year) => {
+      if (selected.size && !selected.has(year)) return;
+      if (loaded.has(year)) return;
+      candidateYears.add(year);
+    });
+  });
+  return Array.from(candidateYears).sort((left, right) => compareYears(right, left));
+}
+
+function getGrassrootsIndexedYearsForClause(index, clause) {
+  const phrase = normalizeGrassrootsSearchValue(clause);
+  if (!phrase) return [];
+  const direct = index[phrase];
+  if (Array.isArray(direct) && direct.length) return direct;
+  const tokens = phrase.split(" ").filter((token) => token.length >= 3);
+  if (!tokens.length) return [];
+  let matches = null;
+  tokens.forEach((token) => {
+    const years = new Set(index[token] || []);
+    if (!years.size) {
+      matches = new Set();
+      return;
+    }
+    matches = matches == null
+      ? years
+      : new Set(Array.from(matches).filter((year) => years.has(year)));
+  });
+  return Array.from(matches || []);
 }
 
 function getGrassrootsDisplayScope(dataset, state) {
@@ -7077,6 +7209,7 @@ function createInitialUiState(dataset) {
   }
 
   const state = {
+    _stateRenderKey: appState.nextUiStateRenderKey++,
     search: "",
     team: "all",
     years: new Set(dataset.defaultAllYears ? (getAvailableYears(dataset).length ? getAvailableYears(dataset) : dataset.meta.years) : (dataset.meta.latestYear ? [dataset.meta.latestYear] : dataset.meta.years)),
@@ -7248,7 +7381,10 @@ function renderCurrentDataset() {
   const dataset = getCurrentDataset();
   const state = getCurrentUiState();
   if (!dataset || !state) return;
-  if (dataset.id === "grassroots") maybeStartGrassrootsCareerYearLoad(dataset, state);
+  if (dataset.id === "grassroots") {
+    if (getStringValue(state.search).trim()) scheduleGrassrootsSearchYearPrefetch(dataset, state);
+    else maybeStartGrassrootsCareerYearLoad(dataset, state);
+  }
   if (dataset.id === "d1") scheduleD1SelectedYearLoad(dataset, state);
 
   renderResultsOnly(dataset, state);
@@ -7365,6 +7501,7 @@ function renderYearPills(dataset, state) {
   const activeYears = state.years;
   const shellKey = [
     dataset?.id,
+    getUiStateRenderKey(state),
     careerMode ? "career" : "season",
     years.join("|"),
     careerMode ? "" : Array.from(loadedYears).sort(compareYears).join("|"),
@@ -7821,6 +7958,7 @@ function renderDemoRangeFilters(dataset, state) {
   }
   const shellKey = [
     dataset?.id,
+    getUiStateRenderKey(state),
     columns.join("|"),
     columns.map((column) => `${column}:${filterMeta.get(column)?.type || ""}:${filterMeta.has(column) ? "1" : "0"}`).join("|"),
   ].join("||");
@@ -7902,6 +8040,7 @@ function renderStatGroups(dataset, state) {
     .filter((group) => !(dataset.id === "d1" && group.id === "playtype_analysis"));
   const shellKey = [
     dataset?.id,
+    getUiStateRenderKey(state),
     Number(dataset?._rowVersion) || 0,
     groups.map((group) => `${group.id}:${group.columns.join(",")}`).join("|"),
     Array.from(numericColumnSet).sort(compareFilterValues).join("|"),
@@ -9997,7 +10136,7 @@ function renderTable(dataset, state, filtered, renderContext = {}) {
   const columnWidths = visibleColumns.map((column) => getColumnWidth(column, dataset));
   const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0);
   const frameWidth = Math.min(totalWidth || 320, TABLE_FRAME_LIMIT);
-  const shellKey = `${dataset.id}|${visibleColumns.join("|")}`;
+  const shellKey = `${dataset.id}|${getUiStateRenderKey(state)}|${visibleColumns.join("|")}`;
   const needsShellRebuild = elements.statsTable.dataset.shellKey !== shellKey || !elements.statsTableHead || !elements.statsTableBody;
   elements.tableWrapper.style.setProperty("--table-frame-width", `${frameWidth}px`);
   elements.statsTable.style.setProperty("--table-total-width", `${Math.max(totalWidth, 320)}px`);
