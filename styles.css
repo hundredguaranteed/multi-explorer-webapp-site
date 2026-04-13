@@ -467,9 +467,9 @@ a,
 
 #statsTable th.cell-name-text,
 #statsTable td.cell-name-text {
-  font-size: 8px;
+  font-size: 9.5px;
   line-height: 1.05;
-  letter-spacing: -0.12px;
+  letter-spacing: -0.1px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

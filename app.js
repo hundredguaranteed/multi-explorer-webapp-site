@@ -1377,7 +1377,7 @@ const DATASETS = {
     sortDir: "desc",
     minuteDefault: 200,
     demoColumns: ["level", "region", "age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg"],
-    demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "gp", "min", "mpg", "dob"],
+    demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "gp", "dob"],
     groups: [
       { id: "info", label: "Info", columns: ["level", "region"], defaultColumns: ["level", "region"] },
       { id: "summary", label: "Summary", columns: ["adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["adjoe", "adrtg", "porpag", "dporpag"] },
@@ -1510,7 +1510,7 @@ const DATASETS = {
     autoHydrateGrassrootsYears: false,
     minuteDefault: 200,
     demoColumns: ["pos", "class_year", "height_in", "weight_lb"],
-    demoFilterColumns: ["height_in", "weight_lb", "gp", "min", "mpg"],
+    demoFilterColumns: ["height_in", "weight_lb", "gp"],
     groups: [
       { id: "meta", label: "Info", columns: ["setting", "state", "age_range", "class_year", "height_in", "weight_lb", "event_name", "circuit", "team_name", "pos", "gp", "min", "mpg"], defaultColumns: ["pos", "gp", "min", "mpg"] },
       { id: "summary", label: "Summary", columns: ["dsi", "ram", "c_ram", "psp", "three_pe", "adj_bpm", "usg_pct"], defaultColumns: ["dsi", "ram", "c_ram", "psp", "three_pe", "adj_bpm", "usg_pct"] },
@@ -2164,6 +2164,7 @@ async function handleRoute() {
 
     renderCurrentDataset();
     scheduleStatusAnnotations(datasetId);
+    schedulePrefetchDataManifests();
     elements.statusPill.textContent = `${dataset.navLabel} ready`;
   } catch (error) {
     if (appState.currentId !== datasetId) return;
@@ -2444,6 +2445,24 @@ function scheduleDeferredHydration(datasetId) {
       elements.resultsSubtitle.textContent = getStringValue(error?.message || error);
     }
   });
+}
+
+function schedulePrefetchDataManifests() {
+  if (appState._manifestPrefetchScheduled) return;
+  appState._manifestPrefetchScheduled = true;
+  setTimeout(() => {
+    Object.values(DATASETS).forEach((config) => {
+      const manifestSrc = config.multipartDataScript?.manifestScript;
+      if (!manifestSrc) return;
+      const cacheBustedSrc = getCacheBustedScriptUrl(manifestSrc);
+      if (appState.scriptLoads.has(cacheBustedSrc)) return;
+      const link = document.createElement("link");
+      link.rel = "prefetch";
+      link.as = "script";
+      link.href = cacheBustedSrc;
+      document.head.appendChild(link);
+    });
+  }, 2500);
 }
 
 function scheduleStatusAnnotations(datasetId) {
