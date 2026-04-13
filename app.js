@@ -1376,8 +1376,9 @@ const DATASETS = {
     sortBy: "min",
     sortDir: "desc",
     minuteDefault: 200,
+    minuteFilterDefault: "",
     demoColumns: ["level", "region", "age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg"],
-    demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "gp", "dob"],
+    demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "gp", "min", "mpg", "dob"],
     groups: [
       { id: "info", label: "Info", columns: ["level", "region"], defaultColumns: ["level", "region"] },
       { id: "summary", label: "Summary", columns: ["adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["adjoe", "adrtg", "porpag", "dporpag"] },
@@ -1509,8 +1510,9 @@ const DATASETS = {
     defaultAllYears: false,
     autoHydrateGrassrootsYears: false,
     minuteDefault: 200,
+    minuteFilterDefault: "",
     demoColumns: ["pos", "class_year", "height_in", "weight_lb"],
-    demoFilterColumns: ["height_in", "weight_lb", "gp"],
+    demoFilterColumns: ["height_in", "weight_lb", "gp", "min", "mpg"],
     groups: [
       { id: "meta", label: "Info", columns: ["setting", "state", "age_range", "class_year", "height_in", "weight_lb", "event_name", "circuit", "team_name", "pos", "gp", "min", "mpg"], defaultColumns: ["pos", "gp", "min", "mpg"] },
       { id: "summary", label: "Summary", columns: ["dsi", "ram", "c_ram", "psp", "three_pe", "adj_bpm", "usg_pct"], defaultColumns: ["dsi", "ram", "c_ram", "psp", "three_pe", "adj_bpm", "usg_pct"] },
@@ -7224,7 +7226,8 @@ function createInitialUiState(dataset) {
   });
   const minuteColumn = dataset?.meta?.minuteFilterColumn;
   if (minuteColumn && demoFilters[minuteColumn]) {
-    demoFilters[minuteColumn].min = String(getDatasetMinuteThreshold(dataset));
+    const minuteFilterDefault = dataset?.minuteFilterDefault;
+    demoFilters[minuteColumn].min = minuteFilterDefault !== undefined ? String(minuteFilterDefault) : String(getDatasetMinuteThreshold(dataset));
   }
 
   const state = {
