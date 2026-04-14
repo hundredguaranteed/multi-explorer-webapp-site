@@ -86,6 +86,13 @@ async function getTableRows(page) {
   });
 }
 
+async function waitForTableRow(page, predicate, timeout = 120000) {
+  await expect.poll(async () => {
+    const rows = await getTableRows(page);
+    return rows.some(predicate);
+  }, { timeout }).toBeTruthy();
+}
+
 function isNoResultsRowText(text) {
   return /no rows matched the current filters\./i.test(String(text || '').trim());
 }
@@ -134,6 +141,9 @@ test('d1 keeps original defense and shooting values', async ({ page }) => {
   await waitForReady(page);
   await selectAllYears(page);
   await searchFor(page, 'Buddy Hield');
+  await waitForTableRow(page, (row) => row.Player === 'Buddy Hield');
+  await expect(page.locator('#statsTableBody tr').first()).toContainText('Buddy Hield', { timeout: 60000 });
+  await waitForTableRow(page, (row) => row.Player === 'Buddy Hield' && row.Year === '2016');
 
   const rows = await getTableRows(page);
   const buddy2016 = rows.find((row) => row.Player === 'Buddy Hield' && row.Year === '2016');
@@ -157,10 +167,11 @@ test('status filters use realgm-linked outcomes instead of text heuristics', asy
 
   await selectAllYears(page);
   await searchFor(page, 'Buddy Hield');
-  await expect(page.locator('#statsTableBody tr').first()).toContainText('Buddy Hield');
+  await expect(page.locator('#statsTableBody tr').first()).toContainText('Buddy Hield', { timeout: 60000 });
 
   await selectSingleFilter(page, 'status_path', 'former_juco');
   await searchFor(page, 'Chris Duarte');
+  await waitForTableRow(page, (row) => row.Player === 'Chris Duarte');
   await expect(page.locator('#statsTableBody tr').first()).toContainText('Chris Duarte');
 
   await switchTab(page, 'juco');
