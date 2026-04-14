@@ -29,7 +29,7 @@ const COLOR_SCALE_MAX_ROWS = 2000;
 const STATUS_REALGM_INDEX_SCRIPT = "data/vendor/status_realgm_index.js";
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
 const GRASSROOTS_PLAYER_YEAR_INDEX_SCRIPT = "data/vendor/grassroots_player_year_index.js";
-const APP_BUILD_VERSION = "20260414-search-companion-v54";
+const APP_BUILD_VERSION = "20260414-incremental-search-v55";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -1957,18 +1957,21 @@ function wireGlobalEvents() {
       const years = careerMode ? getGrassrootsCareerYears(dataset, state) : getAvailableYears(dataset);
       if (careerMode) {
         state.years = new Set(years);
+        state._yearSelectionTouched = true;
         resetUiCaches(state);
         renderCurrentDataset();
         return;
       }
       if (dataset.id === "grassroots" && dataset._grassrootsChunked) {
         state.years = new Set(years);
+        state._yearSelectionTouched = true;
         resetUiCaches(state);
         renderCurrentDataset();
         return;
       }
       if (dataset.id === "player_career" && dataset._playerCareerChunked) {
         state.years = new Set(years);
+        state._yearSelectionTouched = true;
         resetUiCaches(state);
         schedulePlayerCareerSelectedYearLoad(dataset, state);
         renderCurrentDataset();
@@ -1976,6 +1979,7 @@ function wireGlobalEvents() {
       }
       if (dataset.id === "d1" && isMobileLiteD1Dataset(dataset)) {
         state.years = new Set(years);
+        state._yearSelectionTouched = true;
         resetUiCaches(state);
         scheduleD1SelectedYearLoad(dataset, state);
         renderCurrentDataset();
@@ -1983,6 +1987,7 @@ function wireGlobalEvents() {
       }
       await ensureDatasetYearsLoaded(dataset, years);
       state.years = new Set(years);
+      state._yearSelectionTouched = true;
       await ensureStatusReadyForState(dataset, state);
       if (appState.currentId !== dataset.id) return;
       renderCurrentDataset();
@@ -2000,6 +2005,7 @@ function wireGlobalEvents() {
     if (careerMode) {
       const years = getGrassrootsCareerYears(dataset, state).slice().sort(compareYears);
       state.years = new Set(years.length ? [years[0]] : []);
+      state._yearSelectionTouched = true;
     } else {
       const availableYears = getAvailableYears(dataset);
       const latestYear = getLatestAvailableYear(dataset) || (availableYears.length ? availableYears[0] : dataset.meta.latestYear);
@@ -2007,6 +2013,7 @@ function wireGlobalEvents() {
         await ensureDatasetYearsLoaded(dataset, [latestYear]);
       }
       state.years = new Set(latestYear ? [latestYear] : []);
+      state._yearSelectionTouched = true;
     }
     resetUiCaches(state);
     if (dataset.id === "d1" && isMobileLiteD1Dataset(dataset)) {
@@ -2021,6 +2028,7 @@ function wireGlobalEvents() {
     const state = getCurrentUiState();
     if (!state) return;
     state.years = new Set();
+    state._yearSelectionTouched = true;
     resetUiCaches(state);
     renderCurrentDataset();
   });
@@ -3561,6 +3569,7 @@ function getGrassrootsSearchYearFilterKey(dataset, state) {
 function getEffectiveYearFilterSet(dataset, state) {
   const years = new Set(state?.years || []);
   if (dataset?.id === "grassroots" && getStringValue(state?.search).trim()) {
+    if (years.size && state?._yearSelectionTouched) return years;
     getGrassrootsPriorityYears(state).forEach((year) => {
       if (year) years.add(year);
     });
@@ -3716,6 +3725,7 @@ function snapshotGrassrootsUiState(state) {
     sortBy: getStringValue(state?.sortBy || ""),
     sortDir: getStringValue(state?.sortDir || "desc"),
     sortBlankMode: getStringValue(state?.sortBlankMode || "last"),
+    yearSelectionTouched: Boolean(state?._yearSelectionTouched),
     extraSelects: { ...(state?.extraSelects || {}) },
     multiSelects: Object.fromEntries(Object.entries(state?.multiSelects || {}).map(([filterId, selected]) => [filterId, Array.from(selected || [])])),
     visibleColumns: { ...(state?.visibleColumns || {}) },
@@ -3729,7 +3739,6 @@ function snapshotGrassrootsUiState(state) {
 function restoreGrassrootsUiState(dataset, snapshot, viewMode) {
   const state = createInitialUiState(dataset);
   const availableYears = getAvailableYears(dataset).map((year) => getStringValue(year).trim()).filter(Boolean);
-  const initialCareerYears = getGrassrootsInitialYears(dataset).map((year) => getStringValue(year).trim()).filter(Boolean);
   state.extraSelects.view_mode = viewMode;
   if (snapshot) {
     state.search = getStringValue(snapshot.search || "");
@@ -3738,6 +3747,7 @@ function restoreGrassrootsUiState(dataset, snapshot, viewMode) {
     state.sortBy = getStringValue(snapshot.sortBy || state.sortBy);
     state.sortDir = getStringValue(snapshot.sortDir || state.sortDir);
     state.sortBlankMode = getStringValue(snapshot.sortBlankMode || state.sortBlankMode);
+    state._yearSelectionTouched = Boolean(snapshot.yearSelectionTouched);
     state.extraSelects = { ...state.extraSelects, ...(snapshot.extraSelects || {}) };
     state.extraSelects.view_mode = viewMode;
     state.multiSelects = Object.fromEntries((dataset.multiFilters || []).map((filter) => [
@@ -3754,11 +3764,8 @@ function restoreGrassrootsUiState(dataset, snapshot, viewMode) {
     state.visibleCount = Number.isFinite(snapshot.visibleCount) ? snapshot.visibleCount : LOAD_STEP;
     if (viewMode === "career") {
       const selectedYears = Array.from(state.years || []).map((year) => getStringValue(year).trim()).filter((year) => year && availableYears.includes(year));
-      const selectedLooksLikeBrokenLatestOnly = initialCareerYears.length
-        && selectedYears.length === initialCareerYears.length
-        && selectedYears.every((year) => initialCareerYears.includes(year));
       state.years = new Set(
-        selectedYears.length && !selectedLooksLikeBrokenLatestOnly
+        selectedYears.length
           ? selectedYears
           : availableYears
       );
@@ -7362,6 +7369,7 @@ function createInitialUiState(dataset) {
     _careerCache: null,
     _renderCache: null,
     _visibleSupplementLoadKey: "",
+    _yearSelectionTouched: false,
   };
   if (dataset.meta.latestYear && dataset.meta.years.length > 1 && !getFilteredRows(dataset, state).length) {
     state.years = new Set(dataset.meta.years);
@@ -7685,6 +7693,7 @@ function renderYearPills(dataset, state) {
         } else {
           state.years.add(year);
         }
+        state._yearSelectionTouched = true;
         resetUiCaches(state);
         renderCurrentDataset();
         return;
@@ -7696,6 +7705,7 @@ function renderYearPills(dataset, state) {
         } else {
           state.years.add(year);
         }
+        state._yearSelectionTouched = true;
         resetUiCaches(state);
         if (!wasSelected && !loadedYears.has(year)) {
           schedulePlayerCareerSelectedYearLoad(dataset, state);
@@ -7714,6 +7724,7 @@ function renderYearPills(dataset, state) {
         } else {
           state.years.add(year);
         }
+        state._yearSelectionTouched = true;
         resetUiCaches(state);
         if (!wasSelected && !loadedYears.has(year)) {
           scheduleD1SelectedYearLoad(dataset, state);
@@ -7737,6 +7748,7 @@ function renderYearPills(dataset, state) {
           await ensureDatasetYearsLoaded(dataset, [year]);
           state.years.add(year);
         }
+        state._yearSelectionTouched = true;
         await ensureStatusReadyForState(dataset, state);
         if (appState.currentId !== dataset.id) return;
         renderCurrentDataset();
@@ -9091,7 +9103,10 @@ function buildCareerRows(dataset, state) {
   const careerRows = mergedGroups.map((rows) => (rows.length <= 1 ? rows[0] : aggregateCareerRows(dataset, rows)));
   applyCalculatedRatings(careerRows, dataset.id);
   applyPerNormalization(careerRows, dataset.id);
-  populateDefenseRatePercentiles(careerRows, dataset.id, { referenceRows: getStaticCareerColorRows(dataset) });
+  const referenceRows = dataset.id === "grassroots" && !shouldIgnoreCareerYearFilter(dataset, state)
+    ? careerRows
+    : getStaticCareerColorRows(dataset);
+  populateDefenseRatePercentiles(careerRows, dataset.id, { referenceRows });
   state._careerCache = { key: cacheKey, rows: careerRows };
   scheduleSearchWarmup(dataset, careerRows, cacheKey);
   return careerRows;
@@ -10438,7 +10453,7 @@ function getColorPopulation(dataset, state) {
   const viewMode = getStringValue(state?.extraSelects?.view_mode || "player");
   const minuteThreshold = getColorMinuteThreshold(dataset);
   const scoped = dataset.id === "grassroots"
-    ? getGrassrootsActiveScopeRows(dataset, state)
+    ? (viewMode === "career" ? (state?._careerCache?.rows || []) : getGrassrootsActiveScopeRows(dataset, state))
     : (viewMode === "career" ? getStaticCareerColorRows(dataset) : dataset?.rows);
   const key = `${viewMode}|${Number(dataset?._rowVersion) || 0}|${Array.isArray(scoped) ? scoped.length : 0}|${minuteThreshold}`;
   if (cache.colorRowsKey === key) return cache.colorRows;
@@ -10976,6 +10991,7 @@ function renderFinderBar(dataset, state) {
     const value = elements.yearQuickSelect.value;
     if (grassrootsCareerMode) {
       state.years = value === "all" ? new Set() : new Set([value]);
+      state._yearSelectionTouched = true;
       resetUiCaches(state);
       renderCurrentDataset();
       return;
@@ -10984,12 +11000,14 @@ function renderFinderBar(dataset, state) {
     try {
       if (dataset.id === "grassroots" && dataset._grassrootsChunked && value === "all") {
         state.years = new Set(targetYears);
+        state._yearSelectionTouched = true;
         resetUiCaches(state);
         renderCurrentDataset();
         return;
       }
       if (dataset.id === "player_career" && dataset._playerCareerChunked && value === "all") {
         state.years = new Set(targetYears);
+        state._yearSelectionTouched = true;
         resetUiCaches(state);
         schedulePlayerCareerSelectedYearLoad(dataset, state);
         renderCurrentDataset();
@@ -10997,6 +11015,7 @@ function renderFinderBar(dataset, state) {
       }
       if (dataset.id === "d1" && isMobileLiteD1Dataset(dataset)) {
         state.years = value === "all" ? new Set(targetYears) : new Set([value]);
+        state._yearSelectionTouched = true;
         resetUiCaches(state);
         scheduleD1SelectedYearLoad(dataset, state);
         renderCurrentDataset();
@@ -11004,6 +11023,7 @@ function renderFinderBar(dataset, state) {
       }
       await ensureDatasetYearsLoaded(dataset, targetYears);
       state.years = value === "all" ? new Set(targetYears) : new Set([value]);
+      state._yearSelectionTouched = true;
       await ensureStatusReadyForState(dataset, state);
       if (appState.currentId !== dataset.id) return;
       renderCurrentDataset();

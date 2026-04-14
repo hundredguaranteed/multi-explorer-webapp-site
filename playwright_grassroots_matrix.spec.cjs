@@ -27,6 +27,47 @@ async function waitForRowsSettled(page, options = {}) {
   await page.waitForTimeout(options.delay || 250);
 }
 
+async function installResponsivenessProbe(page) {
+  await page.evaluate(() => {
+    if (window.__RESPONSIVENESS_PROBE__?.timer) {
+      clearInterval(window.__RESPONSIVENESS_PROBE__.timer);
+    }
+    const probe = {
+      last: performance.now(),
+      maxGap: 0,
+      ticks: 0,
+      timer: 0,
+    };
+    probe.timer = setInterval(() => {
+      const now = performance.now();
+      probe.maxGap = Math.max(probe.maxGap, now - probe.last);
+      probe.last = now;
+      probe.ticks += 1;
+    }, 100);
+    window.__RESPONSIVENESS_PROBE__ = probe;
+  });
+}
+
+async function getResponsivenessProbe(page) {
+  return page.evaluate(() => {
+    const probe = window.__RESPONSIVENESS_PROBE__ || {};
+    return {
+      maxGap: Number(probe.maxGap) || 0,
+      ticks: Number(probe.ticks) || 0,
+    };
+  });
+}
+
+async function expectMainThreadStayedResponsive(page, maxGapMs = 3000) {
+  let probe = await getResponsivenessProbe(page);
+  if (!probe.ticks) {
+    await page.waitForTimeout(150);
+    probe = await getResponsivenessProbe(page);
+  }
+  expect(probe.ticks).toBeGreaterThan(0);
+  expect(probe.maxGap).toBeLessThan(maxGapMs);
+}
+
 async function searchFor(page, value, options = {}) {
   const input = page.locator('#searchInput');
   const started = Date.now();
@@ -34,6 +75,39 @@ async function searchFor(page, value, options = {}) {
   await waitForRowsSettled(page, options);
   expect(Date.now() - started).toBeLessThan(options.maxMs || 7000);
   await expect(input).toHaveValue(value);
+}
+
+function trackDataRequests(page) {
+  const requests = [];
+  page.on('request', (request) => {
+    const url = request.url();
+    if (!/\/data\/.+\.js(?:\?|$)/i.test(url)) return;
+    const normalized = url.replace(/\?.*$/, '');
+    requests.push(normalized);
+  });
+  return {
+    all: requests,
+    count: () => requests.length,
+    duplicateCount: () => requests.length - new Set(requests).size,
+  };
+}
+
+async function typeSearchOneCharacterAtATime(page, value, options = {}) {
+  const input = page.locator('#searchInput');
+  const perKeyMaxMs = options.perKeyMaxMs || 900;
+  const maxGapMs = options.maxGapMs || 1800;
+  let typed = '';
+  for (const char of value) {
+    typed += char;
+    await installResponsivenessProbe(page);
+    const started = Date.now();
+    await input.fill(typed);
+    await expect(input).toHaveValue(typed, { timeout: perKeyMaxMs });
+    await expect(input).not.toBeDisabled();
+    expect(Date.now() - started).toBeLessThan(perKeyMaxMs);
+    await page.waitForTimeout(options.betweenKeysMs || 125);
+    await expectMainThreadStayedResponsive(page, maxGapMs);
+  }
 }
 
 async function commitRange(page, selector, value, options = {}) {
@@ -74,6 +148,51 @@ async function setGrassrootsViewMode(page, mode, options = {}) {
   await page.locator(`[data-view-mode="${mode}"]`).click();
   await waitForRowsSettled(page, options);
   await expect(page.locator(`[data-view-mode="${mode}"]`)).toHaveClass(/is-active/);
+}
+
+async function selectOnlyYear(page, year) {
+  const clear = page.locator('#clearYearsBtn');
+  await expect(clear).toBeVisible({ timeout: 30000 });
+  await clear.click();
+  await waitForRowsSettled(page, { allowEmpty: true });
+
+  const yearButton = page.locator(`[data-year="${year}"]`);
+  await expect(yearButton).toBeVisible({ timeout: 30000 });
+  await yearButton.click();
+  await waitForRowsSettled(page, { allowEmpty: true, timeout: 180000 });
+  await expect(yearButton).toHaveClass(/is-active/);
+}
+
+async function getVisibleTableRows(page) {
+  return page.evaluate(() => {
+    const headers = Array.from(document.querySelectorAll('#statsTable thead th')).map((th) => th.textContent.trim());
+    return Array.from(document.querySelectorAll('#statsTableBody tr')).map((row) => {
+      const cells = Array.from(row.querySelectorAll('td')).map((td) => td.textContent.trim());
+      const record = {};
+      headers.forEach((header, index) => {
+        record[header] = cells[index] || '';
+      });
+      record.__text = row.textContent || '';
+      return record;
+    });
+  });
+}
+
+async function expectVisibleRowsLimitedToYear(page, year, options = {}) {
+  await expect.poll(async () => {
+    const rows = await getVisibleTableRows(page);
+    const dataRows = rows.filter((row) => !/no rows matched/i.test(row.__text));
+    return (options.allowEmpty || dataRows.length > 0) && dataRows.every((row) => row.Year === year);
+  }, { timeout: options.timeout || 120000 }).toBeTruthy();
+}
+
+async function expectSearchAndControlsHealthy(page, expectedSearch) {
+  await expect(page.locator('#searchInput')).toHaveValue(expectedSearch);
+  await expect(page.locator('#searchInput')).not.toBeDisabled();
+  await expect(page.locator('[data-view-mode="player"]')).toBeVisible();
+  await expect(page.locator('[data-view-mode="career"]')).toBeVisible();
+  await expect(page.locator('[data-group-cycle="per_game"]').first()).toBeVisible();
+  await expect(page.locator('[data-stat-min="pts_pg"]').first()).toBeEditable();
 }
 
 test('grassroots query matrix stays responsive across search, career, filters, and group buttons', async ({ page }) => {
@@ -124,7 +243,7 @@ test('grassroots cache worker stores requested data assets for repeat visits', a
   await waitForReady(page);
 
   const cached = await page.evaluate(async () => {
-    const manifestUrl = new URL('data/vendor/grassroots_year_manifest.js?v=20260414-search-companion-v54', window.location.href).href;
+    const manifestUrl = new URL('data/vendor/grassroots_year_manifest.js?v=20260414-incremental-search-v55', window.location.href).href;
     const cacheKey = new URL('data/vendor/grassroots_year_manifest.js', window.location.href).href;
     await fetch(manifestUrl);
     const match = await caches.match(cacheKey) || await caches.match(manifestUrl, { ignoreSearch: true });
@@ -169,6 +288,94 @@ test('grassroots abbreviated player search expands years without leaking into th
   await waitForReady(page);
   await expect(page.locator('#searchInput')).toHaveValue('');
   await expect(page.locator('#filtersSummary')).toContainText('Search: none');
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('grassroots 2026 name search stays scoped and responsive through player career switch', async ({ page }) => {
+  test.setTimeout(7 * 60 * 1000);
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  await page.goto(`${BASE_URL}/#grassroots`, { waitUntil: 'domcontentloaded' });
+  await waitForReady(page);
+  await selectOnlyYear(page, '2026');
+
+  for (const query of ['crowe', 'lebron j', 'austin']) {
+    await installResponsivenessProbe(page);
+    await searchFor(page, query, { allowEmpty: true, maxMs: 7000 });
+    await expect(page.locator('#searchInput')).toHaveValue(query);
+    await expectVisibleRowsLimitedToYear(page, '2026', { allowEmpty: true });
+    await page.waitForTimeout(2000);
+    await expectVisibleRowsLimitedToYear(page, '2026', { allowEmpty: true });
+    await expectMainThreadStayedResponsive(page);
+  }
+
+  await installResponsivenessProbe(page);
+  await searchFor(page, 'crowe', { allowEmpty: true, maxMs: 7000 });
+  await expectMainThreadStayedResponsive(page);
+  await installResponsivenessProbe(page);
+  await setGrassrootsViewMode(page, 'career', { allowEmpty: true, timeout: 180000 });
+  await expect(page.locator('#searchInput')).toHaveValue('crowe');
+  await expect(page.locator('[data-view-mode="career"]')).toHaveClass(/is-active/);
+  await expectMainThreadStayedResponsive(page);
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('grassroots incremental Tyrese Haliburton search keeps scope controls and tabs stable', async ({ page }) => {
+  test.setTimeout(8 * 60 * 1000);
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  const dataRequests = trackDataRequests(page);
+
+  await page.goto(`${BASE_URL}/#grassroots`, { waitUntil: 'domcontentloaded' });
+  await waitForReady(page);
+  await selectOnlyYear(page, '2026');
+
+  const beforeTypingRequestCount = dataRequests.count();
+  await typeSearchOneCharacterAtATime(page, 'tyrese haliburton');
+  await waitForRowsSettled(page, { allowEmpty: true, timeout: 180000 });
+  await expectSearchAndControlsHealthy(page, 'tyrese haliburton');
+  await expectVisibleRowsLimitedToYear(page, '2026', { allowEmpty: true });
+  await page.waitForTimeout(2500);
+  await expectVisibleRowsLimitedToYear(page, '2026', { allowEmpty: true });
+  expect(dataRequests.duplicateCount()).toBeLessThanOrEqual(2);
+  expect(dataRequests.count() - beforeTypingRequestCount).toBeLessThanOrEqual(8);
+
+  await clickGroupCycle(page, 'per_game');
+  await commitRange(page, '[data-stat-min="pts_pg"]', '5', { allowEmpty: true });
+  await toggleMultiFilter(page, 'circuit', 'EYBL', { allowEmpty: true });
+  await toggleMultiFilter(page, 'circuit', 'EYBL', { allowEmpty: true });
+  await setSingleFilter(page, 'setting', 'AAU', { allowEmpty: true });
+  await expectSearchAndControlsHealthy(page, 'tyrese haliburton');
+  await expectVisibleRowsLimitedToYear(page, '2026', { allowEmpty: true });
+
+  await installResponsivenessProbe(page);
+  await setGrassrootsViewMode(page, 'career', { allowEmpty: true, timeout: 180000 });
+  await expectSearchAndControlsHealthy(page, 'tyrese haliburton');
+  await expectMainThreadStayedResponsive(page);
+  await setGrassrootsViewMode(page, 'player', { allowEmpty: true, timeout: 180000 });
+  await expectSearchAndControlsHealthy(page, 'tyrese haliburton');
+
+  await Promise.all([
+    page.waitForURL('**/#player_career'),
+    page.locator('a.league-link[data-id="player_career"]').click(),
+  ]);
+  await waitForReady(page);
+  await expect(page.locator('#searchInput')).toHaveValue('');
+  await typeSearchOneCharacterAtATime(page, 'tyrese haliburton', { perKeyMaxMs: 1000, maxGapMs: 2200 });
+  await waitForRowsSettled(page, { allowEmpty: true, timeout: 180000 });
+  await expect(page.locator('#searchInput')).toHaveValue('tyrese haliburton');
+  await expect(page.locator('#searchInput')).not.toBeDisabled();
+
+  await Promise.all([
+    page.waitForURL('**/#grassroots'),
+    page.locator('a.league-link[data-id="grassroots"]').click(),
+  ]);
+  await waitForReady(page, { allowEmpty: true });
+  await expect(page.locator('#searchInput')).toHaveValue('tyrese haliburton');
+  await expectVisibleRowsLimitedToYear(page, '2026', { allowEmpty: true });
 
   expect(pageErrors).toEqual([]);
 });
