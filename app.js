@@ -10,6 +10,10 @@ const BACKGROUND_YEAR_LOAD_DELAY_MS = 750;
 const D1_SEARCH_BACKGROUND_YEAR_LOAD_DELAY_MS = 450;
 const GRASSROOTS_BACKGROUND_YEAR_LOAD_DELAY_MS = 2200;
 const GRASSROOTS_SEARCH_BACKGROUND_YEAR_LOAD_DELAY_MS = 180;
+const GRASSROOTS_SEARCH_PREFETCH_MIN_TOKEN_LENGTH = 5;
+const GRASSROOTS_SEARCH_PREFETCH_MAX_SINGLE_TOKEN_YEARS = 12;
+const GRASSROOTS_SEARCH_PREFETCH_MAX_PREFIX_KEYS = 80;
+const GRASSROOTS_SEARCH_PREFETCH_MAX_PREFIX_YEARS = 16;
 const HOME_ID = "home";
 const HOME_PAGES = [
   { id: "d1", label: "D1" },
@@ -29,7 +33,7 @@ const COLOR_SCALE_MAX_ROWS = 2000;
 const STATUS_REALGM_INDEX_SCRIPT = "data/vendor/status_realgm_index.js";
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
 const GRASSROOTS_PLAYER_YEAR_INDEX_SCRIPT = "data/vendor/grassroots_player_year_index.js";
-const APP_BUILD_VERSION = "20260414-circuit-search-v56";
+const APP_BUILD_VERSION = "20260414-grassroots-career-v57";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -3662,7 +3666,7 @@ function getGrassrootsIndexedSearchYears(dataset, state, index) {
     : new Set(getGrassrootsRequestedYears(dataset, state));
   const loaded = getLoadedYearSet(dataset);
   const candidateYears = new Set();
-  parseSearchTerms(state.search).forEach((clause) => {
+  getGrassrootsSpecificSearchPrefetchClauses(state.search).forEach((clause) => {
     getGrassrootsIndexedYearsForClause(index, clause).forEach((year) => {
       if (selected.size && !selected.has(year)) return;
       if (loaded.has(year)) return;
@@ -3672,12 +3676,33 @@ function getGrassrootsIndexedSearchYears(dataset, state, index) {
   return Array.from(candidateYears).sort((left, right) => compareYears(right, left));
 }
 
+function getGrassrootsSpecificSearchPrefetchClauses(search) {
+  return parseSearchTerms(search).filter((clause) => {
+    const phrase = normalizeGrassrootsSearchValue(clause);
+    if (!phrase) return false;
+    const tokens = phrase.split(" ").filter(Boolean);
+    if (!tokens.length) return false;
+    if (tokens.length >= 2) {
+      return tokens.some((token) => token.length >= GRASSROOTS_SEARCH_PREFETCH_MIN_TOKEN_LENGTH);
+    }
+    return tokens[0].length >= GRASSROOTS_SEARCH_PREFETCH_MIN_TOKEN_LENGTH;
+  });
+}
+
 function getGrassrootsIndexedYearsForClause(index, clause) {
   const phrase = normalizeGrassrootsSearchValue(clause);
   if (!phrase) return [];
+  const phraseTokens = phrase.split(" ").filter(Boolean);
   const direct = index[phrase];
-  if (Array.isArray(direct) && direct.length) return direct;
-  const tokens = phrase.split(" ").filter((token) => token.length >= 3);
+  if (Array.isArray(direct) && direct.length) {
+    if (phraseTokens.length === 1 && direct.length > GRASSROOTS_SEARCH_PREFETCH_MAX_SINGLE_TOKEN_YEARS) return [];
+    return direct;
+  }
+  if (phraseTokens.length >= 2) {
+    const prefixYears = getGrassrootsIndexedPrefixYears(index, phrase);
+    return prefixYears;
+  }
+  const tokens = phraseTokens.filter((token) => token.length >= 3);
   if (!tokens.length) return [];
   let matches = null;
   tokens.forEach((token) => {
@@ -3691,6 +3716,33 @@ function getGrassrootsIndexedYearsForClause(index, clause) {
       : new Set(Array.from(matches).filter((year) => years.has(year)));
   });
   return Array.from(matches || []);
+}
+
+function getGrassrootsIndexedPrefixYears(index, phrase) {
+  const keys = getGrassrootsSearchIndexKeys(index);
+  if (!keys.length || phrase.length < GRASSROOTS_SEARCH_PREFETCH_MIN_TOKEN_LENGTH) return [];
+  const years = new Set();
+  let matchedKeys = 0;
+  for (const key of keys) {
+    if (!key.startsWith(phrase)) continue;
+    matchedKeys += 1;
+    if (matchedKeys > GRASSROOTS_SEARCH_PREFETCH_MAX_PREFIX_KEYS) return [];
+    (index[key] || []).forEach((year) => years.add(year));
+    if (years.size > GRASSROOTS_SEARCH_PREFETCH_MAX_PREFIX_YEARS) return [];
+  }
+  return Array.from(years);
+}
+
+function getGrassrootsSearchIndexKeys(index) {
+  if (!index) return [];
+  if (!Object.prototype.hasOwnProperty.call(index, "__grassrootsSearchKeys")) {
+    Object.defineProperty(index, "__grassrootsSearchKeys", {
+      configurable: false,
+      enumerable: false,
+      value: Object.keys(index),
+    });
+  }
+  return index.__grassrootsSearchKeys || [];
 }
 
 function getGrassrootsDisplayScope(dataset, state) {
@@ -9128,13 +9180,16 @@ function buildCareerRows(dataset, state) {
     return state._careerCache.rows;
   }
 
-  const scopedRows = getRawFilterContextRows(dataset, state, {
+  let scopedRows = getRawFilterContextRows(dataset, state, {
     skipSort: true,
     ignoreSearch: true,
     ignoreDemoFilters: true,
     ignoreNumericFilters: true,
     ignoreYears: shouldIgnoreCareerYearFilter(dataset, state),
   });
+  if (dataset.id === "grassroots") {
+    scopedRows = dedupeGrassrootsLikelyDuplicateStatRows(dataset, scopedRows);
+  }
   const grouped = new Map();
   scopedRows.forEach((row) => {
     const key = getCareerGroupKey(dataset, row);
@@ -9143,7 +9198,10 @@ function buildCareerRows(dataset, state) {
   });
 
   const mergedGroups = mergeCareerRowGroups(dataset, Array.from(grouped.values()));
-  const careerRows = mergedGroups.map((rows) => (rows.length <= 1 ? rows[0] : aggregateCareerRows(dataset, rows)));
+  let careerRows = mergedGroups.map((rows) => (rows.length <= 1 ? rows[0] : aggregateCareerRows(dataset, rows)));
+  if (dataset.id === "grassroots") {
+    careerRows = dedupeGrassrootsLikelyDuplicateStatRows(dataset, careerRows);
+  }
   applyCalculatedRatings(careerRows, dataset.id);
   applyPerNormalization(careerRows, dataset.id);
   const referenceRows = dataset.id === "grassroots" && !shouldIgnoreCareerYearFilter(dataset, state)
@@ -9162,13 +9220,13 @@ function buildGrassrootsSingleYearRows(dataset, state) {
     return state._grassrootsSingleYearCache.rows;
   }
 
-  const scopedRows = getRawFilterContextRows(dataset, state, {
+  const scopedRows = dedupeGrassrootsLikelyDuplicateStatRows(dataset, getRawFilterContextRows(dataset, state, {
     skipSort: true,
     ignoreSearch: true,
     ignoreDemoFilters: true,
     ignoreNumericFilters: true,
     ignoreSingleFilterId: "setting",
-  });
+  }));
   const groupedBySeason = new Map();
   scopedRows.forEach((row, index) => {
     const season = getStringValue(row?.[dataset.yearColumn]).trim();
@@ -9184,13 +9242,13 @@ function buildGrassrootsSingleYearRows(dataset, state) {
   groupedBySeason.forEach((grouped) => {
     mergedGroups.push(...mergeCareerRowGroups(dataset, Array.from(grouped.values())));
   });
-  const rows = mergedGroups
+  const rows = dedupeGrassrootsLikelyDuplicateStatRows(dataset, mergedGroups
     .map((groupRows) => {
       const aggregate = aggregateCareerRows(dataset, groupRows);
       aggregate.setting = "Single Year";
       aggregate._grassrootsSingleYearAggregate = true;
       return aggregate;
-    });
+    }));
   applyCalculatedRatings(rows, dataset.id);
   applyPerNormalization(rows, dataset.id);
   populateDefenseRatePercentiles(rows, dataset.id, { referenceRows: rows });
@@ -9210,7 +9268,10 @@ function getStaticCareerColorRows(dataset) {
     grouped.get(key).push(row);
   });
   const mergedGroups = mergeCareerRowGroups(dataset, Array.from(grouped.values()));
-  const rows = mergedGroups.map((groupRows) => (groupRows.length <= 1 ? groupRows[0] : aggregateCareerRows(dataset, groupRows)));
+  let rows = mergedGroups.map((groupRows) => (groupRows.length <= 1 ? groupRows[0] : aggregateCareerRows(dataset, groupRows)));
+  if (dataset.id === "grassroots") {
+    rows = dedupeGrassrootsLikelyDuplicateStatRows(dataset, rows);
+  }
   applyCalculatedRatings(rows, dataset.id);
   applyPerNormalization(rows, dataset.id);
   populateDefenseRatePercentiles(rows, dataset.id, { referenceRows: rows });
@@ -9291,8 +9352,226 @@ function dedupeGrassrootsCareerScopeRows(dataset, rows) {
     grouped.get(key).push(row);
   });
 
-  return mergeCareerRowGroups(dataset, Array.from(grouped.values()))
+  const careerRows = mergeCareerRowGroups(dataset, Array.from(grouped.values()))
     .map((groupRows) => (groupRows.length > 1 ? aggregateCareerRows(dataset, groupRows) : groupRows[0]));
+  return dedupeGrassrootsLikelyDuplicateStatRows(dataset, careerRows);
+}
+
+const GRASSROOTS_DUPLICATE_STAT_COLUMNS = [
+  "gp",
+  "min",
+  "mpg",
+  "pts",
+  "trb",
+  "ast",
+  "tov",
+  "stl",
+  "blk",
+  "pf",
+  "stocks",
+  "fgm",
+  "fga",
+  "2pm",
+  "2pa",
+  "tpm",
+  "tpa",
+  "ftm",
+  "pts_pg",
+  "trb_pg",
+  "ast_pg",
+  "stl_pg",
+  "blk_pg",
+  "fg_pct",
+  "2p_pct",
+  "tp_pct",
+  "ftm_fga",
+  "three_pr",
+];
+
+function dedupeGrassrootsLikelyDuplicateStatRows(dataset, rows) {
+  if (!dataset || dataset.id !== "grassroots" || !Array.isArray(rows) || rows.length <= 1) return rows;
+
+  const output = [];
+  const buckets = new Map();
+  rows.forEach((row) => {
+    const key = buildGrassrootsDuplicateStatKey(row);
+    if (!key) {
+      output.push(row);
+      return;
+    }
+    const bucket = buckets.get(key) || [];
+    let cluster = bucket.find((candidate) => candidate.rows.some((existing) => areGrassrootsLikelyDuplicateNames(existing, row)));
+    if (!cluster) {
+      cluster = { rows: [], outputIndex: output.length };
+      bucket.push(cluster);
+      buckets.set(key, bucket);
+      output.push(cluster);
+    }
+    cluster.rows.push(row);
+  });
+
+  return output.map((item) => {
+    if (!item || !Array.isArray(item.rows)) return item;
+    return item.rows.length > 1 ? mergeGrassrootsLikelyDuplicateStatRows(item.rows) : item.rows[0];
+  });
+}
+
+function buildGrassrootsDuplicateStatKey(row) {
+  const season = normalizeGrassrootsDuplicateContext(row?.season || row?.Year || "");
+  const gp = normalizeGrassrootsDuplicateNumber(getGamesValue(row), 1);
+  const minutes = normalizeGrassrootsDuplicateNumber(getMinutesValue(row), 1);
+  if (!season || !gp || !minutes || Number(gp) <= 0 || Number(minutes) <= 0) return "";
+  const statSignature = buildGrassrootsDuplicateStatSignature(row);
+  if (!statSignature) return "";
+  const team = normalizeGrassrootsDuplicateContext(row?.team_full || row?.team_aliases || row?.team_name || row?.team || "");
+  const event = normalizeGrassrootsDuplicateContext(row?.event_group || row?.event_name || row?.event_raw_name || "");
+  const circuit = normalizeGrassrootsDuplicateContext(row?.circuit || "");
+  const setting = normalizeGrassrootsDuplicateContext(row?.setting || getGrassrootsSettingForCircuit(row?.circuit || ""));
+  const classYear = getGrassrootsCareerClassYearKey(row?.class_year);
+  return [season, setting, circuit, team, event, classYear, gp, minutes, statSignature].join("||");
+}
+
+function buildGrassrootsDuplicateStatSignature(row) {
+  let filled = 0;
+  const parts = GRASSROOTS_DUPLICATE_STAT_COLUMNS.map((column) => {
+    const value = normalizeGrassrootsDuplicateNumber(row?.[column], isIntegerCountColumn(column) ? 1 : 3);
+    if (value) filled += 1;
+    return `${column}:${value}`;
+  });
+  return filled >= 4 ? parts.join("|") : "";
+}
+
+function normalizeGrassrootsDuplicateNumber(value, digits = 3) {
+  const numeric = typeof value === "number" ? value : Number(getStringValue(value).trim());
+  if (!Number.isFinite(numeric)) return "";
+  return String(roundNumber(numeric, digits));
+}
+
+function normalizeGrassrootsDuplicateContext(value) {
+  const parts = getStringValue(value)
+    .split(/\s*(?:\/|\||;)\s*/)
+    .map((part) => normalizeKey(part))
+    .filter(Boolean)
+    .sort();
+  return Array.from(new Set(parts)).join("/");
+}
+
+function areGrassrootsLikelyDuplicateNames(left, right) {
+  const leftIds = new Set([getExplicitIdentityId(left)].filter(Boolean));
+  const rightIds = new Set([getExplicitIdentityId(right)].filter(Boolean));
+  if (leftIds.size && rightIds.size && !Array.from(leftIds).some((id) => rightIds.has(id))) return false;
+  if (leftIds.size && rightIds.size) return true;
+
+  const leftNames = getGrassrootsDuplicateNameKeys(left);
+  const rightNames = getGrassrootsDuplicateNameKeys(right);
+  return leftNames.some((leftName) => rightNames.some((rightName) => areGrassrootsNamesSimilar(leftName, rightName)));
+}
+
+function getGrassrootsDuplicateNameKeys(row) {
+  const values = [
+    row?.player_name,
+    row?.player,
+    row?.player_aliases,
+    row?.player_search_text,
+  ];
+  const names = new Set();
+  values.forEach((value) => {
+    getStringValue(value)
+      .split(/\s*(?:\/|\||;)\s*/)
+      .map((part) => normalizeNameKey(part))
+      .filter(Boolean)
+      .forEach((name) => names.add(name));
+  });
+  return Array.from(names);
+}
+
+function areGrassrootsNamesSimilar(left, right) {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const leftTokens = left.split(" ").filter(Boolean);
+  const rightTokens = right.split(" ").filter(Boolean);
+  if (!leftTokens.length || !rightTokens.length) return false;
+  const leftFirst = leftTokens[0];
+  const rightFirst = rightTokens[0];
+  const leftLast = leftTokens[leftTokens.length - 1];
+  const rightLast = rightTokens[rightTokens.length - 1];
+  if (!leftFirst || !rightFirst || !leftLast || !rightLast) return false;
+  if (leftLast === rightLast && leftFirst[0] === rightFirst[0]) return true;
+  if (leftFirst === rightFirst && boundedEditDistance(leftLast, rightLast, 2) <= 2) return true;
+  if (leftLast === rightLast && boundedEditDistance(leftFirst, rightFirst, 2) <= 2) return true;
+  return false;
+}
+
+function boundedEditDistance(left, right, maxDistance) {
+  if (left === right) return 0;
+  if (!left || !right) return Math.max(left.length, right.length);
+  if (Math.abs(left.length - right.length) > maxDistance) return maxDistance + 1;
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
+    const current = [i];
+    let rowMin = current[0];
+    for (let j = 1; j <= right.length; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      const value = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + cost
+      );
+      current[j] = value;
+      rowMin = Math.min(rowMin, value);
+    }
+    if (rowMin > maxDistance) return maxDistance + 1;
+    for (let j = 0; j < current.length; j += 1) previous[j] = current[j];
+  }
+  return previous[right.length];
+}
+
+function mergeGrassrootsLikelyDuplicateStatRows(rows) {
+  const preferred = rows
+    .slice()
+    .sort((left, right) => grassrootsDuplicatePreferredRowScore(right) - grassrootsDuplicatePreferredRowScore(left))[0] || rows[0] || {};
+  const out = { ...preferred };
+  const preferredName = getPreferredStatusName(rows) || getStringValue(preferred.player_name || preferred.player).trim();
+  const nameValues = new Set();
+  rows.forEach((row) => {
+    getGrassrootsDuplicateDisplayNames(row).forEach((name) => nameValues.add(name));
+  });
+  if (preferredName) {
+    out.player_name = preferredName;
+    out.player = preferredName;
+    nameValues.add(preferredName);
+  }
+  const aliases = Array.from(nameValues).filter(Boolean).join(" / ");
+  if (aliases) {
+    out.player_aliases = aliases;
+    out.player_search_text = aliases;
+  }
+  out._searchCacheKey = "";
+  out._searchHaystack = "";
+  out._colorBucketCacheKey = "";
+  out._colorBucketValue = "";
+  out._grassrootsDuplicateCollapsed = rows.length;
+  return out;
+}
+
+function getGrassrootsDuplicateDisplayNames(row) {
+  const names = new Set();
+  [row?.player_name, row?.player, row?.player_aliases].forEach((value) => {
+    getStringValue(value)
+      .split(/\s*(?:\/|\||;)\s*/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .forEach((name) => names.add(name));
+  });
+  return Array.from(names);
+}
+
+function grassrootsDuplicatePreferredRowScore(row) {
+  let score = duplicateRowScore(row);
+  if (getStringValue(row?.player_name || row?.player).trim()) score += 1000;
+  if (getStringValue(row?.player_aliases).trim()) score += 25;
+  if (getStringValue(row?.event_url).trim()) score += 10;
+  return score;
 }
 
 function buildGrassrootsCareerClusterMeta(rowsOrRow) {

@@ -100,6 +100,12 @@ function offScopeGrassrootsYearChunkRequests(requests, allowedYears = []) {
   });
 }
 
+function grassrootsYearChunkRequests(requests) {
+  return (requests || [])
+    .map((url) => url.match(/\/grassroots_year_chunks\/(\d{4})\.js$/i)?.[1] || '')
+    .filter(Boolean);
+}
+
 async function typeSearchOneCharacterAtATime(page, value, options = {}) {
   const input = page.locator('#searchInput');
   const perKeyMaxMs = options.perKeyMaxMs || 900;
@@ -263,7 +269,7 @@ test('grassroots cache worker stores requested data assets for repeat visits', a
   await waitForReady(page);
 
   const cached = await page.evaluate(async () => {
-    const manifestUrl = new URL('data/vendor/grassroots_year_manifest.js?v=20260414-circuit-search-v56', window.location.href).href;
+    const manifestUrl = new URL('data/vendor/grassroots_year_manifest.js?v=20260414-grassroots-career-v57', window.location.href).href;
     const cacheKey = new URL('data/vendor/grassroots_year_manifest.js', window.location.href).href;
     await fetch(manifestUrl);
     const match = await caches.match(cacheKey) || await caches.match(manifestUrl, { ignoreSearch: true });
@@ -400,6 +406,72 @@ test('grassroots incremental Tyrese Haliburton search keeps scope controls and t
   await expectVisibleRowsLimitedToYear(page, '2026', { allowEmpty: true });
 
   expect(pageErrors).toEqual([]);
+});
+
+test('grassroots career all-years search defers broad prefixes and stays responsive', async ({ page }) => {
+  test.setTimeout(8 * 60 * 1000);
+  const pageErrors = [];
+  const pageDialogs = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('dialog', async (dialog) => {
+    pageDialogs.push(dialog.message());
+    await dialog.dismiss().catch(() => {});
+  });
+  const dataRequests = trackDataRequests(page);
+
+  await page.goto(`${BASE_URL}/#grassroots`, { waitUntil: 'domcontentloaded' });
+  await waitForReady(page);
+  await setGrassrootsViewMode(page, 'career', { allowEmpty: true, timeout: 180000 });
+
+  const beforeAllYears = dataRequests.count();
+  await page.locator('#selectAllYearsBtn').click();
+  await waitForRowsSettled(page, { allowEmpty: true, timeout: 180000 });
+  await expect(page.locator('#searchInput')).not.toBeDisabled();
+  expect(grassrootsYearChunkRequests(dataRequests.all.slice(beforeAllYears))).toEqual([]);
+
+  const beforeCrowe = dataRequests.count();
+  for (const prefix of ['c', 'cr', 'cro', 'crow']) {
+    await installResponsivenessProbe(page);
+    await page.locator('#searchInput').fill(prefix);
+    await expect(page.locator('#searchInput')).toHaveValue(prefix, { timeout: 900 });
+    await page.waitForTimeout(450);
+    await expectMainThreadStayedResponsive(page, 1800);
+    expect(grassrootsYearChunkRequests(dataRequests.all.slice(beforeCrowe))).toEqual([]);
+  }
+  await installResponsivenessProbe(page);
+  await page.locator('#searchInput').fill('crowe');
+  await expect(page.locator('#searchInput')).toHaveValue('crowe', { timeout: 900 });
+  await page.waitForTimeout(900);
+  await expectMainThreadStayedResponsive(page, 2500);
+  const croweYears = grassrootsYearChunkRequests(dataRequests.all.slice(beforeCrowe));
+  expect(croweYears).not.toContain('1999');
+  expect(new Set(croweYears).size).toBeLessThanOrEqual(12);
+
+  await page.locator('#searchInput').fill('');
+  await page.waitForTimeout(1000);
+  await waitForRowsSettled(page, { allowEmpty: true, timeout: 180000 });
+  const beforeTyrese = dataRequests.count();
+  await typeSearchOneCharacterAtATime(page, 'tyrese haliburton', { perKeyMaxMs: 1000, maxGapMs: 1800, betweenKeysMs: 100 });
+  await page.waitForFunction(() => /Tyrese Haliburton/i.test(
+    Array.from(document.querySelectorAll('#statsTableBody tr')).map((row) => row.textContent || '').join('\n')
+  ), null, { timeout: 180000 });
+  await waitForRowsSettled(page, { allowEmpty: false, timeout: 180000, delay: 500 });
+  await expectSearchAndControlsHealthy(page, 'tyrese haliburton');
+  const tyreseYears = grassrootsYearChunkRequests(dataRequests.all.slice(beforeTyrese));
+  expect(tyreseYears).toContain('2018');
+  expect(new Set(tyreseYears).size).toBeLessThanOrEqual(8);
+  const tyreseRow = page.locator('#statsTableBody tr').filter({ hasText: 'Tyrese Haliburton' }).first();
+  await expect(tyreseRow).toContainText('2018');
+  await expect(tyreseRow).toContainText('Oshkosh North');
+  await expect(tyreseRow).toContainText('68');
+
+  await clickGroupCycle(page, 'per_game');
+  await commitRange(page, '[data-stat-min="pts_pg"]', '5', { allowEmpty: true, timeout: 180000 });
+  await setSingleFilter(page, 'status_path', 'd1', { allowEmpty: true, timeout: 180000 });
+  await expectSearchAndControlsHealthy(page, 'tyrese haliburton');
+
+  expect(pageErrors).toEqual([]);
+  expect(pageDialogs).toEqual([]);
 });
 
 test('grassroots Nike circuit remap and explicit-year search avoid off-scope year loads', async ({ page }) => {

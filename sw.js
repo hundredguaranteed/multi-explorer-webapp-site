@@ -1,4 +1,4 @@
-const CACHE_VERSION = "20260414-circuit-search-v56";
+const CACHE_VERSION = "20260414-grassroots-career-v57";
 const DATA_CACHE_VERSION = "20260412-mp-search-v51";
 const APP_CACHE = `multi-explorer-app-${CACHE_VERSION}`;
 const DATA_CACHE = `multi-explorer-data-${DATA_CACHE_VERSION}`;
@@ -7,8 +7,8 @@ const KNOWN_CACHES = new Set([APP_CACHE, DATA_CACHE]);
 const APP_ASSETS = [
   "./",
   "./index.html",
-  "./app.js?v=20260414-circuit-search-v56",
-  "./styles.css?v=20260414-circuit-search-v56",
+  "./app.js?v=20260414-grassroots-career-v57",
+  "./styles.css?v=20260414-grassroots-career-v57",
 ];
 
 self.addEventListener("install", (event) => {
