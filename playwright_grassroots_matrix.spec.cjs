@@ -92,6 +92,14 @@ function trackDataRequests(page) {
   };
 }
 
+function offScopeGrassrootsYearChunkRequests(requests, allowedYears = []) {
+  const allowed = new Set(allowedYears.map(String));
+  return (requests || []).filter((url) => {
+    const match = url.match(/\/grassroots_year_chunks\/(\d{4})\.js$/i);
+    return match && !allowed.has(match[1]);
+  });
+}
+
 async function typeSearchOneCharacterAtATime(page, value, options = {}) {
   const input = page.locator('#searchInput');
   const perKeyMaxMs = options.perKeyMaxMs || 900;
@@ -125,6 +133,18 @@ async function setSingleFilter(page, filterId, value, options = {}) {
   await select.selectOption(value);
   await waitForRowsSettled(page, options);
   await expect(select).toHaveValue(value);
+}
+
+async function setFirstNonAllSingleFilterOption(page, filterId, options = {}) {
+  const select = page.locator(`#single-${filterId}`);
+  await expect(select).toBeVisible({ timeout: options.timeout || 30000 });
+  const value = await select.locator('option').evaluateAll((items) => {
+    const option = items.find((item) => item.value && item.value !== 'all');
+    return option ? option.value : '';
+  });
+  if (!value) return '';
+  await setSingleFilter(page, filterId, value, options);
+  return value;
 }
 
 async function toggleMultiFilter(page, filterId, value, options = {}) {
@@ -243,7 +263,7 @@ test('grassroots cache worker stores requested data assets for repeat visits', a
   await waitForReady(page);
 
   const cached = await page.evaluate(async () => {
-    const manifestUrl = new URL('data/vendor/grassroots_year_manifest.js?v=20260414-incremental-search-v55', window.location.href).href;
+    const manifestUrl = new URL('data/vendor/grassroots_year_manifest.js?v=20260414-circuit-search-v56', window.location.href).href;
     const cacheKey = new URL('data/vendor/grassroots_year_manifest.js', window.location.href).href;
     await fetch(manifestUrl);
     const match = await caches.match(cacheKey) || await caches.match(manifestUrl, { ignoreSearch: true });
@@ -336,6 +356,8 @@ test('grassroots incremental Tyrese Haliburton search keeps scope controls and t
   const beforeTypingRequestCount = dataRequests.count();
   await typeSearchOneCharacterAtATime(page, 'tyrese haliburton');
   await waitForRowsSettled(page, { allowEmpty: true, timeout: 180000 });
+  const typingRequests = dataRequests.all.slice(beforeTypingRequestCount);
+  expect(offScopeGrassrootsYearChunkRequests(typingRequests, ['2026'])).toEqual([]);
   await expectSearchAndControlsHealthy(page, 'tyrese haliburton');
   await expectVisibleRowsLimitedToYear(page, '2026', { allowEmpty: true });
   await page.waitForTimeout(2500);
@@ -380,6 +402,83 @@ test('grassroots incremental Tyrese Haliburton search keeps scope controls and t
   expect(pageErrors).toEqual([]);
 });
 
+test('grassroots Nike circuit remap and explicit-year search avoid off-scope year loads', async ({ page }) => {
+  test.setTimeout(8 * 60 * 1000);
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  const dataRequests = trackDataRequests(page);
+
+  await page.goto(`${BASE_URL}/#grassroots`, { waitUntil: 'domcontentloaded' });
+  await waitForReady(page);
+  await selectOnlyYear(page, '2026');
+
+  await setSingleFilter(page, 'setting', 'AAU', { allowEmpty: true });
+  await expect(page.locator('[data-multi-filter="circuit"][data-multi-value="Nike Showcases"]').first()).toBeVisible();
+  await expect(page.locator('[data-multi-filter="circuit"][data-multi-value="Nike Other"]')).toHaveCount(0);
+  await expect(page.locator('[data-multi-filter="circuit"][data-multi-value="Nike Extravaganza"]')).toHaveCount(0);
+  await expect(page.locator('[data-multi-filter="circuit"][data-multi-value="Nike Global Challenge"]')).toHaveCount(0);
+  await toggleMultiFilter(page, 'circuit', 'Nike Showcases', { allowEmpty: true });
+  await toggleMultiFilter(page, 'circuit', 'Nike Showcases', { allowEmpty: true });
+
+  const beforeCroweSearch = dataRequests.count();
+  await typeSearchOneCharacterAtATime(page, 'crowe', { perKeyMaxMs: 1000, maxGapMs: 2200 });
+  await waitForRowsSettled(page, { allowEmpty: true, timeout: 180000 });
+  await expectSearchAndControlsHealthy(page, 'crowe');
+  await expectVisibleRowsLimitedToYear(page, '2026', { allowEmpty: true });
+  const croweRequests = dataRequests.all.slice(beforeCroweSearch);
+  expect(offScopeGrassrootsYearChunkRequests(croweRequests, ['2026'])).toEqual([]);
+
+  await installResponsivenessProbe(page);
+  await setGrassrootsViewMode(page, 'career', { allowEmpty: true, timeout: 180000 });
+  await expectSearchAndControlsHealthy(page, 'crowe');
+  await expectVisibleRowsLimitedToYear(page, '2026', { allowEmpty: true });
+  await expectMainThreadStayedResponsive(page, 3000);
+  const careerRequests = dataRequests.all.slice(beforeCroweSearch);
+  expect(offScopeGrassrootsYearChunkRequests(careerRequests, ['2026'])).toEqual([]);
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('grassroots older-year load remains editable under weird filter combinations', async ({ page }) => {
+  test.setTimeout(8 * 60 * 1000);
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  const dataRequests = trackDataRequests(page);
+
+  await page.goto(`${BASE_URL}/#grassroots`, { waitUntil: 'domcontentloaded' });
+  await waitForReady(page);
+  await page.locator('#clearYearsBtn').click();
+  await waitForRowsSettled(page, { allowEmpty: true });
+
+  await installResponsivenessProbe(page);
+  const beforeYearLoad = dataRequests.count();
+  await page.locator('[data-year="2025"]').click();
+  await page.locator('#single-setting').selectOption('AAU');
+  await page.locator('#single-age_range').selectOption('17U');
+  await page.locator('#searchInput').fill('austin goosby');
+  await expect(page.locator('#searchInput')).toHaveValue('austin goosby', { timeout: 5000 });
+  await expect(page.locator('#searchInput')).not.toBeDisabled();
+  await expect.poll(() => (
+    dataRequests.all.slice(beforeYearLoad).some((url) => /\/grassroots_year_chunks\/2025\.js$/i.test(url))
+  ), { timeout: 180000 }).toBeTruthy();
+  await page.waitForFunction(() => /Austin Goosby/i.test(
+    Array.from(document.querySelectorAll('#statsTableBody tr')).map((row) => row.textContent || '').join('\n')
+  ), null, { timeout: 180000 });
+  await waitForRowsSettled(page, { allowEmpty: false, timeout: 180000, delay: 500 });
+  await expectVisibleRowsLimitedToYear(page, '2025');
+  await expectMainThreadStayedResponsive(page, 8000);
+
+  await toggleMultiFilter(page, 'circuit', 'EYBL', { allowEmpty: true, timeout: 180000 });
+  await toggleMultiFilter(page, 'circuit', 'EYBL', { allowEmpty: true, timeout: 180000 });
+  await clickGroupCycle(page, 'per_game');
+  await commitRange(page, '[data-stat-min="pts_pg"]', '5', { allowEmpty: true, timeout: 180000 });
+  await setSingleFilter(page, 'status_path', 'd1', { allowEmpty: true, timeout: 180000 });
+  await expect(page.locator('#searchInput')).toHaveValue('austin goosby');
+  await expect(page.locator('#searchInput')).not.toBeDisabled();
+
+  expect(pageErrors).toEqual([]);
+});
+
 test('nba companion loads from the optimized path with normalized percentage stats', async ({ page }) => {
   test.setTimeout(6 * 60 * 1000);
   const pageErrors = [];
@@ -404,6 +503,37 @@ test('nba companion loads from the optimized path with normalized percentage sta
   for (const value of Object.values(values)) {
     expect(value).not.toMatch(/^0\.\d+/);
     expect(Number(value)).toBeGreaterThan(1);
+  }
+
+  expect(pageErrors).toEqual([]);
+});
+
+test('JUCO and NAIA stay responsive through large loads, search, filters, and groups', async ({ page }) => {
+  test.setTimeout(10 * 60 * 1000);
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  for (const target of [
+    { id: 'juco', query: 'adams', primaryFilter: 'level', secondaryFilter: 'region' },
+    { id: 'naia', query: 'adams', primaryFilter: 'division', secondaryFilter: 'conference' },
+  ]) {
+    await page.goto(`${BASE_URL}/#${target.id}`, { waitUntil: 'domcontentloaded' });
+    await installResponsivenessProbe(page);
+    await waitForReady(page, { timeout: 240000 });
+    await expectMainThreadStayedResponsive(page, 10000);
+
+    await typeSearchOneCharacterAtATime(page, target.query, { perKeyMaxMs: 1400, maxGapMs: 4500 });
+    await waitForRowsSettled(page, { allowEmpty: true, timeout: 180000 });
+    await expect(page.locator('#searchInput')).toHaveValue(target.query);
+    await expect(page.locator('#searchInput')).not.toBeDisabled();
+
+    await commitRange(page, '[data-demo-min="min"]', '50', { allowEmpty: true, timeout: 180000 });
+    await setFirstNonAllSingleFilterOption(page, target.primaryFilter, { allowEmpty: true, timeout: 180000 });
+    await setFirstNonAllSingleFilterOption(page, target.secondaryFilter, { allowEmpty: true, timeout: 180000 });
+    await clickGroupCycle(page, 'per_game');
+    await commitRange(page, '[data-stat-min="pts_pg"]', '2', { allowEmpty: true, timeout: 180000 });
+    await expect(page.locator('#searchInput')).toHaveValue(target.query);
+    await expect(page.locator('#searchInput')).not.toBeDisabled();
   }
 
   expect(pageErrors).toEqual([]);

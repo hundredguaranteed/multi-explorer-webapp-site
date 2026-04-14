@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stat Explorers</title>
   <meta name="description" content="D1, D2, NAIA, JUCO, FIBA, NBA, and Player/Career explorers in one basic webapp.">
-  <link rel="stylesheet" href="styles.css?v=20260414-incremental-search-v55">
+  <link rel="stylesheet" href="styles.css?v=20260414-circuit-search-v56">
   <script>
 window.__DATA_ASSET_BASE__ = "";
 (function () {
-  var version = "20260414-incremental-search-v55";
+  var version = "20260414-circuit-search-v56";
   var route = (window.location.hash || "#home").replace(/^#/, "").toLowerCase();
   var preloads = {
     d1: ["data/vendor/d1_year_manifest.js", "data/vendor/d1_year_chunks/2026.js"],
@@ -29,12 +29,10 @@ window.__DATA_ASSET_BASE__ = "";
   });
 }());
   </script>
-  <script src="app.js?v=20260414-incremental-search-v55" defer></script>
+  <script src="app.js?v=20260414-circuit-search-v56" defer></script>
   <script>
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js?v=20260414-incremental-search-v55").catch(function () {});
-  });
+  navigator.serviceWorker.register("sw.js?v=20260414-circuit-search-v56").catch(function () {});
 }
   </script>
 </head>
