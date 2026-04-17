@@ -269,7 +269,7 @@ test('grassroots cache worker stores requested data assets for repeat visits', a
   await waitForReady(page);
 
   const cached = await page.evaluate(async () => {
-    const manifestUrl = new URL('data/vendor/grassroots_year_manifest.js?v=20260414-grassroots-career-v57', window.location.href).href;
+    const manifestUrl = new URL('data/vendor/grassroots_year_manifest.js?v=20260417-player-career-v59', window.location.href).href;
     const cacheKey = new URL('data/vendor/grassroots_year_manifest.js', window.location.href).href;
     await fetch(manifestUrl);
     const match = await caches.match(cacheKey) || await caches.match(manifestUrl, { ignoreSearch: true });
@@ -645,6 +645,22 @@ test('player career query matrix keeps filters editable while switching modes', 
   await page.goto(`${BASE_URL}/#player_career`, { waitUntil: 'domcontentloaded' });
   await waitForReady(page);
 
+  await expect.poll(async () => page.evaluate(() => [
+    window.normalizeDisplayName('JA Morant'),
+    window.normalizeDisplayName("DU'Vaughn Maxwell"),
+    window.normalizeDisplayName('AJ Green'),
+  ])).toEqual(['Ja Morant', "Du'Vaughn Maxwell", 'AJ Green']);
+  await expect(page.locator('[data-stat-column="tov_per40"]')).toBeVisible();
+  await expect(page.locator('[data-stat-column="stocks_pg"]')).toBeVisible();
+  await expect(page.locator('[data-stat-column="stocks_per40"]')).toBeVisible();
+  await expect(page.locator('[data-stat-column="ast_stl_pg"]')).toBeVisible();
+  await expect(page.locator('[data-stat-column="ast_stl_per40"]')).toBeVisible();
+  await expect(page.locator('[data-stat-column="three_pa_per40"]')).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => (
+    Array.from(document.querySelectorAll('#statsTable th, #statsTable td'))
+      .every((cell) => window.getComputedStyle(cell).textOverflow !== 'ellipsis')
+  ))).toBe(true);
+
   await searchFor(page, 'Shai Gilgeous-Alexander', { maxMs: 7000 });
   await expect(page.locator('#statsTableBody tr').first()).toContainText('Shai Gilgeous-Alexander');
   await commitRange(page, '[data-demo-min="min"]', '0');
@@ -656,7 +672,12 @@ test('player career query matrix keeps filters editable while switching modes', 
   await expect(page.locator('#searchInput')).toHaveValue('');
   await searchFor(page, 'Shai Gilgeous-Alexander', { allowEmpty: true, maxMs: 7000 });
   await commitRange(page, '[data-stat-min="pts_pg"]', '20', { allowEmpty: true });
+  await page.locator('#statNoneBtn').click();
+  await waitForRowsSettled(page, { allowEmpty: true });
+  await expect(page.locator('#searchInput')).toHaveValue('Shai Gilgeous-Alexander');
+  await expect(page.locator('[data-stat-min="pts_pg"]').first()).toHaveValue('20');
   await clickGroupCycle(page, 'summary');
+  await expect(page.locator('[data-stat-min="pts_pg"]').first()).toHaveValue('20');
 
   expect(pageErrors).toEqual([]);
 });

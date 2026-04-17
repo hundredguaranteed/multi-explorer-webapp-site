@@ -92,6 +92,11 @@ NCAA_SPI_EXPORT_COLUMNS = [
     for _, template in NCAA_SPI_SEASON_FIELD_SPECS
 ] + [column for _, column in NCAA_SPI_PEAK_FIELD_SPECS]
 
+COMMON_ABBREV_NAME_TOKENS = {
+    "aj", "bj", "cj", "dj", "ej", "gj", "jc", "jd", "jj", "jk", "jl", "jm", "jp", "jr", "jt",
+    "kj", "mj", "oj", "pj", "rj", "tj",
+}
+
 PLAYER_CAREER_PASSTHROUGH_SKIP_COLUMNS = {
     "player", "player_name", "player_id", "pid", "id",
     "team_id", "team_name", "team_full", "team_alias", "team_alias_all",
@@ -109,9 +114,12 @@ PLAYER_CAREER_PASSTHROUGH_SKIP_COLUMNS = {
     "orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct",
     "orbpct", "drbpct", "trbpct", "astpct", "topct", "stlpct", "blkpct", "usg",
     "rim_made", "rim_att", "rim_pct", "mid_made", "mid_att", "mid_pct",
-    "ast_to", "stocks", "stocks_pg", "stocks_per40",
-    "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "tov_pg",
-    "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40",
+    "ast_to", "stocks", "stocks_pg", "stocks_per40", "fic", "ppr",
+    "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "stl_pg", "blk_pg", "tov_pg", "pf_pg", "ftm_pg", "fta_pg",
+    "two_pa_pg", "three_pa_pg", "ast_stl_pg",
+    "pts_per40", "trb_per40", "orb_per40", "drb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "pf_per40",
+    "two_pa_per40", "three_pa_per40", "ast_stl_per40",
+    "three_pa_per100",
 }
 
 SITE_DATASETS = {
@@ -3425,6 +3433,7 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "blk": first_number(row.get("blk"), realgm_overlay.get("blk")),
         "tov": first_number(row.get("tov"), realgm_overlay.get("tov")),
         "pf": first_number(row.get("pf")),
+        "stocks": first_number(row.get("stocks"), add_numbers(first_number(row.get("stl"), realgm_overlay.get("stl")), first_number(row.get("blk"), realgm_overlay.get("blk")))),
         "fgm": first_number(row.get("fgm")),
         "fga": first_number(row.get("fga"), row.get("fg_att")),
         "two_pm": first_number(row.get("two_pm"), row.get("2pm"), row.get("two_p_made")),
@@ -3476,6 +3485,7 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
     if dataset_id != "d2":
         apply_player_career_defensive_rate_derivations(out)
     fill_per_game_and_per40(out)
+    fill_player_career_impact_metrics(out)
     return out
 
 
@@ -3712,6 +3722,7 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "blk": round_number((gp * blk_pg), 3) if gp is not None and blk_pg is not None else "",
         "tov": round_number((gp * tov_pg), 3) if gp is not None and tov_pg is not None else "",
         "pf": "",
+        "stocks": round_number(gp * ((stl_pg or 0.0) + (blk_pg or 0.0)), 3) if gp is not None and (stl_pg is not None or blk_pg is not None) else "",
         "fgm": "",
         "fga": "",
         "two_pm": "",
@@ -3763,14 +3774,30 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "stl_pg": stl_pg,
         "blk_pg": blk_pg,
         "tov_pg": tov_pg,
+        "stocks_pg": round_number((stl_pg or 0.0) + (blk_pg or 0.0), 3) if stl_pg is not None or blk_pg is not None else "",
+        "pf_pg": "",
+        "two_pa_pg": "",
+        "three_pa_pg": "",
+        "ftm_pg": "",
+        "fta_pg": "",
+        "ast_stl_pg": round_number((ast_pg or 0.0) + (stl_pg or 0.0), 3) if ast_pg is not None or stl_pg is not None else "",
         "pts_per40": "",
         "trb_per40": "",
         "ast_per40": "",
+        "tov_per40": "",
         "stl_per40": "",
         "blk_per40": "",
+        "pf_per40": "",
+        "stocks_per40": "",
+        "two_pa_per40": "",
+        "three_pa_per40": "",
+        "ast_stl_per40": "",
+        "fic": "",
+        "ppr": "",
     }
     apply_player_career_shooting_derivations(out)
     fill_per40_only(out)
+    fill_player_career_impact_metrics(out)
     return out
 
 
@@ -4246,7 +4273,7 @@ def clean_display_name(value: object) -> str:
             text = f"{parts[1]} {parts[0]} {' '.join(parts[2:])}"
     text = re.sub(r"\s+", " ", text).strip()
     tokens = [normalize_display_name_token(token) for token in re.split(r"(\s+|-|')", text)]
-    text = "".join(tokens)
+    text = normalize_apostrophe_name_casing("".join(tokens))
     text = re.sub(r"\bMc([a-z])", lambda match: f"Mc{match.group(1).upper()}", text)
     text = re.sub(r"\bO'([a-z])", lambda match: f"O'{match.group(1).upper()}", text)
     text = re.sub(r"\bJR\.?$", "Jr.", text, flags=re.I)
@@ -4275,10 +4302,20 @@ def normalize_display_name_token(token: str) -> str:
         return token.replace(bare, bare.upper())
     if len(bare) == 1:
         return token.upper()
-    if re.fullmatch(r"[A-Za-z]\.?[A-Za-z]\.?", token):
+    if re.fullmatch(r"[A-Za-z]\.[A-Za-z]\.?", token) or re.fullmatch(r"[A-Za-z]\.?[A-Za-z]\.", token):
         return bare.upper()
+    if re.fullmatch(r"[A-Za-z]{2}", bare) and bare.lower() in COMMON_ABBREV_NAME_TOKENS:
+        return token.replace(bare, bare.upper())
     lower = token.lower()
     return lower[:1].upper() + lower[1:]
+
+
+def normalize_apostrophe_name_casing(value: object) -> str:
+    return re.sub(
+        r"\b([A-Z]{2,})'(?=[A-Z][a-z])",
+        lambda match: f"{match.group(1)[:1]}{match.group(1)[1:].lower()}'",
+        clean_text(value),
+    )
 
 
 def normalize_key(value: object) -> str:
@@ -5075,22 +5112,44 @@ def fill_per_game_and_per40(row: dict[str, object]) -> None:
         row["min"] = minutes
     if first_number(row.get("mpg")) is None and minutes is not None and gp and gp > 0:
         row["mpg"] = round_number(minutes / gp, 3)
-    row["pts_pg"] = first_number(row.get("pts_pg"), divide_numbers(row.get("pts"), gp))
-    row["trb_pg"] = first_number(row.get("trb_pg"), divide_numbers(row.get("trb"), gp))
-    row["ast_pg"] = first_number(row.get("ast_pg"), divide_numbers(row.get("ast"), gp))
-    row["stl_pg"] = first_number(row.get("stl_pg"), divide_numbers(row.get("stl"), gp))
-    row["blk_pg"] = first_number(row.get("blk_pg"), divide_numbers(row.get("blk"), gp))
-    row["tov_pg"] = first_number(row.get("tov_pg"), divide_numbers(row.get("tov"), gp))
+    if first_number(row.get("stocks")) is None and first_number(row.get("stl")) is not None and first_number(row.get("blk")) is not None:
+        row["stocks"] = round_number((first_number(row.get("stl")) or 0.0) + (first_number(row.get("blk")) or 0.0), 3)
+    for column in ("pts", "trb", "orb", "drb", "ast", "stl", "blk", "tov", "pf", "stocks", "ftm", "fta"):
+        row[f"{column}_pg"] = first_number(row.get(f"{column}_pg"), divide_numbers(row.get(column), gp))
+    two_pa = first_number(row.get("two_pa"), row.get("2pa"))
+    three_pa = first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa"))
+    row["two_pa_pg"] = first_number(row.get("two_pa_pg"), divide_numbers(two_pa, gp))
+    row["three_pa_pg"] = first_number(row.get("three_pa_pg"), divide_numbers(three_pa, gp))
+    ast_stl = add_numbers(first_number(row.get("ast")), first_number(row.get("stl")))
+    row["ast_stl_pg"] = first_number(row.get("ast_stl_pg"), divide_numbers(ast_stl, gp))
     fill_per40_only(row)
 
 
 def fill_per40_only(row: dict[str, object]) -> None:
     minutes = first_number(row.get("min"))
-    row["pts_per40"] = first_number(row.get("pts_per40"), per40_value(row.get("pts"), minutes))
-    row["trb_per40"] = first_number(row.get("trb_per40"), per40_value(row.get("trb"), minutes))
-    row["ast_per40"] = first_number(row.get("ast_per40"), per40_value(row.get("ast"), minutes))
-    row["stl_per40"] = first_number(row.get("stl_per40"), per40_value(row.get("stl"), minutes))
-    row["blk_per40"] = first_number(row.get("blk_per40"), per40_value(row.get("blk"), minutes))
+    for column in ("pts", "trb", "orb", "drb", "ast", "stl", "blk", "tov", "pf", "stocks"):
+        row[f"{column}_per40"] = first_number(row.get(f"{column}_per40"), per40_value(row.get(column), minutes))
+    two_pa = first_number(row.get("two_pa"), row.get("2pa"))
+    three_pa = first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa"))
+    row["two_pa_per40"] = first_number(row.get("two_pa_per40"), per40_value(two_pa, minutes))
+    row["three_pa_per40"] = first_number(row.get("three_pa_per40"), per40_value(three_pa, minutes))
+    ast_stl = add_numbers(first_number(row.get("ast")), first_number(row.get("stl")))
+    row["ast_stl_per40"] = first_number(row.get("ast_stl_per40"), per40_value(ast_stl, minutes))
+    if first_number(row.get("three_pa_per100")) is None:
+        row["three_pa_per100"] = per100_value(three_pa, row)
+
+
+def fill_player_career_impact_metrics(row: dict[str, object]) -> None:
+    if first_number(row.get("ast_to")) is None and first_number(row.get("ast")) is not None and first_number(row.get("tov")) not in {None, 0}:
+        row["ast_to"] = round_number((first_number(row.get("ast")) or 0.0) / (first_number(row.get("tov")) or 1.0), 3)
+    if first_number(row.get("ppr")) is None:
+        ppr = calculate_ppr(row)
+        if ppr is not None:
+            row["ppr"] = round_number(ppr, 3)
+    if first_number(row.get("fic")) is None:
+        fic = calculate_fic(row)
+        if fic is not None:
+            row["fic"] = round_number(fic, 3)
 
 
 def per40_value(total: object, minutes: object) -> float | None:
@@ -5099,6 +5158,45 @@ def per40_value(total: object, minutes: object) -> float | None:
     if total_value is None or minute_value is None or minute_value <= 0:
         return None
     return round((total_value / minute_value) * 40.0, 3)
+
+
+def per100_value(total: object, row: dict[str, object]) -> float | None:
+    total_value = first_number(total)
+    poss = first_number(row.get("total_poss"))
+    if poss is None:
+        fga = first_number(row.get("fga"), add_numbers(first_number(row.get("two_pa")), first_number(row.get("three_pa"))))
+        fta = first_number(row.get("fta"))
+        tov = first_number(row.get("tov"))
+        if fga is not None and fta is not None and tov is not None:
+            poss = fga + (0.44 * fta) + tov
+    if total_value is None or poss is None or poss <= 0:
+        return None
+    return round((total_value / poss) * 100.0, 3)
+
+
+def calculate_ppr(row: dict[str, object]) -> float | None:
+    minutes = first_number(row.get("min"))
+    ast = first_number(row.get("ast"), 0)
+    tov = first_number(row.get("tov"), 0)
+    if minutes is None or minutes <= 0 or ast is None or tov is None:
+        return None
+    return (((ast * (2.0 / 3.0)) - tov) * 40.0) / minutes
+
+
+def calculate_fic(row: dict[str, object]) -> float | None:
+    pts = first_number(row.get("pts"))
+    fga = first_number(row.get("fga"))
+    fta = first_number(row.get("fta"))
+    if pts is None or fga is None or fta is None:
+        return None
+    orb = first_number(row.get("orb"), 0) or 0.0
+    drb = first_number(row.get("drb"), subtract_numbers(first_number(row.get("trb")), orb), 0) or 0.0
+    ast = first_number(row.get("ast"), 0) or 0.0
+    stl = first_number(row.get("stl"), 0) or 0.0
+    blk = first_number(row.get("blk"), 0) or 0.0
+    tov = first_number(row.get("tov"), 0) or 0.0
+    pf = first_number(row.get("pf"), 0) or 0.0
+    return pts + orb + (0.75 * drb) + ast + stl + blk - (0.75 * fga) - (0.375 * fta) - tov - (0.5 * pf)
 
 
 def divide_numbers(total: object, count: object) -> float | None:

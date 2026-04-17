@@ -433,12 +433,14 @@ a,
   padding: 2px 2px;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   border-top: 0;
   border-left: 0;
   border-right: 0;
   border-bottom: 1px solid var(--line-soft);
   background: #ffffff;
+  font-size: 8.5px;
+  letter-spacing: 0;
   text-align: center;
   vertical-align: middle;
 }
@@ -447,7 +449,7 @@ a,
 #statsTable td.cell-wrap {
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   line-height: 1.02;
 }
 
@@ -455,14 +457,14 @@ a,
 #statsTable td.cell-small-text {
   font-size: 6.25px;
   line-height: 1;
-  letter-spacing: -0.15px;
+  letter-spacing: 0;
 }
 
 #statsTable th.cell-compact-text,
 #statsTable td.cell-compact-text {
   font-size: 7.4px;
   line-height: 1.02;
-  letter-spacing: -0.08px;
+  letter-spacing: 0;
 }
 
 #statsTable th.cell-name-text,
@@ -472,37 +474,37 @@ a,
   letter-spacing: 0;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
 }
 
 #statsTable th.cell-team-text,
 #statsTable td.cell-team-text {
   font-size: 8.15px;
   line-height: 1.04;
-  letter-spacing: -0.03px;
+  letter-spacing: 0;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
 }
 
 #statsTable td.cell-team-overflow {
   font-size: 7.55px;
   line-height: 1.02;
-  letter-spacing: -0.08px;
+  letter-spacing: 0;
 }
 
 #statsTable th.cell-text-overflow-sm,
 #statsTable td.cell-text-overflow-sm {
   font-size: 7.7px;
   line-height: 1;
-  letter-spacing: -0.1px;
+  letter-spacing: 0;
 }
 
 #statsTable th.cell-text-overflow-xs,
 #statsTable td.cell-text-overflow-xs {
   font-size: 6.95px;
   line-height: 0.98;
-  letter-spacing: -0.15px;
+  letter-spacing: 0;
 }
 
 #statsTable th {
@@ -511,7 +513,7 @@ a,
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   line-height: 1.02;
   font-size: 9px;
 }

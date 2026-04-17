@@ -11,9 +11,9 @@ Shared rule:
 | `gp` | `GP` | Games played |
 | `min` | `MIN` | Total minutes |
 | `mpg` | `MPG` | Minutes per game |
-| `pts`, `trb`, `ast`, `stl`, `blk`, `tov`, `pf` | `PTS`, `TRB`, `AST`, `STL`, `BLK`, `TOV`, `PF` | Totals |
-| `pts_pg`, `trb_pg`, `ast_pg`, `stl_pg`, `blk_pg`, `tov_pg` | `PTS/G`, etc. | Total stat divided by `GP` |
-| `pts_per40`, `trb_per40`, `ast_per40`, `stl_per40`, `blk_per40` | `PTS/40`, etc. | Total stat divided by `MIN`, multiplied by `40` |
+| `pts`, `trb`, `ast`, `stl`, `blk`, `tov`, `pf`, `stocks` | `PTS`, `TRB`, `AST`, `STL`, `BLK`, `TOV`, `PF`, `Stocks` | Totals; `stocks` is steals plus blocks |
+| `pts_pg`, `trb_pg`, `ast_pg`, `ast_stl_pg`, `stl_pg`, `blk_pg`, `tov_pg`, `pf_pg`, `stocks_pg`, `two_pa_pg`, `three_pa_pg` | `PTS/G`, `AST+STL/G`, etc. | Total stat divided by `GP`; `ast_stl_pg` is assists plus steals per game |
+| `pts_per40`, `trb_per40`, `ast_per40`, `ast_stl_per40`, `tov_per40`, `stl_per40`, `blk_per40`, `pf_per40`, `stocks_per40`, `two_pa_per40`, `three_pa_per40` | `PTS/40`, `AST+STL/40`, etc. | Total stat divided by `MIN`, multiplied by `40`; `ast_stl_per40` is assists plus steals per 40 minutes |
 | `fgm`, `fga` | `FGM`, `FGA` | Total field goals made and attempted |
 | `two_pm`, `two_pa` | `2PM`, `2PA` | Total two-point field goals made and attempted |
 | `three_pm`, `three_pa` | `3PM`, `3PA` | Total three-point field goals made and attempted |
