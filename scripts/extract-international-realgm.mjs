@@ -38,7 +38,7 @@ const STAT_TYPES = [
 const CORE_COLUMNS = [
   "season", "season_label", "league_id", "league_name", "league_slug", "competition_key", "competition_label",
   "player_name", "realgm_player_id", "realgm_summary_url", "team_name", "team_abbrev", "team_url",
-  "pos", "height", "height_in", "weight_lb", "birth_city", "draft_status", "nationality",
+  "pos", "height", "height_in", "weight_lb", "birth_city", "dob", "birthday", "draft_status", "draft_year", "draft_pick", "nationality",
 ];
 
 const BOX_COLUMNS = [
@@ -71,7 +71,7 @@ const OVERLAY_START_COLUMNS = [
   "player_id", "canonical_player_id", "realgm_player_id", "source_player_id", "player_profile_key",
   "player_name", "season", "source_dataset", "competition_level", "team_name", "team_full", "league",
   "career_path", "profile_levels", "profile_match_source", "realgm_summary_url", "nationality", "birth_city",
-  "pre_draft_team", "height_in", "weight_lb", "pos", "draft_pick",
+  "dob", "birthday", "pre_draft_team", "height_in", "weight_lb", "pos", "draft_year", "draft_pick",
 ];
 
 function parseArgs() {
@@ -116,6 +116,37 @@ function normalizeName(value) {
     .replace(/\bSR\.?$/i, "Sr.")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function firstCellText(values, headers) {
+  for (const header of headers) {
+    const text = values.get(header)?.text;
+    if (text != null && String(text).trim()) return String(text).trim();
+  }
+  return "";
+}
+
+function normalizeDate(value) {
+  const text = String(value || "").trim();
+  if (!text || /^n\/?a$/i.test(text)) return "";
+  const iso = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (iso) {
+    const [, year, month, day] = iso;
+    return `${year.padStart(4, "0")}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  const slash = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
+  if (slash) {
+    let [, month, day, year] = slash;
+    if (year.length === 2) year = Number(year) > 30 ? `19${year}` : `20${year}`;
+    return `${year.padStart(4, "0")}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  const parsed = new Date(text.replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, "$1"));
+  if (Number.isNaN(parsed.getTime())) return text;
+  const year = parsed.getUTCFullYear();
+  if (!Number.isFinite(year) || year < 1900 || year > 2100) return text;
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function normalizePos(value) {
@@ -453,6 +484,8 @@ function buildRosterMeta(table) {
     const player = values.get("Player");
     const playerId = extractPlayerId(player?.href || "");
     if (!playerId) return;
+    const draftInfo = parseDraftInfo(values.get("Draft Status")?.text || "");
+    const dob = normalizeDate(firstCellText(values, ["DOB", "Birth Date", "Birthdate", "Birthday", "Born"]));
     const meta = {
       player_name: normalizeName(player.text),
       realgm_player_id: playerId,
@@ -462,7 +495,11 @@ function buildRosterMeta(table) {
       weight_lb: toNumber(values.get("WT")?.text),
       team_name: values.get("Team")?.text || "",
       birth_city: values.get("Birth City")?.text || "",
+      dob,
+      birthday: dob,
       draft_status: values.get("Draft Status")?.text || "",
+      draft_year: draftInfo.year,
+      draft_pick: draftInfo.pick,
       nationality: values.get("Nationality")?.text || "",
     };
     players.push(meta);
@@ -477,7 +514,7 @@ function applyRosterMeta(row, rosterMeta) {
   const meta = rosterMeta.byPlayerTeam.get(`${row.realgm_player_id}|${normalizeKey(row.team_name || row.team_abbrev)}`)
     || rosterMeta.byPlayer.get(row.realgm_player_id);
   if (!meta) return;
-  ["pos", "height", "height_in", "weight_lb", "birth_city", "draft_status", "nationality"].forEach((field) => {
+  ["pos", "height", "height_in", "weight_lb", "birth_city", "dob", "birthday", "draft_status", "draft_year", "draft_pick", "nationality"].forEach((field) => {
     if (meta[field] !== "" && meta[field] != null) row[field] = meta[field];
   });
 }
@@ -502,7 +539,11 @@ function rosterOnlyRow(league, seasonInfo, meta) {
     height_in: meta.height_in,
     weight_lb: meta.weight_lb,
     birth_city: meta.birth_city,
+    dob: meta.dob,
+    birthday: meta.birthday || meta.dob,
     draft_status: meta.draft_status,
+    draft_year: meta.draft_year,
+    draft_pick: meta.draft_pick,
     nationality: meta.nationality,
   };
 }
@@ -545,16 +586,34 @@ function deriveRow(row) {
   row.team_search_text = [row.team_name, row.team_abbrev, row.league_name].filter(Boolean).join(" ");
 }
 
-function parseDraftPick(draftStatus) {
+function parseDraftInfo(draftStatus) {
   const text = String(draftStatus || "");
-  if (/undrafted/i.test(text)) return "";
-  const match = text.match(/Pick\s+(\d+)/i) || text.match(/Round\s+\d+,\s*(\d+)/i);
-  return match ? Number(match[1]) : "";
+  if (!text || /undrafted|draft eligible|free agent/i.test(text)) return { year: "", pick: "" };
+  const yearMatch = text.match(/\b(19\d{2}|20\d{2})\b/);
+  const roundMatch = text.match(/\b(?:round|rd)\s*#?\s*(\d+)/i)
+    || text.match(/\b(\d+)(?:st|nd|rd|th)\s+round\b/i);
+  const pickMatch = text.match(/\bpick\s*#?\s*(\d+)/i)
+    || text.match(/\b(\d+)(?:st|nd|rd|th)\s+pick\b/i)
+    || text.match(/\bround\s*#?\s*\d+\s*,\s*#?\s*(\d+)\b/i);
+  const round = roundMatch ? Number(roundMatch[1]) : Number.NaN;
+  let pick = pickMatch ? Number(pickMatch[1]) : Number.NaN;
+  if (Number.isFinite(round) && round > 1 && Number.isFinite(pick) && pick <= 30) {
+    pick += (round - 1) * 30;
+  }
+  return {
+    year: yearMatch ? Number(yearMatch[1]) : "",
+    pick: Number.isFinite(pick) && pick >= 1 && pick <= 60 ? pick : "",
+  };
+}
+
+function parseDraftPick(draftStatus) {
+  return parseDraftInfo(draftStatus).pick;
 }
 
 function overlayRow(row) {
   const realgmId = String(row.realgm_player_id || "").trim();
   const canonicalId = realgmId ? `rgm_${realgmId}` : "";
+  const draftInfo = parseDraftInfo(row.draft_status);
   return {
     player_id: canonicalId,
     canonical_player_id: canonicalId,
@@ -574,11 +633,14 @@ function overlayRow(row) {
     realgm_summary_url: row.realgm_summary_url,
     nationality: row.nationality,
     birth_city: row.birth_city,
+    dob: row.dob,
+    birthday: row.birthday || row.dob,
     pre_draft_team: row.draft_status,
     height_in: row.height_in,
     weight_lb: row.weight_lb,
     pos: row.pos,
-    draft_pick: parseDraftPick(row.draft_status),
+    draft_year: row.draft_year || draftInfo.year,
+    draft_pick: row.draft_pick || draftInfo.pick,
     competition_key: row.competition_key,
     competition_label: row.competition_label,
     team_code: row.team_abbrev,
