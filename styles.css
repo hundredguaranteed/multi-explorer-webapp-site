@@ -647,8 +647,8 @@ a,
 }
 
 .player-profile-modal {
-  width: min(1180px, 96vw);
-  max-height: 88vh;
+  width: min(1760px, 98vw);
+  max-height: 92vh;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -688,7 +688,7 @@ a,
 }
 
 .player-profile-table-wrap {
-  max-height: calc(88vh - 90px);
+  max-height: calc(92vh - 90px);
   overflow: auto;
 }
 
@@ -696,7 +696,7 @@ a,
   width: max-content;
   min-width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .player-profile-table th,
@@ -764,6 +764,45 @@ a,
   min-height: auto;
   display: block;
   text-align: left;
+}
+
+body.profile-route-active {
+  overflow-x: hidden;
+}
+
+body.profile-route-active .site-header,
+body.profile-route-active .status-bar,
+body.profile-route-active .app-shell {
+  max-width: none;
+}
+
+body.profile-route-active .app-shell {
+  display: block;
+  width: 100%;
+  padding: 8px 16px 24px;
+}
+
+body.profile-route-active .table-area {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
+body.profile-route-active .home-content.profile-content {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+body.profile-route-active .player-profile-table-wrap {
+  width: 100%;
+  max-height: calc(100vh - 118px);
+  border-top: 1px solid var(--line-soft);
+}
+
+body.profile-route-active .player-profile-table th,
+body.profile-route-active .player-profile-table td {
+  max-width: none;
 }
 
 .home-card {

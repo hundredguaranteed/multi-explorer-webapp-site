@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stat Explorers</title>
   <meta name="description" content="D1, D2, NAIA, JUCO, FIBA, International, NBA, and Player/Career explorers in one basic webapp.">
-  <link rel="stylesheet" href="styles.css?v=20260419-site-v63">
+  <link rel="stylesheet" href="styles.css?v=20260419-profile-v64">
   <script>
 window.__DATA_ASSET_BASE__ = "";
 (function () {
-  var version = "20260419-site-v63";
+  var version = "20260419-profile-v64";
   var route = (window.location.hash || "#home").replace(/^#/, "").toLowerCase().split("?")[0];
+  if (route === "player" || route === "player_profile") route = "profile";
   var preloads = {
     d1: ["data/vendor/d1_year_manifest.js", "data/vendor/d1_year_chunks/2026.js"],
     grassroots: ["data/vendor/grassroots_year_manifest.js", "data/vendor/grassroots_year_chunks/2026.js"],
@@ -21,14 +22,22 @@ window.__DATA_ASSET_BASE__ = "";
       "data/vendor/player_career_international_overlay_manifest.js",
     ],
     profile: [
-      "data/vendor/player_career_year_manifest.js",
-      "data/vendor/player_profile_year_index.js",
+      "data/vendor/player_profile_buckets_manifest.js",
     ],
     international: [
       "data/vendor/international_all_seasons_manifest.js",
       "data/vendor/international_all_seasons_parts/part_001.js",
     ],
   };
+  if (route === "profile") {
+    try {
+      var query = (window.location.hash || "").split("?")[1] || "";
+      var rgm = Number(new URLSearchParams(query).get("rgm"));
+      if (Number.isFinite(rgm) && rgm > 0) {
+        preloads.profile.push("data/vendor/player_profile_buckets/r" + String(rgm % 256).padStart(3, "0") + ".js");
+      }
+    } catch (error) {}
+  }
   (preloads[route] || []).forEach(function (src) {
     var link = document.createElement("link");
     link.rel = "preload";
@@ -38,10 +47,10 @@ window.__DATA_ASSET_BASE__ = "";
   });
 }());
   </script>
-  <script src="app.js?v=20260419-site-v63" defer></script>
+  <script src="app.js?v=20260419-profile-v64" defer></script>
   <script>
 if ("serviceWorker" in navigator) {
-navigator.serviceWorker.register("sw.js?v=20260419-site-v63").catch(function () {});
+navigator.serviceWorker.register("sw.js?v=20260419-profile-v64").catch(function () {});
 }
   </script>
 </head>

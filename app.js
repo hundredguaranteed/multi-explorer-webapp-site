@@ -39,7 +39,8 @@ const GRASSROOTS_PLAYER_YEAR_INDEX_SCRIPT = "data/vendor/grassroots_player_year_
 const PLAYER_BIO_LOOKUP_SCRIPT = "data/vendor/player_bio_lookup.js";
 const INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT = "data/vendor/international_profile_bio_lookup.js";
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
-const APP_BUILD_VERSION = "20260419-site-v63";
+const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_buckets_manifest.js";
+const APP_BUILD_VERSION = "20260419-profile-v64";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -2464,6 +2465,10 @@ const appState = {
   statusRealgmStaticIndexLoad: null,
   grassrootsPlayerYearIndexLoad: null,
   playerProfileYearIndexLoad: null,
+  playerProfileBucketManifestLoad: null,
+  playerProfileBucketLoads: new Map(),
+  playerProfileBucketRows: new Map(),
+  playerProfileBucketPrefetches: new Set(),
   precomputedStatusAnnotations: undefined,
   statusAnnotationScriptLoad: null,
   hydrationLoads: new Map(),
@@ -2737,6 +2742,15 @@ function scheduleGlobalPlayerSuggestions(value) {
     const matches = await findGlobalPlayerSuggestions(term);
     if (getStringValue(elements.globalPlayerSearchInput?.value).trim() !== term) return;
     appState.globalSearchSuggestionMap = new Map(matches.map((item) => [normalizeNameKey(item.name), item]));
+    matches.slice(0, 6).forEach((item) => {
+      if (!item?.realgmId) return;
+      prefetchPlayerProfileBuckets(buildPlayerProfileIdentity({
+        player_name: item.name,
+        realgm_player_id: item.realgmId,
+        dob: item.dob,
+        height_in: item.height,
+      }));
+    });
     elements.globalPlayerSearchSuggestions.innerHTML = matches
       .map((item) => {
         const label = [item.dob, item.realgmId ? `RealGM ${item.realgmId}` : ""].filter(Boolean).join(" | ");
@@ -3069,6 +3083,7 @@ async function handleRoute() {
   const routeInfo = getRouteInfo();
   const datasetId = routeInfo.id;
   appState.currentId = datasetId;
+  document.body.classList.toggle("profile-route-active", datasetId === PROFILE_ROUTE_ID);
   cancelPendingInteractiveRenders();
   cancelBackgroundTasksForInactiveDataset(datasetId);
   cancelInteractiveLoadTimersForInactiveDataset(datasetId);
@@ -3089,6 +3104,7 @@ async function handleRoute() {
   elements.queryPanel.style.display = "";
   elements.homeContent.hidden = true;
   elements.homeContent.style.display = "none";
+  elements.homeContent.classList.remove("profile-content");
   elements.tableContent.hidden = false;
   elements.tableContent.style.display = "";
   elements.pageTitle.textContent = "100guaranteed";
@@ -12046,6 +12062,16 @@ function renderTable(dataset, state, filtered, renderContext = {}) {
       const key = target.dataset.playerProfileKey;
       if (key) openPlayerProfileForKey(key);
     });
+    elements.statsTableBody.addEventListener("mouseover", (event) => {
+      const target = event.target instanceof Element ? event.target.closest("[data-player-profile-key]") : null;
+      const key = target?.dataset?.playerProfileKey;
+      if (key) prefetchPlayerProfileForKey(key);
+    });
+    elements.statsTableBody.addEventListener("focusin", (event) => {
+      const target = event.target instanceof Element ? event.target.closest("[data-player-profile-key]") : null;
+      const key = target?.dataset?.playerProfileKey;
+      if (key) prefetchPlayerProfileForKey(key);
+    });
   }
 
   appState.playerProfileRows = new Map();
@@ -12283,6 +12309,12 @@ function registerPlayerProfileRow(dataset, row) {
   return key;
 }
 
+function prefetchPlayerProfileForKey(key) {
+  const entry = appState.playerProfileRows.get(key);
+  if (!entry?.row) return;
+  prefetchPlayerProfileBuckets(buildPlayerProfileIdentity(entry.row));
+}
+
 async function openPlayerProfileForKey(key) {
   const entry = appState.playerProfileRows.get(key);
   if (!entry?.row) return;
@@ -12333,6 +12365,133 @@ function closePlayerProfileModal() {
   if (!modal) return;
   modal.classList.remove("is-open");
   modal.hidden = true;
+}
+
+async function loadPlayerProfileBucketManifest() {
+  if (window.PLAYER_PROFILE_BUCKET_MANIFEST) return window.PLAYER_PROFILE_BUCKET_MANIFEST;
+  if (!appState.playerProfileBucketManifestLoad) {
+    appState.playerProfileBucketManifestLoad = loadScriptOnce(PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT)
+      .then(() => window.PLAYER_PROFILE_BUCKET_MANIFEST || null);
+  }
+  return appState.playerProfileBucketManifestLoad;
+}
+
+function getPlayerProfileRealgmIds(identity) {
+  const ids = new Set();
+  (identity?.ids || new Set()).forEach((value) => {
+    const match = getStringValue(value).trim().match(/^rgm:(\d+)$/i);
+    if (match) ids.add(match[1]);
+  });
+  return Array.from(ids);
+}
+
+function getPlayerProfileBucketKey(realgmId, manifest) {
+  const id = Number(realgmId);
+  const bucketCount = Number(manifest?.bucketCount);
+  if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(bucketCount) || bucketCount <= 0) return "";
+  return `r${String(id % bucketCount).padStart(3, "0")}`;
+}
+
+function getPlayerProfileBucketPath(manifest, key) {
+  const template = getStringValue(manifest?.pathTemplate || "data/vendor/player_profile_buckets/{bucket}.js");
+  return template.replace("{bucket}", key);
+}
+
+async function loadPlayerProfileBucketRows(key, manifest) {
+  if (!key) return [];
+  if (appState.playerProfileBucketRows.has(key)) return appState.playerProfileBucketRows.get(key);
+  if (!appState.playerProfileBucketLoads.has(key)) {
+    const promise = (async () => {
+      await loadScriptOnce(getPlayerProfileBucketPath(manifest, key));
+      const encodedRows = window.PLAYER_PROFILE_BUCKETS?.[key] || [];
+      const rows = decodePlayerProfileBucketRows(encodedRows, manifest);
+      appState.playerProfileBucketRows.set(key, rows);
+      return rows;
+    })().catch((error) => {
+      appState.playerProfileBucketLoads.delete(key);
+      throw error;
+    });
+    appState.playerProfileBucketLoads.set(key, promise);
+  }
+  return appState.playerProfileBucketLoads.get(key);
+}
+
+function decodePlayerProfileBucketRows(encodedRows, manifest) {
+  const columns = Array.isArray(manifest?.columns) ? manifest.columns : [];
+  return (Array.isArray(encodedRows) ? encodedRows : []).map((values) => {
+    const row = {};
+    columns.forEach((column, index) => {
+      if (!column || !Array.isArray(values) || index >= values.length) return;
+      const value = values[index];
+      if (value == null || value === "") return;
+      row[column] = value;
+    });
+    preparePlayerCareerLoadedRow(row);
+    normalizePercentLikeColumns(row, "player_career");
+    return row;
+  });
+}
+
+function getPlayerProfileBucketKeys(identity, manifest) {
+  const availableFiles = new Set(Array.isArray(manifest?.files) ? manifest.files : []);
+  return getPlayerProfileRealgmIds(identity)
+    .map((realgmId) => getPlayerProfileBucketKey(realgmId, manifest))
+    .filter((key, index, keys) => key && keys.indexOf(key) === index && (!availableFiles.size || availableFiles.has(key)));
+}
+
+async function collectPlayerProfileBucketRows(identity) {
+  const manifest = await loadPlayerProfileBucketManifest();
+  const bucketKeys = getPlayerProfileBucketKeys(identity, manifest);
+  if (!bucketKeys.length) return [];
+  const bucketRows = await Promise.all(bucketKeys.map((key) => loadPlayerProfileBucketRows(key, manifest)));
+  const rows = [];
+  const seen = new Set();
+  bucketRows.flat().forEach((row) => {
+    if (!rowMatchesPlayerProfile(row, identity) || seen.has(row)) return;
+    seen.add(row);
+    rows.push(row);
+  });
+  return rows;
+}
+
+function prefetchPlayerProfileBuckets(identity) {
+  const realgmIds = getPlayerProfileRealgmIds(identity);
+  if (!realgmIds.length) return;
+  const key = realgmIds.sort().join("|");
+  if (appState.playerProfileBucketPrefetches.has(key)) return;
+  appState.playerProfileBucketPrefetches.add(key);
+  loadPlayerProfileBucketManifest()
+    .then((manifest) => {
+      getPlayerProfileBucketKeys(identity, manifest).forEach((bucketKey) => {
+        loadPlayerProfileBucketRows(bucketKey, manifest).catch((error) => {
+          console.warn("Player profile bucket prefetch failed.", error);
+        });
+      });
+    })
+    .catch((error) => {
+      console.warn("Player profile bucket manifest prefetch failed.", error);
+    });
+}
+
+async function resolvePlayerProfileIdentity(identity) {
+  if (getPlayerProfileRealgmIds(identity).length || !identity?.names?.size) return identity;
+  try {
+    const index = await ensureGlobalPlayerSearchIndex();
+    const match = Array.from(identity.names)
+      .map((name) => (index || []).find((item) => item.key === name))
+      .find((item) => item?.realgmId);
+    if (!match?.realgmId) return identity;
+    return {
+      ...identity,
+      ids: new Set([...(identity.ids || []), `rgm:${match.realgmId}`]),
+      names: new Set(identity.names || []),
+      dob: identity.dob || getStringValue(match.dob).trim(),
+      height: Number.isFinite(identity.height) ? identity.height : firstPositiveFinite(match.height, Number.NaN),
+    };
+  } catch (error) {
+    console.warn("Player profile identity lookup failed.", error);
+    return identity;
+  }
 }
 
 async function loadPlayerProfileYearIndex() {
@@ -12395,18 +12554,28 @@ async function ensurePlayerCareerProfileSourceLoaded(identity) {
 }
 
 async function getPlayerProfileRows(sourceRow, datasetId = "") {
-  const identity = buildPlayerProfileIdentity(sourceRow);
+  const identity = await resolvePlayerProfileIdentity(buildPlayerProfileIdentity(sourceRow));
   let rows = [];
+  let bucketAttempted = false;
   try {
-    const playerCareerDataset = await ensurePlayerCareerProfileSourceLoaded(identity);
-    rows = collectIndexedPlayerProfileRows(playerCareerDataset, identity);
+    bucketAttempted = getPlayerProfileRealgmIds(identity).length > 0;
+    rows = await collectPlayerProfileBucketRows(identity);
   } catch (error) {
-    console.warn("Player/Career profile source failed to load.", error);
+    console.warn("Player profile bucket source failed to load.", error);
   }
+  if (!rows.length && !bucketAttempted) {
+    try {
+      const playerCareerDataset = await ensurePlayerCareerProfileSourceLoaded(identity);
+      rows = collectIndexedPlayerProfileRows(playerCareerDataset, identity);
+    } catch (error) {
+      console.warn("Player/Career profile source failed to load.", error);
+    }
+  }
+  const hasPrimaryProfileRows = rows.length > 0;
   const currentDataset = datasetId ? appState.datasetCache[datasetId] : null;
-  if (currentDataset?.rows?.length) {
+  if (!hasPrimaryProfileRows && currentDataset?.rows?.length) {
     rows.push(...collectIndexedPlayerProfileRows(currentDataset, identity));
-  } else if (sourceRow) {
+  } else if (!hasPrimaryProfileRows && sourceRow) {
     rows.push(sourceRow);
   }
   rows = dedupePlayerProfileRows(rows);
@@ -12757,8 +12926,12 @@ function buildPlayerProfileContentHtml(name, rows, options = {}) {
     "usg_pct", "ast_pct", "stl_pct", "blk_pct", "per", "bpm",
     "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40",
   ];
+  const profileLabels = {
+    ftr: "FTA/FGA",
+    three_pr: "3PA/FGA",
+  };
   const dataset = DATASETS.player_career;
-  const header = columns.map((column) => `<th>${escapeHtml(displayLabel(dataset, column))}</th>`).join("");
+  const header = columns.map((column) => `<th>${escapeHtml(profileLabels[column] || displayLabel(dataset, column))}</th>`).join("");
   const body = rows.length
     ? rows.map((row) => `<tr class="${row._careerAggregate ? "player-profile-career-row" : ""}">${columns.map((column) => `<td>${escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, getRowColumnValue(dataset, row, column), row)))}</td>`).join("")}</tr>`).join("")
     : `<tr><td colspan="${columns.length}">No logged seasons found.</td></tr>`;
