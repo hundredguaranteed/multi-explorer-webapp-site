@@ -26,6 +26,7 @@ const HOME_PAGES = [
   { id: "international", label: "International" },
   { id: "nba", label: "NBA" },
   { id: "player_career", label: "Player/Career" },
+  { id: "team_coach", label: "Team/Coach" },
   { id: "nba_companion", label: "NBA Companion" },
 ];
 const D1_HM_CONFS = new Set(["ACC", "SEC", "B10", "B12", "BE", "P12", "P10"]);
@@ -40,7 +41,7 @@ const PLAYER_BIO_LOOKUP_SCRIPT = "data/vendor/player_bio_lookup.js";
 const INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT = "data/vendor/international_profile_bio_lookup.js";
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
 const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_buckets_manifest.js";
-const APP_BUILD_VERSION = "20260419-profile-v64";
+const APP_BUILD_VERSION = "20260419-coach-v65";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -606,7 +607,7 @@ function withSingleFilterDefault(filters = [], filterId, defaultValue) {
 }
 
 function buildD1Config() {
-  const demoColumns = ["conference", "pos", "class_year", "height_in", "weight_lb", "bmi", "age", "dob", "gp", "min", "mpg", "draft_pick"];
+  const demoColumns = ["conference", "coach", "pos", "class_year", "height_in", "weight_lb", "bmi", "age", "dob", "gp", "min", "mpg", "draft_pick"];
   const labels = {
     rank: "",
     season: "Year",
@@ -629,6 +630,12 @@ function buildD1Config() {
   };
 
   const groups = [
+    {
+      id: "info",
+      label: "Info",
+      columns: ["conference", "coach", "pos", "class_year"],
+      defaultColumns: ["coach"],
+    },
     {
       id: "advanced",
       label: "Advanced",
@@ -783,6 +790,7 @@ function buildD1Config() {
     groups,
     singleFilters: withSharedSingleFilters([
       { id: "conference_bucket", label: "Conference" },
+      { id: "coach", label: "Coach", column: "coach" },
       {
         id: "status_path",
         label: "Status",
@@ -1719,8 +1727,115 @@ function buildInternationalConfig() {
   };
 }
 
+function buildTeamCoachConfig() {
+  const labels = {
+    rank: "",
+    season: "Year",
+    team_name: "Team",
+    coach: "Coach",
+    conference: "Conf",
+    record: "Record",
+    wins: "W",
+    games: "G",
+    adj_oe: "Adj OE",
+    adj_de: "Adj DE",
+    barthag: "Barthag",
+    efg_pct: "eFG%",
+    efg_pct_def: "eFG% D",
+    ft_rate: "FT Rate",
+    ft_rate_def: "FT Rate D",
+    tov_pct: "TOV%",
+    tov_pct_def: "TOV% D",
+    oreb_pct: "O Reb%",
+    opp_oreb_pct: "Opp O Reb%",
+    raw_tempo: "Raw T",
+    adj_tempo: "Adj T",
+    two_p_pct: "2P%",
+    two_p_pct_def: "2P% D",
+    three_p_pct: "3P%",
+    three_p_pct_def: "3P% D",
+    block_pct: "Blk%",
+    blocked_pct: "Blked%",
+    ast_pct: "Ast%",
+    opp_ast_pct: "Opp Ast%",
+    three_p_rate: "3P Rate",
+    three_p_rate_def: "3P Rate D",
+    avg_height: "Avg Hgt",
+    eff_height: "Eff Hgt",
+    exp: "Exp",
+    talent: "Talent",
+    ft_pct: "FT%",
+    opp_ft_pct: "Opp FT%",
+    ppp_off: "PPP Off",
+    ppp_def: "PPP Def",
+    elite_sos: "Elite SOS",
+  };
+  const playtypes = [
+    ["transition", "Transition"],
+    ["spot_up", "Spot Up"],
+    ["pnr_ball_handler", "P&R BH"],
+    ["pnr_roll_man", "P&R Roll"],
+    ["post_up", "Post-Up"],
+    ["cut", "Cut"],
+    ["off_screen", "Off Screen"],
+    ["hand_off", "Hand Off"],
+    ["isolation", "Isolation"],
+    ["offensive_rebounds", "O Reb"],
+  ];
+  const playtypeColumns = [];
+  playtypes.forEach(([id, label]) => {
+    [
+      ["freq", "Freq"],
+      ["poss", "Poss"],
+      ["ppp", "PPP"],
+      ["efg_pct", "eFG%"],
+      ["to_pct", "TO%"],
+      ["score_pct", "Score%"],
+      ["fg_pct", "FG%"],
+      ["three_pa_rate", "3PA/FGA"],
+      ["ft_rate", "FTA/FGA"],
+    ].forEach(([suffix, suffixLabel]) => {
+      const column = `${id}_${suffix}`;
+      playtypeColumns.push(column);
+      labels[column] = `${label} ${suffixLabel}`;
+    });
+  });
+  return {
+    id: "team_coach",
+    navLabel: "Team/Coach",
+    title: "Team/Coach",
+    subtitle: "Bart team tables and Synergy team playtypes matched to coach",
+    dataScript: `data/vendor/team_coach_all_seasons.js?v=${SCRIPT_CACHE_BUST}`,
+    globalName: "TEAM_COACH_ALL_CSV",
+    yearColumn: "season",
+    teamColumn: "team_name",
+    lockedColumns: ["rank", "season", "team_name"],
+    searchColumns: withUniversalSearchColumns(["team_name", "team_search_text", "coach", "coach_search_text", "conference"]),
+    sortBy: "barthag",
+    sortDir: "desc",
+    defaultAllYears: false,
+    minYear: 2011,
+    minuteFilterDefault: "",
+    demoColumns: ["conference", "coach", "record", "wins", "games"],
+    demoFilterColumns: ["wins", "games"],
+    groups: [
+      { id: "info", label: "Info", columns: ["conference", "coach", "record", "wins", "games"], defaultColumns: ["coach", "record"] },
+      { id: "bart", label: "Bart", columns: ["adj_oe", "adj_de", "barthag", "efg_pct", "efg_pct_def", "ft_rate", "ft_rate_def", "tov_pct", "tov_pct_def", "oreb_pct", "opp_oreb_pct", "raw_tempo", "adj_tempo", "two_p_pct", "two_p_pct_def", "three_p_pct", "three_p_pct_def", "block_pct", "blocked_pct", "ast_pct", "opp_ast_pct", "three_p_rate", "three_p_rate_def", "avg_height", "eff_height", "exp", "talent", "ft_pct", "opp_ft_pct", "ppp_off", "ppp_def", "elite_sos"], defaultColumns: ["adj_oe", "adj_de", "barthag", "efg_pct", "tov_pct", "oreb_pct", "adj_tempo", "ppp_off", "ppp_def"] },
+      { id: "playtypes", label: "Playtypes", columns: playtypeColumns, defaultColumns: ["transition_freq", "transition_ppp", "spot_up_freq", "spot_up_ppp", "pnr_ball_handler_freq", "pnr_ball_handler_ppp", "post_up_freq", "post_up_ppp", "cut_freq", "cut_ppp"] },
+    ],
+    singleFilters: withSharedSingleFilters([
+      { id: "conference", label: "Conference", column: "conference" },
+      { id: "coach", label: "Coach", column: "coach" },
+    ]),
+    multiFilters: [],
+    defaultVisible: ["rank", "season", "team_name", "coach", "conference", "record", "adj_oe", "adj_de", "barthag", "ppp_off", "ppp_def", "transition_freq", "transition_ppp", "spot_up_freq", "spot_up_ppp", "pnr_ball_handler_freq", "pnr_ball_handler_ppp", "post_up_freq", "post_up_ppp", "cut_freq", "cut_ppp"],
+    labels,
+  };
+}
+
 const DATASETS = {
   d1: buildD1Config(),
+  team_coach: buildTeamCoachConfig(),
   d2: {
     id: "d2",
     navLabel: "D2",
@@ -12657,6 +12772,8 @@ const PLAYER_PROFILE_TOTAL_ALIASES = {
   gp: ["gp", "g"],
   min: ["min", "mp"],
   trb: ["trb", "reb"],
+  orb: ["orb"],
+  drb: ["drb"],
   fgm: ["fgm", "fg"],
   fga: ["fga"],
   two_pm: ["two_pm", "2pm", "fg2m"],
@@ -12665,6 +12782,117 @@ const PLAYER_PROFILE_TOTAL_ALIASES = {
   three_pa: ["three_pa", "3pa", "tpa", "fg3a"],
   ftm: ["ftm"],
   fta: ["fta"],
+};
+
+const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumns";
+const PLAYER_PROFILE_LOCKED_COLUMNS = ["season", "competition_level", "league", "team_name"];
+const PLAYER_PROFILE_COLUMN_GROUPS = [
+  {
+    id: "identity",
+    label: "Identity",
+    columns: ["season", "competition_level", "league", "team_name"],
+  },
+  {
+    id: "totals",
+    label: "Totals",
+    columns: [
+      "gp", "min", "mpg", "pts", "trb", "orb", "drb", "ast", "tov", "stl", "blk", "pf", "stocks",
+      "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
+    ],
+  },
+  {
+    id: "per_game",
+    label: "Per Game",
+    columns: [
+      "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "pf_pg", "stocks_pg",
+      "fgm_pg", "fga_pg", "fg_pct", "two_pm_pg", "two_pa_pg", "two_p_pct", "three_pm_pg", "three_pa_pg", "three_p_pct",
+      "ftm_pg", "fta_pg", "ft_pct", "ftr", "three_pr", "efg_pct", "ts_pct", "ast_to",
+    ],
+  },
+  {
+    id: "per40",
+    label: "Per 40",
+    columns: [
+      "pts_per40", "trb_per40", "orb_per40", "drb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "pf_per40", "stocks_per40",
+      "fgm_per40", "fga_per40", "two_pm_per40", "two_pa_per40", "three_pm_per40", "three_pa_per40", "ftm_per40", "fta_per40",
+    ],
+  },
+  {
+    id: "advanced",
+    label: "Advanced",
+    columns: [
+      "usg_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct",
+      "per", "bpm", "porpag", "dporpag", "adjoe", "adrtg", "ortg", "drtg", "fic", "ppr", "rgm_per",
+    ],
+  },
+];
+const PLAYER_PROFILE_ALL_COLUMNS = [...new Set(PLAYER_PROFILE_COLUMN_GROUPS.flatMap((group) => group.columns))];
+const PLAYER_PROFILE_DEFAULT_COLUMNS = PLAYER_PROFILE_ALL_COLUMNS.slice();
+const PLAYER_PROFILE_LABELS = {
+  competition_level: "Level",
+  team_name: "Team",
+  pts: "PTS",
+  trb: "TRB",
+  orb: "ORB",
+  drb: "DRB",
+  ast: "AST",
+  tov: "TOV",
+  stl: "STL",
+  blk: "BLK",
+  pf: "PF",
+  fgm: "FGM",
+  fga: "FGA",
+  two_pm: "2PM",
+  two_pa: "2PA",
+  three_pm: "3PM",
+  three_pa: "3PA",
+  ftm: "FTM",
+  fta: "FTA",
+  pts_pg: "PTS/G",
+  trb_pg: "TRB/G",
+  orb_pg: "ORB/G",
+  drb_pg: "DRB/G",
+  ast_pg: "AST/G",
+  tov_pg: "TOV/G",
+  stl_pg: "STL/G",
+  blk_pg: "BLK/G",
+  pf_pg: "PF/G",
+  stocks_pg: "Stocks/G",
+  fgm_pg: "FGM/G",
+  fga_pg: "FGA/G",
+  two_pm_pg: "2PM/G",
+  two_pa_pg: "2PA/G",
+  three_pm_pg: "3PM/G",
+  three_pa_pg: "3PA/G",
+  ftm_pg: "FTM/G",
+  fta_pg: "FTA/G",
+  fg_pct: "FG%",
+  two_p_pct: "2P%",
+  three_p_pct: "3P%",
+  ft_pct: "FT%",
+  ftr: "FTA/FGA",
+  three_pr: "3PA/FGA",
+  efg_pct: "eFG%",
+  ts_pct: "TS%",
+  ast_to: "A:TO",
+  pts_per40: "PTS/40",
+  trb_per40: "TRB/40",
+  orb_per40: "ORB/40",
+  drb_per40: "DRB/40",
+  ast_per40: "AST/40",
+  tov_per40: "TOV/40",
+  stl_per40: "STL/40",
+  blk_per40: "BLK/40",
+  pf_per40: "PF/40",
+  stocks_per40: "Stocks/40",
+  fgm_per40: "FGM/40",
+  fga_per40: "FGA/40",
+  two_pm_per40: "2PM/40",
+  two_pa_per40: "2PA/40",
+  three_pm_per40: "3PM/40",
+  three_pa_per40: "3PA/40",
+  ftm_per40: "FTM/40",
+  fta_per40: "FTA/40",
 };
 
 function dedupePlayerProfileRows(rows) {
@@ -12681,8 +12909,13 @@ function dedupePlayerProfileRows(rows) {
 function buildPlayerProfileDuplicateKey(row) {
   const season = getStringValue(row?.season).trim();
   const playerKey = normalizeNameKey(getPlayerProfileDisplayName(row)) || getDuplicatePlayerKey(row, "player_career");
-  const teamKey = normalizeKey(row?.team_name || row?.team_abbrev || row?.team_full || row?.team || "");
+  const teamKey = normalizePlayerProfileTeamKey(row);
   const statKey = buildPlayerProfileCoreStatSignature(row);
+  const level = normalizeProfileLevel(row);
+  if (season && playerKey && level === "NBA") return `profile|nba|${season}|${playerKey}`;
+  if (season && playerKey && statKey && (level === "FIBA" || normalizeKey(row?.source_dataset) === "other")) {
+    return `profile|same-stats|${season}|${playerKey}|${statKey}`;
+  }
   if (season && playerKey && teamKey && statKey) return `profile|${season}|${playerKey}|${teamKey}|${statKey}`;
   return [
     "profile-fallback",
@@ -12693,6 +12926,29 @@ function buildPlayerProfileDuplicateKey(row) {
     teamKey,
     buildDuplicateStatSignature(row) || duplicateRowScore(row),
   ].join("|");
+}
+
+function normalizePlayerProfileTeamKey(row) {
+  const raw = normalizeKey(row?.team_name || row?.team_abbrev || row?.team_full || row?.team || "");
+  const nbaAliases = {
+    phl: "phi",
+    phoenix: "phx",
+    pho: "phx",
+    nor: "nop",
+    nok: "nop",
+    no: "nop",
+    brk: "bkn",
+    brooklyn: "bkn",
+    cha: "cha",
+    charlotte: "cha",
+    gs: "gsw",
+    goldenstate: "gsw",
+    sa: "sas",
+    sanantonio: "sas",
+    ny: "nyk",
+    newyork: "nyk",
+  };
+  return nbaAliases[raw] || raw;
 }
 
 function buildPlayerProfileCoreStatSignature(row) {
@@ -12718,7 +12974,10 @@ function playerProfileRowScore(row) {
   if (level === "NBA") score += 5000;
   else if (level && level !== "Other") score += 1000;
   if (normalizeKey(row?.competition_level) === "other" || normalizeKey(row?.source_dataset) === "other") score -= 500;
-  ["fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "usg_pct", "ast_pct", "stl_pct", "blk_pct"].forEach((column) => {
+  [
+    "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
+    "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "usg_pct", "ast_pct", "stl_pct", "blk_pct",
+  ].forEach((column) => {
     if (Number.isFinite(row?.[column])) score += 8;
   });
   if (getStringValue(row?.league || row?.league_name || row?.competition_label).trim()) score += 25;
@@ -12728,8 +12987,9 @@ function playerProfileRowScore(row) {
 function hasPlayerProfileStatContent(row) {
   return [
     "gp", "g", "min", "mp", "mpg", "pts", "pts_pg", "trb", "trb_pg", "ast", "ast_pg", "stl", "stl_pg",
-    "blk", "blk_pg", "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
-    "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "per", "bpm",
+    "blk", "blk_pg", "tov", "tov_pg", "pf", "pf_pg", "stocks", "stocks_pg",
+    "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
+    "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "ast_to", "per", "bpm",
   ].some((column) => {
     const value = firstFinite(row?.[column], Number.NaN);
     if (!Number.isFinite(value)) return false;
@@ -12748,10 +13008,14 @@ function comparePlayerProfileSeasonRows(left, right) {
 function normalizePlayerProfileRowForDisplay(row) {
   const out = { ...(row || {}) };
   const level = normalizeProfileLevel(out);
-  if (level && !getStringValue(out.competition_level).trim()) out.competition_level = level;
+  out._normalizedProfileLevel = level;
+  const displayLevel = getPlayerProfileDisplayLevel(level, out.competition_level);
+  if (displayLevel) out.competition_level = displayLevel;
+  else if (level && !getStringValue(out.competition_level).trim()) out.competition_level = level;
   if (!getStringValue(out.league).trim()) out.league = getStringValue(out.league_name || out.competition_label).trim();
   if (level === "NBA" && (!getStringValue(out.league).trim() || normalizeKey(out.league) === "other")) out.league = "NBA";
-  if (level !== "Other" && normalizeKey(out.competition_level) === "other") out.competition_level = level;
+  if (isPlayerProfileCollegeLevel(level)) out.league = level;
+  if (level !== "Other" && normalizeKey(out.competition_level) === "other") out.competition_level = getPlayerProfileDisplayLevel(level, out.competition_level);
   if (!getStringValue(out.team_name).trim()) out.team_name = getStringValue(out.team_abbrev || out.team_full || out.team).trim();
   normalizePlayerProfileShootingTotals(out);
   populateAstStlDerived(out, { overwrite: false });
@@ -12786,9 +13050,17 @@ function normalizePlayerProfileShootingTotals(row) {
   if (!Number.isFinite(row.ftr)) row.ftr = ratioIfPossible(row.fta, row.fga);
   if (!Number.isFinite(row.three_pr)) row.three_pr = ratioIfPossible(row.three_pa, row.fga);
   const gp = firstFinite(row.gp, row.g, Number.NaN);
-  ["fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta"].forEach((column) => {
+  const minutes = firstFinite(row.min, row.mp, Number.NaN);
+  if (!Number.isFinite(row.stocks)) row.stocks = addIfFinite(row.stl, row.blk);
+  if (!Number.isFinite(row.ast_to) && Number.isFinite(row.ast) && Number.isFinite(row.tov) && row.tov > 0) row.ast_to = roundNumber(row.ast / row.tov, 3);
+  [
+    "pts", "trb", "orb", "drb", "ast", "tov", "stl", "blk", "pf", "stocks",
+    "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
+  ].forEach((column) => {
     const pg = perGameValue(row[column], gp);
     if (pg !== "" && !Number.isFinite(row[`${column}_pg`])) row[`${column}_pg`] = pg;
+    const per40 = per40Value(row[column], minutes);
+    if (per40 !== "" && !Number.isFinite(row[`${column}_per40`])) row[`${column}_per40`] = per40;
   });
   return row;
 }
@@ -12803,6 +13075,7 @@ function getPlayerProfileTotalValue(row, column) {
 }
 
 function normalizeProfileLevel(row) {
+  if (getStringValue(row?._normalizedProfileLevel).trim()) return getStringValue(row._normalizedProfileLevel).trim();
   const text = normalizeKey(row?.competition_level || row?.source_dataset || row?.career_path || row?.league_name || row?.league);
   if (/nba/.test(text)) return "NBA";
   if (/g league|gleague/.test(text)) return "G League";
@@ -12814,6 +13087,19 @@ function normalizeProfileLevel(row) {
   if (/naia/.test(text)) return "NAIA";
   if (/juco|njcaa/.test(text)) return "JUCO";
   return getStringValue(row?.competition_level || row?.source_dataset || "Other").trim() || "Other";
+}
+
+function isPlayerProfileCollegeLevel(level) {
+  return ["D1", "D2", "NAIA", "JUCO"].includes(getStringValue(level).trim());
+}
+
+function getPlayerProfileDisplayLevel(level, rawLevelText = "") {
+  const normalizedLevel = getStringValue(level).trim();
+  const raw = getStringValue(rawLevelText).trim();
+  const isCareer = /^career\b/i.test(raw);
+  if (isPlayerProfileCollegeLevel(normalizedLevel)) return isCareer ? "Career NCAA" : "NCAA";
+  if (isCareer && normalizedLevel) return `Career ${normalizedLevel}`;
+  return normalizedLevel;
 }
 
 function buildPlayerProfileCareerRows(rows) {
@@ -12915,33 +13201,32 @@ function weightedAveragePlayerProfileValue(rows, column) {
 
 function renderPlayerProfileModal(modal, name, rows) {
   modal.querySelector("[data-player-profile-content]").innerHTML = buildPlayerProfileContentHtml(name, rows);
+  bindPlayerProfileColumnControls(modal);
 }
 
 function buildPlayerProfileContentHtml(name, rows, options = {}) {
-  const columns = [
-    "season", "competition_level", "league", "team_name", "gp", "min", "mpg",
-    "pts", "trb", "ast", "stl", "blk", "stocks", "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
-    "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "stocks_pg", "fgm_pg", "fga_pg", "two_pm_pg", "two_pa_pg", "three_pm_pg", "three_pa_pg", "ftm_pg", "fta_pg",
-    "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "ftr", "three_pr", "efg_pct", "ts_pct",
-    "usg_pct", "ast_pct", "stl_pct", "blk_pct", "per", "bpm",
-    "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40",
-  ];
-  const profileLabels = {
-    ftr: "FTA/FGA",
-    three_pr: "3PA/FGA",
-  };
+  const columns = PLAYER_PROFILE_ALL_COLUMNS;
+  const visibleColumns = getPlayerProfileVisibleColumns();
   const dataset = DATASETS.player_career;
-  const header = columns.map((column) => `<th>${escapeHtml(profileLabels[column] || displayLabel(dataset, column))}</th>`).join("");
+  const header = columns.map((column) => {
+    const hidden = visibleColumns.has(column) ? "" : " hidden";
+    return `<th data-profile-column="${escapeAttribute(column)}"${hidden}>${escapeHtml(getPlayerProfileColumnLabel(dataset, column))}</th>`;
+  }).join("");
   const body = rows.length
-    ? rows.map((row) => `<tr class="${row._careerAggregate ? "player-profile-career-row" : ""}">${columns.map((column) => `<td>${escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, getRowColumnValue(dataset, row, column), row)))}</td>`).join("")}</tr>`).join("")
-    : `<tr><td colspan="${columns.length}">No logged seasons found.</td></tr>`;
+    ? rows.map((row) => `<tr class="${row._careerAggregate ? "player-profile-career-row" : ""}">${columns.map((column) => {
+      const hidden = visibleColumns.has(column) ? "" : " hidden";
+      return `<td data-profile-column="${escapeAttribute(column)}"${hidden}>${escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, getRowColumnValue(dataset, row, column), row)))}</td>`;
+    }).join("")}</tr>`).join("")
+    : `<tr><td colspan="${Math.max(visibleColumns.size, 1)}">No logged seasons found.</td></tr>`;
   const backLink = options.standalone ? `<div><a href="#player_career">Player/Career</a></div>` : "";
+  const controls = buildPlayerProfileColumnControlsHtml(visibleColumns);
   return `
     <div class="player-profile-header">
       <h2>${escapeHtml(name || "Player")}</h2>
       <div>${rows.length.toLocaleString()} rows including career totals</div>
       ${backLink}
     </div>
+    ${controls}
     <div class="player-profile-table-wrap">
       <table class="player-profile-table">
         <thead><tr>${header}</tr></thead>
@@ -12949,6 +13234,105 @@ function buildPlayerProfileContentHtml(name, rows, options = {}) {
       </table>
     </div>
   `;
+}
+
+function getPlayerProfileColumnLabel(dataset, column) {
+  return PLAYER_PROFILE_LABELS[column] || displayLabel(dataset, column);
+}
+
+function getPlayerProfileVisibleColumns() {
+  let stored = [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PLAYER_PROFILE_STORAGE_KEY) || "[]");
+    if (Array.isArray(parsed)) stored = parsed;
+  } catch (_error) {
+    stored = [];
+  }
+  const selected = stored.length ? stored : PLAYER_PROFILE_DEFAULT_COLUMNS;
+  return new Set([
+    ...PLAYER_PROFILE_LOCKED_COLUMNS,
+    ...selected.filter((column) => PLAYER_PROFILE_ALL_COLUMNS.includes(column)),
+  ]);
+}
+
+function savePlayerProfileVisibleColumns(columns) {
+  try {
+    const ordered = PLAYER_PROFILE_ALL_COLUMNS.filter((column) => columns.has(column));
+    localStorage.setItem(PLAYER_PROFILE_STORAGE_KEY, JSON.stringify(ordered));
+  } catch (_error) {
+    // Ignore storage failures; the current table still updates.
+  }
+}
+
+function buildPlayerProfileColumnControlsHtml(visibleColumns) {
+  const groups = PLAYER_PROFILE_COLUMN_GROUPS.map((group) => {
+    const options = group.columns.map((column) => {
+      const locked = PLAYER_PROFILE_LOCKED_COLUMNS.includes(column);
+      const checked = visibleColumns.has(column) ? " checked" : "";
+      const disabled = locked ? " disabled" : "";
+      return `<label class="player-profile-column-option"><input type="checkbox" data-profile-column-toggle="${escapeAttribute(column)}"${checked}${disabled}> <span>${escapeHtml(getPlayerProfileColumnLabel(DATASETS.player_career, column))}</span></label>`;
+    }).join("");
+    const selectedCount = group.columns.filter((column) => visibleColumns.has(column)).length;
+    return `<details class="player-profile-column-group"><summary>${escapeHtml(group.label)}: ${selectedCount}/${group.columns.length}</summary><div>${options}</div></details>`;
+  }).join("");
+  return `
+    <div class="player-profile-column-controls" data-player-profile-columns>
+      <div class="player-profile-column-actions">
+        <button type="button" data-profile-column-mode="default">Default</button>
+        <button type="button" data-profile-column-mode="all">All</button>
+        <button type="button" data-profile-column-mode="core">Core</button>
+      </div>
+      <div class="player-profile-column-groups">${groups}</div>
+    </div>
+  `;
+}
+
+function bindPlayerProfileColumnControls(root) {
+  const container = root?.querySelector?.("[data-player-profile-columns]");
+  if (!container || container.dataset.bound === "true") return;
+  container.dataset.bound = "true";
+  container.addEventListener("change", (event) => {
+    const input = event.target instanceof HTMLInputElement ? event.target : null;
+    if (!input?.matches("[data-profile-column-toggle]")) return;
+    const selected = new Set(PLAYER_PROFILE_LOCKED_COLUMNS);
+    container.querySelectorAll("[data-profile-column-toggle]").forEach((item) => {
+      if (item instanceof HTMLInputElement && item.checked) selected.add(item.dataset.profileColumnToggle);
+    });
+    savePlayerProfileVisibleColumns(selected);
+    applyPlayerProfileColumnVisibility(root, selected);
+  });
+  container.querySelectorAll("[data-profile-column-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.profileColumnMode;
+      const selected = new Set(PLAYER_PROFILE_LOCKED_COLUMNS);
+      const source = mode === "all"
+        ? PLAYER_PROFILE_ALL_COLUMNS
+        : (mode === "core"
+          ? ["gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "fgm_pg", "fga_pg", "fg_pct", "two_pa_pg", "two_p_pct", "three_pa_pg", "three_p_pct", "fta_pg", "ft_pct", "ts_pct", "ast_to"]
+          : PLAYER_PROFILE_DEFAULT_COLUMNS);
+      source.forEach((column) => selected.add(column));
+      container.querySelectorAll("[data-profile-column-toggle]").forEach((item) => {
+        if (item instanceof HTMLInputElement) item.checked = selected.has(item.dataset.profileColumnToggle);
+      });
+      savePlayerProfileVisibleColumns(selected);
+      applyPlayerProfileColumnVisibility(root, selected);
+    });
+  });
+}
+
+function applyPlayerProfileColumnVisibility(root, selected) {
+  root?.querySelectorAll?.("[data-profile-column]").forEach((cell) => {
+    const column = cell.dataset.profileColumn;
+    cell.hidden = !selected.has(column);
+  });
+  root?.querySelectorAll?.(".player-profile-column-group").forEach((details) => {
+    const summary = details.querySelector("summary");
+    if (!summary) return;
+    const group = PLAYER_PROFILE_COLUMN_GROUPS.find((item) => summary.textContent?.startsWith(item.label));
+    if (!group) return;
+    const selectedCount = group.columns.filter((column) => selected.has(column)).length;
+    summary.textContent = `${group.label}: ${selectedCount}/${group.columns.length}`;
+  });
 }
 
 async function renderPlayerProfileRoute(params) {
@@ -12972,6 +13356,7 @@ async function renderPlayerProfileRoute(params) {
     const rows = await getPlayerProfileRows(sourceRow, getStringValue(params?.get("dataset")).trim());
     if (appState.currentId !== PROFILE_ROUTE_ID) return;
     elements.homeContent.innerHTML = buildPlayerProfileContentHtml(name, rows, { standalone: true });
+    bindPlayerProfileColumnControls(elements.homeContent);
     elements.statusPill.textContent = `${name} ready`;
   } catch (error) {
     if (appState.currentId !== PROFILE_ROUTE_ID) return;
@@ -13073,7 +13458,7 @@ function shouldColorColumn(dataset, column) {
 }
 
 function isNonPerformanceInfoColorColumn(column) {
-  return /^(rank|season|year|age|dob|birthday|draft_year|draft_pick|rookie_year|height|height_in|inches|weight|weight_lb|bmi|exp|experience)$/i.test(stripCompanionPrefix(column));
+  return /^(rank|season|year|age|dob|birthday|draft_year|draft_pick|pick|rookie_year|height|height_in|inches|weight|weight_lb|bmi|exp|experience)$/i.test(stripCompanionPrefix(column));
 }
 
 function isInverseColorColumn(column) {
@@ -13348,8 +13733,8 @@ function percentileFromSorted(arr, value) {
 
 function colorFromPercentile(pct) {
   const white = "#ffffff";
-  const lowColor = "#d45b48";
-  const highColor = "#4f9f49";
+  const lowColor = "#cf8d82";
+  const highColor = "#8fbc84";
   const clamped = Math.min(1, Math.max(0, pct));
   if (clamped < 0.5) {
     return mixColors(lowColor, white, smoothstep(clamped / 0.5));

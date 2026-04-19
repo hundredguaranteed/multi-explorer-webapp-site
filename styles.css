@@ -683,12 +683,67 @@ a,
   color: var(--muted);
 }
 
+.player-profile-column-controls {
+  padding: 8px 18px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: #fafafa;
+}
+
+.player-profile-column-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.player-profile-column-actions button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.player-profile-column-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.player-profile-column-group {
+  min-width: 132px;
+  max-width: 220px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.player-profile-column-group summary {
+  padding: 4px 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.player-profile-column-group > div {
+  max-height: 190px;
+  overflow: auto;
+  padding: 2px 7px 7px;
+}
+
+.player-profile-column-option {
+  display: block;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
 .player-profile-loading {
   padding: 24px;
 }
 
 .player-profile-table-wrap {
-  max-height: calc(92vh - 90px);
+  max-height: calc(92vh - 150px);
   overflow: auto;
 }
 
@@ -796,7 +851,7 @@ body.profile-route-active .home-content.profile-content {
 
 body.profile-route-active .player-profile-table-wrap {
   width: 100%;
-  max-height: calc(100vh - 118px);
+  max-height: calc(100vh - 178px);
   border-top: 1px solid var(--line-soft);
 }
 

@@ -115,10 +115,12 @@ PLAYER_CAREER_PASSTHROUGH_SKIP_COLUMNS = {
     "orbpct", "drbpct", "trbpct", "astpct", "topct", "stlpct", "blkpct", "usg",
     "rim_made", "rim_att", "rim_pct", "mid_made", "mid_att", "mid_pct",
     "ast_to", "stocks", "stocks_pg", "stocks_per40", "fic", "ppr",
-    "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "stl_pg", "blk_pg", "tov_pg", "pf_pg", "ftm_pg", "fta_pg",
-    "two_pa_pg", "three_pa_pg", "ast_stl_pg",
+    "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "stl_pg", "blk_pg", "tov_pg", "pf_pg",
+    "fgm_pg", "fga_pg", "two_pm_pg", "two_pa_pg", "three_pm_pg", "three_pa_pg", "ftm_pg", "fta_pg",
+    "ast_stl_pg",
     "pts_per40", "trb_per40", "orb_per40", "drb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "pf_per40",
-    "two_pa_per40", "three_pa_per40", "ast_stl_per40",
+    "fgm_per40", "fga_per40", "two_pm_per40", "two_pa_per40", "three_pm_per40", "three_pa_per40", "ftm_per40", "fta_per40",
+    "ast_stl_per40",
     "three_pa_per100",
 }
 
@@ -598,9 +600,10 @@ def annotate_site_row(dataset_id: str, row: dict[str, object], config: dict[str,
     row["_weight_lb_value"] = first_number(row.get("weight_lb"), row.get("weight"), parse_weight_to_lb(row.get("weight_text")))
     row["_draft_pick_value"] = parse_int_value(row.get("draft_pick"))
     row["_rookie_year_value"] = parse_int_value(row.get("rookie_year"))
-    row["_canonical_player_id"] = ""
-    row["_realgm_player_id"] = ""
-    row["_match_source"] = ""
+    explicit_realgm_player_id = clean_text(row.get("realgm_player_id"))
+    row["_canonical_player_id"] = clean_text(row.get("canonical_player_id")) or (f"rgm_{explicit_realgm_player_id}" if explicit_realgm_player_id else "")
+    row["_realgm_player_id"] = explicit_realgm_player_id
+    row["_match_source"] = "source_realgm_id" if explicit_realgm_player_id else ""
     row["_identity_group_key"] = build_identity_group_key(dataset_id, row)
 
 
@@ -3669,6 +3672,17 @@ def build_realgm_only_rows(
     return rows
 
 
+def realgm_counting_or_scaled_total(season_row: dict[str, object], column: str, gp: float | None) -> float | str:
+    value = first_number(season_row.get(column))
+    if value is None:
+        return ""
+    if is_realgm_reference_counting_totals_row(season_row):
+        return round_number(value, 3)
+    if gp is None or gp <= 0:
+        return round_number(value, 3)
+    return round_number(gp * value, 3)
+
+
 def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str, profile: dict[str, object], player_info: dict[str, object], season_row: dict[str, object]) -> dict[str, object]:
     team_name = clean_text(season_row.get("school") or season_row.get("team") or season_row.get("league"))
     gp = to_float(season_row.get("gp"))
@@ -3679,6 +3693,14 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
     stl_pg = to_float(season_row.get("stl"))
     blk_pg = to_float(season_row.get("blk"))
     tov_pg = to_float(season_row.get("tov"))
+    fgm_total = realgm_counting_or_scaled_total(season_row, "fgm", gp)
+    fga_total = realgm_counting_or_scaled_total(season_row, "fga", gp)
+    three_pm_total = realgm_counting_or_scaled_total(season_row, "3pm", gp)
+    three_pa_total = realgm_counting_or_scaled_total(season_row, "3pa", gp)
+    ftm_total = realgm_counting_or_scaled_total(season_row, "ftm", gp)
+    fta_total = realgm_counting_or_scaled_total(season_row, "fta", gp)
+    two_pm_total = subtract_numbers(first_number(fgm_total), first_number(three_pm_total))
+    two_pa_total = subtract_numbers(first_number(fga_total), first_number(three_pa_total))
     out = {
         "player_id": canonical_id,
         "canonical_player_id": canonical_id,
@@ -3723,14 +3745,14 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "tov": round_number((gp * tov_pg), 3) if gp is not None and tov_pg is not None else "",
         "pf": "",
         "stocks": round_number(gp * ((stl_pg or 0.0) + (blk_pg or 0.0)), 3) if gp is not None and (stl_pg is not None or blk_pg is not None) else "",
-        "fgm": "",
-        "fga": "",
-        "two_pm": "",
-        "two_pa": "",
-        "three_pm": "",
-        "three_pa": "",
-        "ftm": "",
-        "fta": "",
+        "fgm": fgm_total,
+        "fga": fga_total,
+        "two_pm": round_number(two_pm_total, 3) if two_pm_total is not None else "",
+        "two_pa": round_number(two_pa_total, 3) if two_pa_total is not None else "",
+        "three_pm": three_pm_total,
+        "three_pa": three_pa_total,
+        "ftm": ftm_total,
+        "fta": fta_total,
         "fga_75": "",
         "fta_75": "",
         "fg3a_75": "",
@@ -3776,7 +3798,11 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "tov_pg": tov_pg,
         "stocks_pg": round_number((stl_pg or 0.0) + (blk_pg or 0.0), 3) if stl_pg is not None or blk_pg is not None else "",
         "pf_pg": "",
+        "fgm_pg": "",
+        "fga_pg": "",
+        "two_pm_pg": "",
         "two_pa_pg": "",
+        "three_pm_pg": "",
         "three_pa_pg": "",
         "ftm_pg": "",
         "fta_pg": "",
@@ -3789,14 +3815,20 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "blk_per40": "",
         "pf_per40": "",
         "stocks_per40": "",
+        "fgm_per40": "",
+        "fga_per40": "",
+        "two_pm_per40": "",
         "two_pa_per40": "",
+        "three_pm_per40": "",
         "three_pa_per40": "",
+        "ftm_per40": "",
+        "fta_per40": "",
         "ast_stl_per40": "",
         "fic": "",
         "ppr": "",
     }
     apply_player_career_shooting_derivations(out)
-    fill_per40_only(out)
+    fill_per_game_and_per40(out)
     fill_player_career_impact_metrics(out)
     return out
 
@@ -5114,12 +5146,11 @@ def fill_per_game_and_per40(row: dict[str, object]) -> None:
         row["mpg"] = round_number(minutes / gp, 3)
     if first_number(row.get("stocks")) is None and first_number(row.get("stl")) is not None and first_number(row.get("blk")) is not None:
         row["stocks"] = round_number((first_number(row.get("stl")) or 0.0) + (first_number(row.get("blk")) or 0.0), 3)
-    for column in ("pts", "trb", "orb", "drb", "ast", "stl", "blk", "tov", "pf", "stocks", "ftm", "fta"):
+    for column in (
+        "pts", "trb", "orb", "drb", "ast", "stl", "blk", "tov", "pf", "stocks",
+        "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
+    ):
         row[f"{column}_pg"] = first_number(row.get(f"{column}_pg"), divide_numbers(row.get(column), gp))
-    two_pa = first_number(row.get("two_pa"), row.get("2pa"))
-    three_pa = first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa"))
-    row["two_pa_pg"] = first_number(row.get("two_pa_pg"), divide_numbers(two_pa, gp))
-    row["three_pa_pg"] = first_number(row.get("three_pa_pg"), divide_numbers(three_pa, gp))
     ast_stl = add_numbers(first_number(row.get("ast")), first_number(row.get("stl")))
     row["ast_stl_pg"] = first_number(row.get("ast_stl_pg"), divide_numbers(ast_stl, gp))
     fill_per40_only(row)
@@ -5127,12 +5158,13 @@ def fill_per_game_and_per40(row: dict[str, object]) -> None:
 
 def fill_per40_only(row: dict[str, object]) -> None:
     minutes = first_number(row.get("min"))
-    for column in ("pts", "trb", "orb", "drb", "ast", "stl", "blk", "tov", "pf", "stocks"):
+    for column in (
+        "pts", "trb", "orb", "drb", "ast", "stl", "blk", "tov", "pf", "stocks",
+        "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
+    ):
         row[f"{column}_per40"] = first_number(row.get(f"{column}_per40"), per40_value(row.get(column), minutes))
     two_pa = first_number(row.get("two_pa"), row.get("2pa"))
     three_pa = first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa"))
-    row["two_pa_per40"] = first_number(row.get("two_pa_per40"), per40_value(two_pa, minutes))
-    row["three_pa_per40"] = first_number(row.get("three_pa_per40"), per40_value(three_pa, minutes))
     ast_stl = add_numbers(first_number(row.get("ast")), first_number(row.get("stl")))
     row["ast_stl_per40"] = first_number(row.get("ast_stl_per40"), per40_value(ast_stl, minutes))
     if first_number(row.get("three_pa_per100")) is None:
