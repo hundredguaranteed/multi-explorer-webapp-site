@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stat Explorers</title>
   <meta name="description" content="D1, D2, NAIA, JUCO, FIBA, International, NBA, and Player/Career explorers in one basic webapp.">
-  <link rel="stylesheet" href="styles.css?v=20260417-international-v61">
+  <link rel="stylesheet" href="styles.css?v=20260419-site-v63">
   <script>
 window.__DATA_ASSET_BASE__ = "";
 (function () {
-  var version = "20260417-international-v61";
-  var route = (window.location.hash || "#home").replace(/^#/, "").toLowerCase();
+  var version = "20260419-site-v63";
+  var route = (window.location.hash || "#home").replace(/^#/, "").toLowerCase().split("?")[0];
   var preloads = {
     d1: ["data/vendor/d1_year_manifest.js", "data/vendor/d1_year_chunks/2026.js"],
     grassroots: ["data/vendor/grassroots_year_manifest.js", "data/vendor/grassroots_year_chunks/2026.js"],
@@ -19,6 +19,10 @@ window.__DATA_ASSET_BASE__ = "";
       "data/vendor/player_career_year_chunk_parts/2026-part-001.js",
       "data/vendor/player_career_year_chunk_parts/2026-part-002.js",
       "data/vendor/player_career_international_overlay_manifest.js",
+    ],
+    profile: [
+      "data/vendor/player_career_year_manifest.js",
+      "data/vendor/player_profile_year_index.js",
     ],
     international: [
       "data/vendor/international_all_seasons_manifest.js",
@@ -34,10 +38,10 @@ window.__DATA_ASSET_BASE__ = "";
   });
 }());
   </script>
-  <script src="app.js?v=20260417-international-v61" defer></script>
+  <script src="app.js?v=20260419-site-v63" defer></script>
   <script>
 if ("serviceWorker" in navigator) {
-navigator.serviceWorker.register("sw.js?v=20260417-international-v61").catch(function () {});
+navigator.serviceWorker.register("sw.js?v=20260419-site-v63").catch(function () {});
 }
   </script>
 </head>
@@ -45,6 +49,11 @@ navigator.serviceWorker.register("sw.js?v=20260417-international-v61").catch(fun
   <header class="site-header">
     <div class="site-topline">
       <a class="site-eyebrow topline-link" href="#home">Home</a>
+    </div>
+    <div class="global-player-search">
+      <label class="field-label global-player-search__label" for="globalPlayerSearchInput">Player</label>
+      <input class="form-control global-player-search__input" id="globalPlayerSearchInput" type="search" list="globalPlayerSearchSuggestions" placeholder="Find player">
+      <datalist id="globalPlayerSearchSuggestions"></datalist>
     </div>
     <div class="site-header__inner">
       <h1 id="pageTitle">100guaranteed</h1>

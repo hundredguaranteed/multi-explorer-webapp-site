@@ -1,6 +1,7 @@
 const LOAD_STEP = 40;
 const SEARCH_RENDER_DEBOUNCE_MS = 60;
 const FILTER_RENDER_DEBOUNCE_MS = 70;
+const URL_STATE_SYNC_DEBOUNCE_MS = 120;
 const ROUTE_LOAD_STABILITY_DELAY_MS = 160;
 const PLAYER_CAREER_YEAR_LOAD_BATCH_SIZE = 4;
 const PLAYER_CAREER_BACKGROUND_YEAR_BATCH_SIZE = 1;
@@ -15,6 +16,7 @@ const GRASSROOTS_SEARCH_PREFETCH_MAX_SINGLE_TOKEN_YEARS = 12;
 const GRASSROOTS_SEARCH_PREFETCH_MAX_PREFIX_KEYS = 80;
 const GRASSROOTS_SEARCH_PREFETCH_MAX_PREFIX_YEARS = 16;
 const HOME_ID = "home";
+const PROFILE_ROUTE_ID = "profile";
 const HOME_PAGES = [
   { id: "d1", label: "D1" },
   { id: "d2", label: "D2" },
@@ -35,8 +37,9 @@ const STATUS_REALGM_INDEX_SCRIPT = "data/vendor/status_realgm_index.js";
 const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
 const GRASSROOTS_PLAYER_YEAR_INDEX_SCRIPT = "data/vendor/grassroots_player_year_index.js";
 const PLAYER_BIO_LOOKUP_SCRIPT = "data/vendor/player_bio_lookup.js";
+const INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT = "data/vendor/international_profile_bio_lookup.js";
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
-const APP_BUILD_VERSION = "20260417-international-v61";
+const APP_BUILD_VERSION = "20260419-site-v63";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -1061,6 +1064,8 @@ function buildPlayerCareerConfig() {
     skipPostProcessing: true,
     dataScript: "",
     extraScripts: [
+      PLAYER_BIO_LOOKUP_SCRIPT,
+      INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT,
       {
         type: "multipart-script",
         manifestScript: "data/vendor/player_career_international_overlay_manifest.js",
@@ -1091,7 +1096,6 @@ function buildPlayerCareerConfig() {
     sortDir: "desc",
     defaultAllYears: false,
     minYear: 1998,
-    minuteDefault: 200,
     minuteFilterDefault: "",
     demoColumns,
     demoFilterColumns: ["height_in", "weight_lb", "age", "gp", "min", "mpg", "draft_year", "draft_pick"],
@@ -1202,11 +1206,15 @@ function buildPlayerCareerConfig() {
       stocks_pg: "Stocks/G",
       ast_stl_pg: "AST+STL/G",
       fgm: "FGM",
+      fgm_pg: "FGM/G",
       fga: "FGA",
+      fga_pg: "FGA/G",
       two_pm: "2PM",
+      two_pm_pg: "2PM/G",
       two_pa: "2PA",
       two_pa_pg: "2PA/G",
       three_pm: "3PM",
+      three_pm_pg: "3PM/G",
       three_pa: "3PA",
       three_pa_pg: "3PA/G",
       ftm: "FTM",
@@ -1529,7 +1537,7 @@ function buildInternationalConfig() {
       manifestGlobalName: "INTERNATIONAL_ALL_SEASONS_PARTS",
       partTemplate: "data/vendor/international_all_seasons_parts/{part}.js",
     },
-    extraScripts: [PLAYER_BIO_LOOKUP_SCRIPT],
+    extraScripts: [PLAYER_BIO_LOOKUP_SCRIPT, INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT],
     globalName: "INTERNATIONAL_ALL_CSV",
     yearColumn: "season",
     playerColumn: "player_name",
@@ -1540,7 +1548,6 @@ function buildInternationalConfig() {
     sortDir: "desc",
     defaultAllYears: true,
     minYear: 2001,
-    minuteDefault: 200,
     minuteFilterDefault: "",
     demoColumns,
     demoFilterColumns: ["height_in", "weight_lb", "age", "dob", "draft_year", "draft_pick", "gp", "min", "mpg"],
@@ -1961,7 +1968,7 @@ const DATASETS = {
     searchColumns: withUniversalSearchColumns(["player_name", "player_search_text", "team_name", "level", "region", "conference", "coach", "team_search_text", "coach_search_text"]),
     sortBy: "min",
     sortDir: "desc",
-    minuteDefault: 200,
+    minuteDefault: 0,
     minuteFilterDefault: "",
     demoColumns: ["level", "region", "age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg"],
     demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "gp", "min", "mpg", "dob"],
@@ -2097,7 +2104,7 @@ const DATASETS = {
     sortDir: "desc",
     defaultAllYears: false,
     autoHydrateGrassrootsYears: false,
-    minuteDefault: 200,
+    minuteDefault: 0,
     minuteFilterDefault: "",
     demoColumns: ["pos", "class_year", "height_in", "weight_lb"],
     demoFilterColumns: ["height_in", "weight_lb", "gp", "min", "mpg"],
@@ -2205,6 +2212,7 @@ const DATASETS = {
     title: "FIBA",
     subtitle: "",
     dataScript: "data/fiba_all_seasons.js",
+    extraScripts: [PLAYER_BIO_LOOKUP_SCRIPT, INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT],
     globalName: "FIBA_ALL_CSV",
     yearColumn: "season",
     playerColumn: "player_name",
@@ -2215,7 +2223,8 @@ const DATASETS = {
     sortDir: "desc",
     defaultAllYears: true,
     minYear: 1998,
-    minuteDefault: 200,
+    minuteDefault: 0,
+    minuteFilterDefault: "",
     demoColumns: ["competition_label", "pos", "height_in", "age", "dob", "gp", "min", "mpg"],
     demoFilterColumns: ["height_in", "age", "dob", "gp", "min", "mpg"],
     groups: [
@@ -2406,6 +2415,8 @@ const elements = {
   filtersSummary: document.getElementById("filtersSummary"),
   yearPills: document.getElementById("yearPills"),
   searchInput: document.getElementById("searchInput"),
+  globalPlayerSearchInput: document.getElementById("globalPlayerSearchInput"),
+  globalPlayerSearchSuggestions: document.getElementById("globalPlayerSearchSuggestions"),
   teamSelect: document.getElementById("teamSelect"),
   viewModeFilters: document.getElementById("viewModeFilters"),
   singleSelectFilters: document.getElementById("singleSelectFilters"),
@@ -2462,6 +2473,12 @@ const appState = {
   searchRenderTimer: 0,
   filterRenderTimer: 0,
   filterRenderColumns: new Set(),
+  urlStateSyncTimer: 0,
+  applyingRouteState: false,
+  globalSearchTimer: 0,
+  globalSearchIndex: null,
+  globalSearchIndexLoad: null,
+  globalSearchSuggestionMap: new Map(),
   secondaryFilterFrame: 0,
   secondaryFilterDatasetId: "",
   adaptiveTeamTextFrame: 0,
@@ -2490,6 +2507,7 @@ function renderNav() {
 
 function wireGlobalEvents() {
   window.addEventListener("resize", scheduleAdaptiveTeamTextSizing);
+  wireGlobalPlayerSearch();
   elements.searchInput.addEventListener("input", async () => {
     const state = getCurrentUiState();
     const dataset = getCurrentDataset();
@@ -2690,10 +2708,355 @@ function wireGlobalEvents() {
   });
 }
 
+function wireGlobalPlayerSearch() {
+  const input = elements.globalPlayerSearchInput;
+  const suggestions = elements.globalPlayerSearchSuggestions;
+  if (!input || !suggestions) return;
+  input.addEventListener("input", () => scheduleGlobalPlayerSuggestions(input.value));
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    navigateToGlobalPlayerSearch(input.value);
+  });
+  input.addEventListener("change", () => {
+    const match = findGlobalPlayerSuggestion(input.value, { exact: true });
+    if (match) navigateToGlobalPlayerProfile(match);
+  });
+}
+
+function scheduleGlobalPlayerSuggestions(value) {
+  if (appState.globalSearchTimer) window.clearTimeout(appState.globalSearchTimer);
+  const term = getStringValue(value).trim();
+  if (!elements.globalPlayerSearchSuggestions || term.length < 2) {
+    appState.globalSearchSuggestionMap = new Map();
+    if (elements.globalPlayerSearchSuggestions) elements.globalPlayerSearchSuggestions.innerHTML = "";
+    return;
+  }
+  appState.globalSearchTimer = window.setTimeout(async () => {
+    appState.globalSearchTimer = 0;
+    const matches = await findGlobalPlayerSuggestions(term);
+    if (getStringValue(elements.globalPlayerSearchInput?.value).trim() !== term) return;
+    appState.globalSearchSuggestionMap = new Map(matches.map((item) => [normalizeNameKey(item.name), item]));
+    elements.globalPlayerSearchSuggestions.innerHTML = matches
+      .map((item) => {
+        const label = [item.dob, item.realgmId ? `RealGM ${item.realgmId}` : ""].filter(Boolean).join(" | ");
+        return `<option value="${escapeAttribute(item.name)}"${label ? ` label="${escapeAttribute(label)}"` : ""}></option>`;
+      })
+      .join("");
+  }, 90);
+}
+
+async function ensureGlobalPlayerSearchIndex() {
+  if (appState.globalSearchIndex) return appState.globalSearchIndex;
+  if (!appState.globalSearchIndexLoad) {
+    appState.globalSearchIndexLoad = (async () => {
+      const [bundle] = await Promise.all([
+        loadStatusRealgmIndex(),
+        loadScriptOnce(PLAYER_BIO_LOOKUP_SCRIPT).catch(() => undefined),
+        loadScriptOnce(INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT).catch(() => undefined),
+      ]);
+      const profileMap = new Map();
+      const addProfile = (realgmId, data) => {
+        const name = normalizeDisplayName(getStringValue(data?.name || data?.player_name).trim());
+        if (!name) return;
+        const key = getStringValue(realgmId).trim() || `name:${normalizeNameKey(name)}`;
+        const current = profileMap.get(key) || {};
+        profileMap.set(key, {
+          ...current,
+          ...data,
+          name: current.name || name,
+          realgmId: getStringValue(realgmId).trim() || current.realgmId || "",
+          dob: current.dob || getStringValue(data?.dob || data?.birthday).trim(),
+          height: current.height || firstPositiveFinite(data?.height, data?.height_in, data?.inches, Number.NaN),
+        });
+      };
+      Object.entries(bundle?.profiles || {}).forEach(([realgmId, entry]) => {
+        const name = normalizeDisplayName(getStringValue(Array.isArray(entry) ? entry[0] : entry?.name).trim());
+        if (!name) return;
+        const dob = getStringValue(Array.isArray(entry) ? entry[1] : entry?.dob).trim();
+        const heights = Array.isArray(Array.isArray(entry) ? entry[2] : entry?.heights) ? (Array.isArray(entry) ? entry[2] : entry.heights) : [];
+        const height = heights.map((value) => Number(value)).find((value) => Number.isFinite(value) && value > 0);
+        addProfile(realgmId, { name, dob, height: Number.isFinite(height) ? height : "" });
+      });
+      Object.entries(window.PLAYER_BIO_LOOKUP || {}).forEach(([realgmId, entry]) => addProfile(realgmId, entry));
+      Object.entries(window.INTERNATIONAL_PROFILE_BIO_LOOKUP || {}).forEach(([realgmId, entry]) => addProfile(realgmId, entry));
+      const rows = Array.from(profileMap.values())
+        .map((item) => ({
+          name: item.name,
+          dob: getStringValue(item.dob).trim(),
+          height: Number.isFinite(Number(item.height)) && Number(item.height) > 0 ? Number(item.height) : "",
+          realgmId: getStringValue(item.realgmId).trim(),
+          key: normalizeNameKey(item.name),
+          looseKey: normalizeLooseNameKey(item.name),
+        }))
+        .filter((item) => item.name && item.key);
+      rows.sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
+      appState.globalSearchIndex = rows;
+      return rows;
+    })().catch((error) => {
+      console.warn("Global player search index failed to load.", error);
+      appState.globalSearchIndex = [];
+      return [];
+    });
+  }
+  return appState.globalSearchIndexLoad;
+}
+
+async function findGlobalPlayerSuggestions(term) {
+  const index = await ensureGlobalPlayerSearchIndex();
+  const strictTerm = normalizeNameKey(term);
+  const looseTerm = normalizeLooseNameKey(term);
+  if (!strictTerm && !looseTerm) return [];
+  return (index || [])
+    .map((item) => ({ item, score: scoreGlobalPlayerSuggestion(item, strictTerm, looseTerm) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.item.name.localeCompare(right.item.name))
+    .slice(0, 16)
+    .map((entry) => entry.item);
+}
+
+function scoreGlobalPlayerSuggestion(item, strictTerm, looseTerm) {
+  if (!item) return 0;
+  let score = 0;
+  if (strictTerm && item.key === strictTerm) score += 500;
+  else if (strictTerm && item.key.startsWith(strictTerm)) score += 360;
+  else if (strictTerm && item.key.includes(strictTerm)) score += 210;
+  if (looseTerm && item.looseKey === looseTerm) score += 420;
+  else if (looseTerm && item.looseKey.startsWith(looseTerm)) score += 280;
+  else if (looseTerm && item.looseKey.includes(looseTerm)) score += 140;
+  if (!score) return 0;
+  if (item.realgmId) score += 20;
+  if (item.dob) score += 10;
+  return score;
+}
+
+function findGlobalPlayerSuggestion(value, options = {}) {
+  const key = normalizeNameKey(value);
+  if (!key) return null;
+  const mapped = appState.globalSearchSuggestionMap?.get(key);
+  if (mapped) return mapped;
+  if (options.exact) return null;
+  return (appState.globalSearchIndex || []).find((item) => item.key === key) || null;
+}
+
+async function navigateToGlobalPlayerSearch(value) {
+  const term = getStringValue(value).trim();
+  if (!term) return;
+  let suggestion = findGlobalPlayerSuggestion(term);
+  if (!suggestion) {
+    const matches = await findGlobalPlayerSuggestions(term);
+    suggestion = matches[0] || { name: normalizeDisplayName(term) };
+  }
+  navigateToGlobalPlayerProfile(suggestion);
+}
+
+function navigateToGlobalPlayerProfile(suggestion) {
+  if (!suggestion?.name) return;
+  if (elements.globalPlayerSearchInput) elements.globalPlayerSearchInput.value = suggestion.name;
+  const params = new URLSearchParams();
+  params.set("name", suggestion.name);
+  if (suggestion.realgmId) params.set("rgm", suggestion.realgmId);
+  if (suggestion.dob) params.set("dob", suggestion.dob);
+  if (Number.isFinite(Number(suggestion.height)) && Number(suggestion.height) > 0) params.set("height", String(Number(suggestion.height)));
+  const hash = `#${PROFILE_ROUTE_ID}?${params.toString()}`;
+  if (window.location.hash === hash) handleRoute();
+  else window.location.hash = hash;
+}
+
+function getRouteInfo() {
+  const raw = window.location.hash.replace(/^#/, "").trim();
+  const [routePart, queryPart = ""] = raw.split("?");
+  const route = routePart.toLowerCase();
+  if (route === PROFILE_ROUTE_ID || route === "player_profile" || route === "player") {
+    return { id: PROFILE_ROUTE_ID, params: new URLSearchParams(queryPart) };
+  }
+  if (route === HOME_ID || !route) return { id: HOME_ID, params: new URLSearchParams() };
+  return { id: DATASETS[route] ? route : HOME_ID, params: new URLSearchParams(queryPart) };
+}
+
 function getRouteId() {
-  const raw = window.location.hash.replace(/^#/, "").trim().toLowerCase();
-  if (raw === HOME_ID || !raw) return HOME_ID;
-  return DATASETS[raw] ? raw : HOME_ID;
+  return getRouteInfo().id;
+}
+
+function applyRouteParamsToState(dataset, state, params) {
+  if (!dataset || !state || !params) return false;
+  let changed = false;
+  const setChanged = () => {
+    changed = true;
+  };
+  const routeSearch = params.get("q") ?? params.get("search");
+  if (routeSearch != null) {
+    state.search = getStringValue(routeSearch).trim();
+    setChanged();
+  }
+  const routeTeam = params.get("team");
+  if (routeTeam != null) {
+    state.team = getStringValue(routeTeam).trim() || "all";
+    setChanged();
+  }
+  const routeYears = params.get("years");
+  if (routeYears != null) {
+    state.years = new Set(parseUrlStateList(routeYears));
+    state._yearSelectionTouched = true;
+    setChanged();
+  }
+  const routeSort = params.get("sort");
+  if (routeSort && (dataset.meta?.allColumns || []).includes(routeSort)) {
+    state.sortBy = routeSort;
+    setChanged();
+  }
+  const routeDir = params.get("dir");
+  if (routeDir === "asc" || routeDir === "desc") {
+    state.sortDir = routeDir;
+    setChanged();
+  }
+  const routeBlank = params.get("blank");
+  if (routeBlank === "first" || routeBlank === "last") {
+    state.sortBlankMode = routeBlank;
+    setChanged();
+  }
+  (dataset.singleFilters || []).forEach((filter) => {
+    const value = params.get(`sf.${filter.id}`) ?? params.get(filter.id);
+    if (value == null || !(filter.id in state.extraSelects)) return;
+    state.extraSelects[filter.id] = value || (filter.defaultValue ?? "all");
+    setChanged();
+  });
+  (dataset.multiFilters || []).forEach((filter) => {
+    const value = params.get(`mf.${filter.id}`) ?? params.get(filter.id);
+    if (value == null || !(filter.id in state.multiSelects)) return;
+    state.multiSelects[filter.id] = new Set(parseUrlStateList(value));
+    setChanged();
+  });
+  Object.keys(state.demoFilters || {}).forEach((column) => {
+    const minValue = params.get(`dmin.${column}`);
+    const maxValue = params.get(`dmax.${column}`);
+    if (minValue != null) {
+      state.demoFilters[column].min = minValue;
+      setChanged();
+    }
+    if (maxValue != null) {
+      state.demoFilters[column].max = maxValue;
+      setChanged();
+    }
+  });
+  Object.keys(state.numericFilters || {}).forEach((column) => {
+    const minValue = params.get(`smin.${column}`);
+    const maxValue = params.get(`smax.${column}`);
+    if (minValue != null) {
+      state.numericFilters[column].min = minValue;
+      setChanged();
+    }
+    if (maxValue != null) {
+      state.numericFilters[column].max = maxValue;
+      setChanged();
+    }
+  });
+  if (changed) resetUiCaches(state);
+  return changed;
+}
+
+function parseUrlStateList(value) {
+  if (value == null) return [];
+  return getStringValue(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function setUrlStateList(params, key, values, sorter = compareFilterValues) {
+  const list = Array.from(values || [])
+    .map((value) => getStringValue(value).trim())
+    .filter(Boolean)
+    .sort(sorter);
+  params.set(key, list.join(","));
+}
+
+function getDefaultUrlYearSet(dataset) {
+  const years = dataset?.defaultAllYears
+    ? (getAvailableYears(dataset).length ? getAvailableYears(dataset) : dataset.meta?.years || [])
+    : (dataset?.meta?.latestYear ? [dataset.meta.latestYear] : dataset?.meta?.years || []);
+  return new Set((years || []).map((year) => getStringValue(year).trim()).filter(Boolean));
+}
+
+function setsHaveSameValues(left, right) {
+  const leftSet = left instanceof Set ? left : new Set(left || []);
+  const rightSet = right instanceof Set ? right : new Set(right || []);
+  if (leftSet.size !== rightSet.size) return false;
+  for (const value of leftSet) {
+    if (!rightSet.has(value)) return false;
+  }
+  return true;
+}
+
+function getDefaultDemoFilterValue(dataset, column, side) {
+  if (side !== "min") return "";
+  const minuteColumn = dataset?.meta?.minuteFilterColumn;
+  if (!minuteColumn || column !== minuteColumn) return "";
+  const minuteFilterDefault = dataset?.minuteFilterDefault;
+  return minuteFilterDefault !== undefined ? String(minuteFilterDefault) : String(getDatasetMinuteThreshold(dataset));
+}
+
+function buildDatasetStateHash(dataset, state) {
+  const params = new URLSearchParams();
+  const search = getStringValue(state?.search).trim();
+  if (search) params.set("q", search);
+  const team = getStringValue(state?.team || "all").trim();
+  if (team && team !== "all") params.set("team", team);
+  const defaultYears = getDefaultUrlYearSet(dataset);
+  if (!setsHaveSameValues(state?.years || new Set(), defaultYears)) {
+    setUrlStateList(params, "years", state?.years || new Set(), compareYears);
+  }
+  if (state?.sortBy && state.sortBy !== dataset?.sortBy) params.set("sort", state.sortBy);
+  if (state?.sortDir && state.sortDir !== dataset?.sortDir) params.set("dir", state.sortDir);
+  if (state?.sortBlankMode && state.sortBlankMode !== "last") params.set("blank", state.sortBlankMode);
+  (dataset.singleFilters || []).forEach((filter) => {
+    if (filter.id === "view_mode") {
+      const defaultValue = filter.defaultValue ?? "all";
+      const value = getStringValue(state?.extraSelects?.[filter.id] ?? defaultValue);
+      if (value && value !== defaultValue) params.set(`sf.${filter.id}`, value);
+      return;
+    }
+    const defaultValue = filter.defaultValue ?? "all";
+    const value = getStringValue(state?.extraSelects?.[filter.id] ?? defaultValue);
+    if (value && value !== defaultValue) params.set(`sf.${filter.id}`, value);
+  });
+  (dataset.multiFilters || []).forEach((filter) => {
+    const selected = state?.multiSelects?.[filter.id] || new Set();
+    if (selected.size) setUrlStateList(params, `mf.${filter.id}`, selected);
+  });
+  Object.entries(state?.demoFilters || {}).forEach(([column, filter]) => {
+    const minValue = getStringValue(filter?.min).trim();
+    const maxValue = getStringValue(filter?.max).trim();
+    if (minValue && minValue !== getDefaultDemoFilterValue(dataset, column, "min")) params.set(`dmin.${column}`, minValue);
+    if (maxValue && maxValue !== getDefaultDemoFilterValue(dataset, column, "max")) params.set(`dmax.${column}`, maxValue);
+  });
+  Object.entries(state?.numericFilters || {}).forEach(([column, filter]) => {
+    const minValue = getStringValue(filter?.min).trim();
+    const maxValue = getStringValue(filter?.max).trim();
+    if (minValue) params.set(`smin.${column}`, minValue);
+    if (maxValue) params.set(`smax.${column}`, maxValue);
+  });
+  const query = params.toString();
+  return query ? `#${dataset.id}?${query}` : `#${dataset.id}`;
+}
+
+function scheduleUrlStateSync(dataset, state) {
+  if (!dataset || !state || appState.applyingRouteState) return;
+  if (appState.currentId !== dataset.id) return;
+  if (appState.urlStateSyncTimer) window.clearTimeout(appState.urlStateSyncTimer);
+  appState.urlStateSyncTimer = window.setTimeout(() => {
+    appState.urlStateSyncTimer = 0;
+    syncUrlStateFromCurrent();
+  }, URL_STATE_SYNC_DEBOUNCE_MS);
+}
+
+function syncUrlStateFromCurrent() {
+  const dataset = getCurrentDataset();
+  const state = getCurrentUiState();
+  if (!dataset || !state || appState.currentId === PROFILE_ROUTE_ID || appState.currentId === HOME_ID) return;
+  const nextHash = buildDatasetStateHash(dataset, state);
+  if (window.location.hash === nextHash) return;
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${nextHash}`);
 }
 
 async function waitForRouteLoadStability(datasetId) {
@@ -2703,12 +3066,18 @@ async function waitForRouteLoadStability(datasetId) {
 }
 
 async function handleRoute() {
-  const datasetId = getRouteId();
+  const routeInfo = getRouteInfo();
+  const datasetId = routeInfo.id;
   appState.currentId = datasetId;
   cancelPendingInteractiveRenders();
   cancelBackgroundTasksForInactiveDataset(datasetId);
   cancelInteractiveLoadTimersForInactiveDataset(datasetId);
   updateNavActive(datasetId);
+
+  if (datasetId === PROFILE_ROUTE_ID) {
+    renderPlayerProfileRoute(routeInfo.params);
+    return;
+  }
 
   if (datasetId === HOME_ID) {
     renderHomePage();
@@ -2727,9 +3096,13 @@ async function handleRoute() {
   const cachedDataset = appState.datasetCache[datasetId];
   let stateResetForRoute = false;
   if (cachedDataset) {
-    appState.uiState[datasetId] = createInitialUiState(cachedDataset);
+    const cachedState = createInitialUiState(cachedDataset);
+    applyRouteParamsToState(cachedDataset, cachedState, routeInfo.params);
+    appState.uiState[datasetId] = cachedState;
     stateResetForRoute = true;
+    appState.applyingRouteState = true;
     renderCurrentDataset();
+    appState.applyingRouteState = false;
   } else {
     renderDatasetLoadingState(config);
     elements.statusPill.textContent = `Loading ${config.navLabel}`;
@@ -2745,8 +3118,10 @@ async function handleRoute() {
 
     if (!stateResetForRoute) {
       appState.uiState[datasetId] = createInitialUiState(dataset);
+      applyRouteParamsToState(dataset, appState.uiState[datasetId], routeInfo.params);
     } else if (!appState.uiState[datasetId]) {
       appState.uiState[datasetId] = createInitialUiState(dataset);
+      applyRouteParamsToState(dataset, appState.uiState[datasetId], routeInfo.params);
     }
 
     const state = appState.uiState[datasetId];
@@ -2768,7 +3143,10 @@ async function handleRoute() {
     await ensureStatusReadyForState(dataset, state);
     if (appState.currentId !== datasetId) return;
 
+    appState.applyingRouteState = true;
     renderCurrentDataset();
+    appState.applyingRouteState = false;
+    syncUrlStateFromCurrent();
     scheduleStatusAnnotations(datasetId);
     schedulePrefetchDataManifests();
     elements.statusPill.textContent = `${dataset.navLabel} ready`;
@@ -2805,6 +3183,7 @@ function renderHomePage() {
   elements.tableContent.style.display = "none";
   elements.homeContent.hidden = false;
   elements.homeContent.style.display = "block";
+  elements.homeContent.classList.remove("profile-content");
   elements.pageTitle.textContent = "100guaranteed";
   elements.pageSubtitle.textContent = "";
   elements.statusPill.textContent = "Home";
@@ -5469,9 +5848,31 @@ function resolveStaticStatusIdentitiesForDataset(dataset, bundle) {
     if (!match) return;
     row.realgm_player_id = match.realgmId;
     row.canonical_player_id = match.canonicalId;
+    applyStaticIdentityBio(row, match);
     changed = true;
   });
+  if (changed) dataset._playerProfileDatasetIndex = null;
   return changed;
+}
+
+function applyStaticIdentityBio(row, candidate) {
+  if (!row || !candidate) return;
+  const dob = getStringValue(candidate.dob).trim();
+  if (dob) {
+    if (!getStringValue(row.dob).trim()) row.dob = dob;
+    if (!getStringValue(row.birthday).trim()) row.birthday = row.dob || dob;
+  }
+  const height = Array.isArray(candidate.heights)
+    ? candidate.heights.find((value) => Number.isFinite(Number(value)) && Number(value) > 0)
+    : Number.NaN;
+  if (Number.isFinite(Number(height)) && Number(height) > 0) {
+    if (!Number.isFinite(row.height_in)) row.height_in = Number(height);
+    if (!Number.isFinite(row.inches)) row.inches = Number(height);
+  }
+  normalizePhysicalMeasurements(row);
+  normalizeDraftPickValue(row);
+  populateAgeFromDob(row);
+  clearDerivedRowCaches(row);
 }
 
 function chooseStaticStatusIdentityCandidate(datasetId, row, lookup, slotLookup) {
@@ -5865,9 +6266,11 @@ async function resolveGrassrootsStatusIdentities(dataset) {
     (group.rows || []).forEach((row) => {
       if (!getStringValue(row.realgm_player_id).trim()) row.realgm_player_id = realgmId;
       if (!getStringValue(row.canonical_player_id).trim()) row.canonical_player_id = canonicalId;
+      applyStaticIdentityBio(row, fallbackSource);
     });
   });
 
+  dataset._playerProfileDatasetIndex = null;
   dataset._grassrootsStatusIdentityResolvedKey = cacheKey;
 }
 
@@ -8513,6 +8916,7 @@ function renderResultsOnly(dataset = getCurrentDataset(), state = getCurrentUiSt
   renderFinderBar(dataset, state);
   updateSummary(dataset, state, filtered);
   renderTableLegend(dataset, state);
+  scheduleUrlStateSync(dataset, state);
   if (
     dataset.id === "grassroots"
     && !state._grassrootsLoadingScope
@@ -8756,11 +9160,11 @@ function renderExtraFilters(dataset, state) {
       const selected = state.multiSelects[filter.id] || new Set();
       const options = getMultiFilterOptions(dataset, filter, state);
       if (filter.renderAsSelect) {
-        const size = Math.min(8, Math.max(3, options.length || 3));
-        const selectOptions = options
-          .map((option) => `<option value="${escapeAttribute(option)}"${selected.has(option) ? " selected" : ""}>${escapeHtml(option)}</option>`)
+        const summary = selected.size ? `${selected.size} selected` : "All";
+        const checkboxOptions = options
+          .map((option) => `<label class="multi-filter-option"><input type="checkbox" value="${escapeAttribute(option)}" data-multi-filter-option="${escapeAttribute(filter.id)}"${selected.has(option) ? " checked" : ""}> <span>${escapeHtml(option)}</span></label>`)
           .join("");
-        return `<div class="multi-pill-group multi-pill-group--select" data-filter-id="${escapeAttribute(filter.id)}"><label class="multi-pill-group__label" for="multi-${escapeAttribute(filter.id)}">${escapeHtml(filter.label)}</label><select class="form-control multi-filter-select" id="multi-${escapeAttribute(filter.id)}" multiple size="${size}" data-multi-filter-select="${escapeAttribute(filter.id)}">${selectOptions}</select></div>`;
+        return `<details class="multi-pill-group multi-pill-group--select" data-filter-id="${escapeAttribute(filter.id)}"><summary class="multi-filter-summary">${escapeHtml(filter.label)}: ${escapeHtml(summary)}</summary><div class="multi-filter-select" role="group" aria-label="${escapeAttribute(filter.label)}">${checkboxOptions}</div></details>`;
       }
       const pills = options
         .map((option) => `<button class="pill-toggle ${selected.has(option) ? "is-active" : ""}" type="button" data-multi-filter="${escapeAttribute(filter.id)}" data-multi-value="${escapeAttribute(option)}">${escapeHtml(option)}</button>`)
@@ -8845,13 +9249,16 @@ function renderExtraFilters(dataset, state) {
     });
   });
 
-  elements.multiSelectFilters.querySelectorAll("[data-multi-filter-select]").forEach((select) => {
-    select.addEventListener("change", () => {
-      const filterId = select.dataset.multiFilterSelect;
+  elements.multiSelectFilters.querySelectorAll("[data-multi-filter-option]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const filterId = input.dataset.multiFilterOption;
       if (!filterId) return;
-      const selected = new Set(Array.from(select.selectedOptions || []).map((option) => option.value).filter(Boolean));
+      const selected = new Set(Array.from(elements.multiSelectFilters.querySelectorAll(`[data-multi-filter-option="${CSS.escape(filterId)}"]:checked`)).map((option) => option.value).filter(Boolean));
       state.multiSelects[filterId] = selected;
-      renderCurrentDataset();
+      const filter = (dataset.multiFilters || []).find((item) => item.id === filterId);
+      const summary = input.closest("details")?.querySelector(".multi-filter-summary");
+      if (summary && filter) summary.textContent = `${filter.label}: ${selected.size ? `${selected.size} selected` : "All"}`;
+      scheduleFilterResultsRender(dataset, state);
     });
   });
 }
@@ -11634,6 +12041,7 @@ function renderTable(dataset, state, filtered, renderContext = {}) {
     elements.statsTableBody.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target.closest("[data-player-profile-key]") : null;
       if (!target) return;
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
       const key = target.dataset.playerProfileKey;
       if (key) openPlayerProfileForKey(key);
@@ -11773,7 +12181,7 @@ function sampleColorRows(rows, limit = COLOR_SCALE_MAX_ROWS) {
 
 function getDatasetMinuteThreshold(dataset) {
   const value = Number(dataset?.minuteDefault);
-  return Number.isFinite(value) && value > 0 ? value : MINUTES_DEFAULT;
+  return Number.isFinite(value) && value >= 0 ? value : MINUTES_DEFAULT;
 }
 
 function getColorMinuteThreshold(dataset) {
@@ -11842,9 +12250,31 @@ function renderBodyCell(dataset, state, column, row, index, colorScale) {
   const styleAttribute = style ? ` style="${escapeAttribute(style)}"` : "";
   const titleAttribute = rawValue != null && rawValue !== "" ? ` title="${escapeAttribute(display)}"` : "";
   const content = display && isPlayerDisplayColumn(dataset, column)
-    ? `<button class="player-season-link" type="button" data-player-profile-key="${escapeAttribute(registerPlayerProfileRow(dataset, row))}">${escapeHtml(display)}</button>`
+    ? `<a class="player-season-link" href="${escapeAttribute(buildPlayerProfileHref(row, dataset.id))}" data-player-profile-key="${escapeAttribute(registerPlayerProfileRow(dataset, row))}">${escapeHtml(display)}</a>`
     : escapeHtml(display);
   return `<td class="${classes.join(" ")}"${styleAttribute}${titleAttribute}>${content}</td>`;
+}
+
+function buildPlayerProfileHref(row, datasetId = "") {
+  const params = new URLSearchParams();
+  const name = getPlayerProfileDisplayName(row);
+  if (name) params.set("name", name);
+  const realgmId = getStatusIdentityId(row) || getStringValue(row?.realgm_player_id).trim();
+  if (realgmId) params.set("rgm", realgmId);
+  const canonical = getStringValue(row?.canonical_player_id).trim();
+  if (canonical) params.set("canonical", canonical);
+  const source = getStringValue(row?.source_player_id || row?.player_id || row?.pid || row?.id).trim();
+  if (source) params.set("source", source);
+  const profileKey = getStringValue(row?.player_profile_key).trim();
+  if (profileKey) params.set("profile_key", profileKey);
+  const dob = getStringValue(row?.dob || row?.birthday).trim();
+  if (dob) params.set("dob", dob);
+  const height = firstPositiveFinite(row?.height_in, row?.inches, Number.NaN);
+  if (Number.isFinite(height)) params.set("height", String(roundNumber(height, 2)));
+  const pick = Number.isFinite(row?.draft_pick) && !row?._draftPickBlank ? Math.round(row.draft_pick) : Number.NaN;
+  if (Number.isFinite(pick) && pick > 0 && pick <= 60) params.set("pick", String(pick));
+  if (datasetId) params.set("dataset", datasetId);
+  return `#${PROFILE_ROUTE_ID}?${params.toString()}`;
 }
 
 function registerPlayerProfileRow(dataset, row) {
@@ -11952,7 +12382,7 @@ async function ensurePlayerCareerProfileSourceLoaded(identity) {
     const missingYears = years.filter((season) => !getLoadedYearSet(dataset).has(getStringValue(season).trim()));
     if (missingYears.length) {
       elements.statusPill.textContent = "Loading Player/Career seasons";
-      await loadPlayerCareerRowsForYears(dataset, DATASETS.player_career, missingYears, { requireHydrated: true });
+      await loadPlayerCareerRowsForYears(dataset, DATASETS.player_career, missingYears, { background: true });
     }
   }
   if (dataset && !dataset._playerCareerInternationalOverlayApplied) {
@@ -11969,13 +12399,13 @@ async function getPlayerProfileRows(sourceRow, datasetId = "") {
   let rows = [];
   try {
     const playerCareerDataset = await ensurePlayerCareerProfileSourceLoaded(identity);
-    rows = (playerCareerDataset?.rows || []).filter((row) => rowMatchesPlayerProfile(row, identity));
+    rows = collectIndexedPlayerProfileRows(playerCareerDataset, identity);
   } catch (error) {
     console.warn("Player/Career profile source failed to load.", error);
   }
   const currentDataset = datasetId ? appState.datasetCache[datasetId] : null;
   if (currentDataset?.rows?.length) {
-    rows.push(...currentDataset.rows.filter((row) => rowMatchesPlayerProfile(row, identity)));
+    rows.push(...collectIndexedPlayerProfileRows(currentDataset, identity));
   } else if (sourceRow) {
     rows.push(sourceRow);
   }
@@ -12020,20 +12450,123 @@ function rowMatchesPlayerProfile(row, identity) {
   return !identity.dob && !Number.isFinite(identity.height) && !Number.isFinite(identity.draftPick);
 }
 
+function collectIndexedPlayerProfileRows(dataset, identity) {
+  if (!dataset?.rows?.length || !identity) return [];
+  const index = getPlayerProfileDatasetIndex(dataset);
+  const candidates = new Set();
+  identity.ids.forEach((id) => {
+    (index.byId.get(id) || []).forEach((row) => candidates.add(row));
+  });
+  identity.names.forEach((name) => {
+    (index.byName.get(name) || []).forEach((row) => candidates.add(row));
+  });
+  const rows = candidates.size ? Array.from(candidates) : dataset.rows;
+  return rows.filter((row) => rowMatchesPlayerProfile(row, identity));
+}
+
+function getPlayerProfileDatasetIndex(dataset) {
+  const cacheKey = `${Number(dataset?._rowVersion) || 0}|${dataset?.rows?.length || 0}`;
+  if (dataset._playerProfileDatasetIndex?.key === cacheKey) return dataset._playerProfileDatasetIndex;
+  const byId = new Map();
+  const byName = new Map();
+  (dataset.rows || []).forEach((row) => {
+    const identity = buildPlayerProfileIdentity(row);
+    identity.ids.forEach((id) => addPlayerProfileIndexEntry(byId, id, row));
+    identity.names.forEach((name) => addPlayerProfileIndexEntry(byName, name, row));
+  });
+  dataset._playerProfileDatasetIndex = { key: cacheKey, byId, byName };
+  return dataset._playerProfileDatasetIndex;
+}
+
+function addPlayerProfileIndexEntry(map, key, row) {
+  if (!key || !row) return;
+  if (!map.has(key)) map.set(key, []);
+  map.get(key).push(row);
+}
+
+const PLAYER_PROFILE_TOTAL_ALIASES = {
+  gp: ["gp", "g"],
+  min: ["min", "mp"],
+  trb: ["trb", "reb"],
+  fgm: ["fgm", "fg"],
+  fga: ["fga"],
+  two_pm: ["two_pm", "2pm", "fg2m"],
+  two_pa: ["two_pa", "2pa", "two_p_att", "fg2a"],
+  three_pm: ["three_pm", "3pm", "tpm", "fg3m"],
+  three_pa: ["three_pa", "3pa", "tpa", "fg3a"],
+  ftm: ["ftm"],
+  fta: ["fta"],
+};
+
 function dedupePlayerProfileRows(rows) {
   const grouped = new Map();
   (rows || []).forEach((row) => {
-    const key = [
-      getStringValue(row?.season).trim(),
-      normalizeProfileLevel(row),
-      normalizeKey(row?.league_name || row?.league || row?.competition_label),
-      normalizeKey(row?.team_name || row?.team_abbrev || row?.team_full || row?.team),
-      buildDuplicateStatSignature(row) || duplicateRowScore(row),
-    ].join("|");
+    if (!hasPlayerProfileStatContent(row)) return;
+    const key = buildPlayerProfileDuplicateKey(row);
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key).push(row);
   });
-  return Array.from(grouped.values()).map((group) => mergeDuplicateRows(group, "player_career"));
+  return Array.from(grouped.values()).map((group) => mergePlayerProfileDuplicateRows(group));
+}
+
+function buildPlayerProfileDuplicateKey(row) {
+  const season = getStringValue(row?.season).trim();
+  const playerKey = normalizeNameKey(getPlayerProfileDisplayName(row)) || getDuplicatePlayerKey(row, "player_career");
+  const teamKey = normalizeKey(row?.team_name || row?.team_abbrev || row?.team_full || row?.team || "");
+  const statKey = buildPlayerProfileCoreStatSignature(row);
+  if (season && playerKey && teamKey && statKey) return `profile|${season}|${playerKey}|${teamKey}|${statKey}`;
+  return [
+    "profile-fallback",
+    season,
+    playerKey,
+    normalizeProfileLevel(row),
+    normalizeKey(row?.league_name || row?.league || row?.competition_label),
+    teamKey,
+    buildDuplicateStatSignature(row) || duplicateRowScore(row),
+  ].join("|");
+}
+
+function buildPlayerProfileCoreStatSignature(row) {
+  const columns = ["gp", "min", "pts", "trb", "ast", "tov", "stl", "blk", "pf", "fgm", "fga"];
+  const parts = [];
+  columns.forEach((column) => {
+    const value = getPlayerProfileTotalValue(row, column);
+    if (Number.isFinite(value)) parts.push(`${column}:${roundNumber(value, 2)}`);
+  });
+  return parts.length >= 5 ? parts.join("|") : "";
+}
+
+function mergePlayerProfileDuplicateRows(rows) {
+  const sorted = (rows || []).slice().sort((left, right) => playerProfileRowScore(right) - playerProfileRowScore(left));
+  const merged = { ...(sorted[0] || {}) };
+  sorted.slice(1).forEach((row) => mergeDuplicateRowFields(merged, row));
+  return normalizePlayerProfileRowForDisplay(merged);
+}
+
+function playerProfileRowScore(row) {
+  let score = duplicateRowScore(row);
+  const level = normalizeProfileLevel(row);
+  if (level === "NBA") score += 5000;
+  else if (level && level !== "Other") score += 1000;
+  if (normalizeKey(row?.competition_level) === "other" || normalizeKey(row?.source_dataset) === "other") score -= 500;
+  ["fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "usg_pct", "ast_pct", "stl_pct", "blk_pct"].forEach((column) => {
+    if (Number.isFinite(row?.[column])) score += 8;
+  });
+  if (getStringValue(row?.league || row?.league_name || row?.competition_label).trim()) score += 25;
+  return score;
+}
+
+function hasPlayerProfileStatContent(row) {
+  return [
+    "gp", "g", "min", "mp", "mpg", "pts", "pts_pg", "trb", "trb_pg", "ast", "ast_pg", "stl", "stl_pg",
+    "blk", "blk_pg", "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
+    "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "per", "bpm",
+  ].some((column) => {
+    const value = firstFinite(row?.[column], Number.NaN);
+    if (!Number.isFinite(value)) return false;
+    if (["gp", "g", "min", "mp", "mpg"].includes(column)) return value > 0;
+    return Math.abs(value) > 0;
+  });
 }
 
 function comparePlayerProfileSeasonRows(left, right) {
@@ -12048,10 +12581,56 @@ function normalizePlayerProfileRowForDisplay(row) {
   const level = normalizeProfileLevel(out);
   if (level && !getStringValue(out.competition_level).trim()) out.competition_level = level;
   if (!getStringValue(out.league).trim()) out.league = getStringValue(out.league_name || out.competition_label).trim();
+  if (level === "NBA" && (!getStringValue(out.league).trim() || normalizeKey(out.league) === "other")) out.league = "NBA";
+  if (level !== "Other" && normalizeKey(out.competition_level) === "other") out.competition_level = level;
   if (!getStringValue(out.team_name).trim()) out.team_name = getStringValue(out.team_abbrev || out.team_full || out.team).trim();
+  normalizePlayerProfileShootingTotals(out);
   populateAstStlDerived(out, { overwrite: false });
   normalizePercentLikeColumns(out, "player_career");
   return out;
+}
+
+function normalizePlayerProfileShootingTotals(row) {
+  if (!row || typeof row !== "object") return row;
+  Object.keys(PLAYER_PROFILE_TOTAL_ALIASES).forEach((target) => {
+    const value = getPlayerProfileTotalValue(row, target);
+    if (Number.isFinite(value) && !Number.isFinite(row[target])) row[target] = value;
+  });
+  const twoPm = getPlayerProfileTotalValue(row, "two_pm");
+  const threePm = getPlayerProfileTotalValue(row, "three_pm");
+  if (!Number.isFinite(row.fgm)) {
+    const inferred = addIfFinite(twoPm, threePm);
+    if (Number.isFinite(inferred)) row.fgm = inferred;
+  }
+  const twoPa = getPlayerProfileTotalValue(row, "two_pa");
+  const threePa = getPlayerProfileTotalValue(row, "three_pa");
+  if (!Number.isFinite(row.fga)) {
+    const inferred = addIfFinite(twoPa, threePa);
+    if (Number.isFinite(inferred)) row.fga = inferred;
+  }
+  if (!Number.isFinite(row.two_p_pct)) row.two_p_pct = percentIfPossible(row.two_pm, row.two_pa);
+  if (!Number.isFinite(row.three_p_pct)) row.three_p_pct = percentIfPossible(row.three_pm, row.three_pa);
+  if (!Number.isFinite(row.ft_pct)) row.ft_pct = percentIfPossible(row.ftm, row.fta);
+  if (!Number.isFinite(row.fg_pct)) row.fg_pct = percentIfPossible(row.fgm, row.fga);
+  if (!Number.isFinite(row.efg_pct)) row.efg_pct = zeroSafeEfgPct(row.fgm, row.three_pm, row.fga);
+  if (!Number.isFinite(row.ts_pct)) row.ts_pct = zeroSafeTsPct(row.pts, row.fga, row.fta);
+  if (!Number.isFinite(row.ftr)) row.ftr = ratioIfPossible(row.fta, row.fga);
+  if (!Number.isFinite(row.three_pr)) row.three_pr = ratioIfPossible(row.three_pa, row.fga);
+  const gp = firstFinite(row.gp, row.g, Number.NaN);
+  ["fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta"].forEach((column) => {
+    const pg = perGameValue(row[column], gp);
+    if (pg !== "" && !Number.isFinite(row[`${column}_pg`])) row[`${column}_pg`] = pg;
+  });
+  return row;
+}
+
+function getPlayerProfileTotalValue(row, column) {
+  const aliases = PLAYER_PROFILE_TOTAL_ALIASES[column] || [column];
+  for (const alias of aliases) {
+    const value = firstFinite(row?.[alias], Number.NaN);
+    if (Number.isFinite(value)) return value;
+  }
+  return Number.NaN;
 }
 
 function normalizeProfileLevel(row) {
@@ -12076,10 +12655,15 @@ function buildPlayerProfileCareerRows(rows) {
     groups.get(level).push(row);
   });
   const careerRows = Array.from(groups.entries())
-    .sort((left, right) => PLAYER_CAREER_LEVEL_FILTER_ORDER.indexOf(left[0]) - PLAYER_CAREER_LEVEL_FILTER_ORDER.indexOf(right[0]))
+    .sort((left, right) => getPlayerCareerLevelOrder(left[0]) - getPlayerCareerLevelOrder(right[0]))
     .map(([level, groupRows]) => aggregatePlayerProfileRows(groupRows, `Career ${level}`, level));
   if ((rows || []).length) careerRows.push(aggregatePlayerProfileRows(rows, "Lifetime", "Lifetime"));
   return careerRows;
+}
+
+function getPlayerCareerLevelOrder(level) {
+  const index = PLAYER_CAREER_LEVEL_FILTER_ORDER.indexOf(level);
+  return index >= 0 ? index : PLAYER_CAREER_LEVEL_FILTER_ORDER.length + 1;
 }
 
 function aggregatePlayerProfileRows(rows, label, level) {
@@ -12091,6 +12675,7 @@ function aggregatePlayerProfileRows(rows, label, level) {
     _careerAggregate: true,
   };
   const totals = {};
+  (rows || []).forEach((sourceRow) => normalizePlayerProfileShootingTotals(sourceRow));
   ["gp", "min", "pts", "trb", "orb", "drb", "ast", "tov", "stl", "blk", "pf", "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta"].forEach((column) => {
     totals[column] = sumPlayerProfileTotal(rows, column);
     if (Number.isFinite(totals[column])) row[column] = roundNumber(totals[column], isIntegerCountColumn(column) ? 0 : 2);
@@ -12098,7 +12683,7 @@ function aggregatePlayerProfileRows(rows, label, level) {
   const gp = firstFinite(row.gp, Number.NaN);
   const minutes = firstFinite(row.min, Number.NaN);
   if (Number.isFinite(gp) && gp > 0 && Number.isFinite(minutes)) row.mpg = roundNumber(minutes / gp, 1);
-  ["pts", "trb", "orb", "drb", "ast", "tov", "stl", "blk", "pf"].forEach((column) => {
+  ["pts", "trb", "orb", "drb", "ast", "tov", "stl", "blk", "pf", "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta"].forEach((column) => {
     row[`${column}_pg`] = perGameValue(row[column], gp);
     row[`${column}_per40`] = per40Value(row[column], minutes);
   });
@@ -12128,7 +12713,7 @@ function sumPlayerProfileTotal(rows, column) {
   let total = 0;
   let hasValue = false;
   (rows || []).forEach((row) => {
-    let value = firstFinite(row?.[column], Number.NaN);
+    let value = getPlayerProfileTotalValue(row, column);
     if (!Number.isFinite(value) && column === "min") {
       const gp = firstFinite(row?.gp, row?.g, Number.NaN);
       const mpg = firstFinite(row?.mpg, Number.NaN);
@@ -12160,16 +12745,29 @@ function weightedAveragePlayerProfileValue(rows, column) {
 }
 
 function renderPlayerProfileModal(modal, name, rows) {
-  const columns = ["season", "competition_level", "league", "team_name", "gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "stocks_pg", "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "usg_pct", "ast_pct", "stl_pct", "blk_pct", "per", "bpm", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40"];
+  modal.querySelector("[data-player-profile-content]").innerHTML = buildPlayerProfileContentHtml(name, rows);
+}
+
+function buildPlayerProfileContentHtml(name, rows, options = {}) {
+  const columns = [
+    "season", "competition_level", "league", "team_name", "gp", "min", "mpg",
+    "pts", "trb", "ast", "stl", "blk", "stocks", "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
+    "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "stocks_pg", "fgm_pg", "fga_pg", "two_pm_pg", "two_pa_pg", "three_pm_pg", "three_pa_pg", "ftm_pg", "fta_pg",
+    "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "ftr", "three_pr", "efg_pct", "ts_pct",
+    "usg_pct", "ast_pct", "stl_pct", "blk_pct", "per", "bpm",
+    "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40",
+  ];
   const dataset = DATASETS.player_career;
   const header = columns.map((column) => `<th>${escapeHtml(displayLabel(dataset, column))}</th>`).join("");
   const body = rows.length
     ? rows.map((row) => `<tr class="${row._careerAggregate ? "player-profile-career-row" : ""}">${columns.map((column) => `<td>${escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, getRowColumnValue(dataset, row, column), row)))}</td>`).join("")}</tr>`).join("")
     : `<tr><td colspan="${columns.length}">No logged seasons found.</td></tr>`;
-  modal.querySelector("[data-player-profile-content]").innerHTML = `
+  const backLink = options.standalone ? `<div><a href="#player_career">Player/Career</a></div>` : "";
+  return `
     <div class="player-profile-header">
       <h2>${escapeHtml(name || "Player")}</h2>
       <div>${rows.length.toLocaleString()} rows including career totals</div>
+      ${backLink}
     </div>
     <div class="player-profile-table-wrap">
       <table class="player-profile-table">
@@ -12178,6 +12776,57 @@ function renderPlayerProfileModal(modal, name, rows) {
       </table>
     </div>
   `;
+}
+
+async function renderPlayerProfileRoute(params) {
+  const sourceRow = buildPlayerProfileRouteRow(params);
+  const name = getPlayerProfileDisplayName(sourceRow) || "Player";
+  elements.queryPanel.hidden = true;
+  elements.queryPanel.style.display = "none";
+  elements.tableContent.hidden = true;
+  elements.tableContent.style.display = "none";
+  elements.homeContent.hidden = false;
+  elements.homeContent.style.display = "block";
+  elements.homeContent.classList.add("profile-content");
+  elements.pageTitle.textContent = name;
+  elements.pageSubtitle.textContent = "Logged seasons";
+  elements.statusPill.textContent = `Loading ${name}`;
+  elements.filtersSummary.textContent = "";
+  elements.resultsCount.textContent = "";
+  elements.resultsSubtitle.textContent = "";
+  elements.homeContent.innerHTML = `<div class="player-profile-loading">Loading ${escapeHtml(name)} seasons...</div>`;
+  try {
+    const rows = await getPlayerProfileRows(sourceRow, getStringValue(params?.get("dataset")).trim());
+    if (appState.currentId !== PROFILE_ROUTE_ID) return;
+    elements.homeContent.innerHTML = buildPlayerProfileContentHtml(name, rows, { standalone: true });
+    elements.statusPill.textContent = `${name} ready`;
+  } catch (error) {
+    if (appState.currentId !== PROFILE_ROUTE_ID) return;
+    elements.statusPill.textContent = `${name} load failed`;
+    elements.homeContent.innerHTML = `<div class="player-profile-loading">Unable to load seasons: ${escapeHtml(getStringValue(error?.message || error))}</div>`;
+  }
+}
+
+function buildPlayerProfileRouteRow(params) {
+  const row = {};
+  if (!params) return row;
+  const setText = (field, param = field) => {
+    const value = getStringValue(params.get(param)).trim();
+    if (value) row[field] = value;
+  };
+  setText("player_name", "name");
+  setText("realgm_player_id", "rgm");
+  setText("source_player_id", "source");
+  setText("canonical_player_id", "canonical");
+  setText("player_profile_key", "profile_key");
+  setText("dob", "dob");
+  setText("birthday", "dob");
+  setText("dataset", "dataset");
+  const height = Number(params.get("height"));
+  if (Number.isFinite(height) && height > 0) row.height_in = height;
+  const pick = Number(params.get("pick"));
+  if (Number.isFinite(pick) && pick > 0 && pick <= 60) row.draft_pick = pick;
+  return row;
 }
 
 function getPlayerProfileDisplayName(row) {
@@ -12246,7 +12895,12 @@ function shouldColorColumn(dataset, column) {
   const baseColumn = stripCompanionPrefix(column);
   if (/^(gp|g|gs)$/i.test(baseColumn)) return false;
   if (/percentile$/i.test(baseColumn)) return false;
+  if (isNonPerformanceInfoColorColumn(baseColumn)) return false;
   return dataset.meta.statColumnSet.has(column) && dataset.meta.numericColumnSet.has(column);
+}
+
+function isNonPerformanceInfoColorColumn(column) {
+  return /^(rank|season|year|age|dob|birthday|draft_year|draft_pick|rookie_year|height|height_in|inches|weight|weight_lb|bmi|exp|experience)$/i.test(stripCompanionPrefix(column));
 }
 
 function isInverseColorColumn(column) {
@@ -12330,7 +12984,7 @@ function getFixedBoundedPercentile(column, value) {
 function isFixedBoundedPercentColumn(column) {
   const baseColumn = stripCompanionPrefix(column);
   if (/percentile/i.test(baseColumn)) return false;
-  return looksPercentColumn(baseColumn) || isShootingPercentageColumn(baseColumn) || isPercentRatioColumn(baseColumn);
+  return /(?:_freq|_share|freq_pct|share_pct)$/i.test(baseColumn);
 }
 
 function shouldWeightPercentileColumn(dataset, column) {
@@ -12521,19 +13175,13 @@ function percentileFromSorted(arr, value) {
 
 function colorFromPercentile(pct) {
   const white = "#ffffff";
-  const lowColor = "#cd7c6d";
-  const lowMid = "#ead2cb";
-  const lightGreen = "#d9e8c8";
-  const highColor = "#78a85b";
-  if (pct >= 0.35 && pct <= 0.65) return { bg: white, color: "#111111" };
-  if (pct < 0.35) {
-    const lowPct = subtlePercentileGradient((0.35 - pct) / 0.35);
-    if (lowPct <= 0.8) return mixColors(white, lowMid, lowPct / 0.8);
-    return mixColors(lowMid, lowColor, (lowPct - 0.8) / 0.2);
+  const lowColor = "#d45b48";
+  const highColor = "#4f9f49";
+  const clamped = Math.min(1, Math.max(0, pct));
+  if (clamped < 0.5) {
+    return mixColors(lowColor, white, smoothstep(clamped / 0.5));
   }
-  const highPct = subtlePercentileGradient((pct - 0.65) / 0.35);
-  if (highPct <= 0.8) return mixColors(white, lightGreen, highPct / 0.8);
-  return mixColors(lightGreen, highColor, (highPct - 0.8) / 0.2);
+  return mixColors(white, highColor, smoothstep((clamped - 0.5) / 0.5));
 }
 
 function subtlePercentileGradient(value) {
@@ -12975,10 +13623,11 @@ function enhanceInternationalRow(row) {
 function applyPlayerBioLookup(row) {
   if (!row || typeof row !== "object") return;
   const lookup = typeof window !== "undefined" ? (window.PLAYER_BIO_LOOKUP || {}) : {};
+  const internationalLookup = typeof window !== "undefined" ? (window.INTERNATIONAL_PROFILE_BIO_LOOKUP || {}) : {};
   const realgmId = getStatusIdentityId(row) || getStringValue(row.realgm_player_id).trim() || getStringValue(row.source_player_id).trim();
-  const entry = realgmId ? lookup[realgmId] : null;
+  const entry = realgmId ? { ...(lookup[realgmId] || {}), ...(internationalLookup[realgmId] || {}) } : null;
   if (!entry) return;
-  ["dob", "birthday", "draft_year", "draft_pick", "rookie_year", "height_in", "weight_lb"].forEach((field) => {
+  ["dob", "birthday", "draft_year", "draft_pick", "rookie_year", "height_in", "weight_lb", "nationality", "birth_city"].forEach((field) => {
     if (hasMeaningfulFieldValue(row[field])) return;
     if (hasMeaningfulFieldValue(entry[field])) row[field] = entry[field];
   });
@@ -13075,6 +13724,9 @@ function enhanceFibaRow(row) {
   const teamCode = getStringValue(row.team_code).trim().toUpperCase();
   if (teamCode) row.team_name = teamCode;
   row.nationality = normalizeFibaCountryLabel(row.nationality || teamCode);
+  applyPlayerBioLookup(row);
+  normalizeDraftPickValue(row);
+  populateAgeFromDob(row);
 }
 
 function enhanceCommonRow(row, datasetId) {
@@ -13255,6 +13907,7 @@ function preparePlayerCareerLoadedRow(row) {
   if (!Number.isFinite(row.min_per) && Number.isFinite(row.mpg) && row.mpg > 0) {
     row.min_per = roundNumber(Math.min(100, (row.mpg / 40) * 100), 1);
   }
+  applyPlayerBioLookup(row);
   normalizeDraftPickValue(row);
   if (!getStringValue(row.dob).trim() && getStringValue(row.birthday).trim()) row.dob = row.birthday;
   populateAgeFromDob(row);
