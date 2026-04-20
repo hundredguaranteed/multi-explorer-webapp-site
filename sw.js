@@ -1,5 +1,5 @@
-const CACHE_VERSION = "20260420-teamcoach-v70";
-const DATA_CACHE_VERSION = "20260420-teamcoach-v70";
+const CACHE_VERSION = "20260420-playtype-v71";
+const DATA_CACHE_VERSION = "20260420-playtype-v71";
 const APP_CACHE = `multi-explorer-app-${CACHE_VERSION}`;
 const DATA_CACHE = `multi-explorer-data-${DATA_CACHE_VERSION}`;
 const KNOWN_CACHES = new Set([APP_CACHE, DATA_CACHE]);
@@ -7,8 +7,8 @@ const KNOWN_CACHES = new Set([APP_CACHE, DATA_CACHE]);
 const APP_ASSETS = [
   "./",
   "./index.html",
-  "./app.js?v=20260420-teamcoach-v70",
-  "./styles.css?v=20260420-teamcoach-v70",
+  "./app.js?v=20260420-playtype-v71",
+  "./styles.css?v=20260420-playtype-v71",
 ];
 
 self.addEventListener("install", (event) => {

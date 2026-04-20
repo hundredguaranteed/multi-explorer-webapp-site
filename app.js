@@ -41,7 +41,8 @@ const PLAYER_BIO_LOOKUP_SCRIPT = "data/vendor/player_bio_lookup.js";
 const INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT = "data/vendor/international_profile_bio_lookup.js";
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
 const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_buckets_manifest.js";
-const APP_BUILD_VERSION = "20260420-teamcoach-v70";
+const D1_FOUL_LOOKUP_SCRIPT = "data/vendor/d1_foul_lookup.js";
+const APP_BUILD_VERSION = "20260420-playtype-v71";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -429,12 +430,17 @@ const D1_PLAYTYPE_METRICS = [
   { source: "%Time", suffix: "freq", label: "Freq", defaultVisible: true },
   { source: "PPP", suffix: "ppp", label: "PPP", defaultVisible: true },
   { source: "FG Att", suffix: "fg_att", label: "FGA", defaultVisible: false },
+  { source: "", suffix: "fg_att_pg", label: "FGA/G", defaultVisible: false },
   { source: "eFG%", suffix: "efg_pct", label: "eFG%", defaultVisible: false },
   { source: "TO%", suffix: "tov_pct", label: "TO%", defaultVisible: true },
   { source: "FTA/FGA", suffix: "ftr", label: "FTr", defaultVisible: true },
+  { source: "", suffix: "fta", label: "FTA", defaultVisible: false },
+  { source: "", suffix: "fta_pg", label: "FTA/G", defaultVisible: false },
   { source: "2 FG Att", suffix: "two_fg_att", label: "2PA", defaultVisible: false },
+  { source: "", suffix: "two_fg_att_pg", label: "2PA/G", defaultVisible: false },
   { source: "2 FG%", suffix: "two_fg_pct", label: "2P%", defaultVisible: false },
   { source: "3FG Att", suffix: "three_fg_att", label: "3PA", defaultVisible: false },
+  { source: "", suffix: "three_fg_att_pg", label: "3PA/G", defaultVisible: false },
   { source: "3 FG%", suffix: "three_fg_pct", label: "3P%", defaultVisible: false },
   { source: "3PA/FGA", suffix: "three_pr", label: "3Pr", defaultVisible: false },
 ];
@@ -446,15 +452,15 @@ const D1_SUMMARY_COLUMNS = [
   { key: "halfcourt_ppp", label: "HC PPP", defaultVisible: true },
   { key: "halfcourt_two_pa", label: "HC 2PA", defaultVisible: false },
   { key: "halfcourt_two_p_pct", label: "HC 2P%", defaultVisible: false },
-  { key: "transition_ppp", label: "Trans PPP", defaultVisible: true },
-  { key: "transition_two_fg_att", label: "Trans 2PA", defaultVisible: false },
-  { key: "transition_two_fg_pct", label: "Trans 2P%", defaultVisible: false },
+  { key: "transition_ppp", label: "Transition PPP", defaultVisible: true },
+  { key: "transition_two_fg_att", label: "Transition 2PA", defaultVisible: false },
+  { key: "transition_two_fg_pct", label: "Transition 2P%", defaultVisible: false },
 ];
 const D1_PLAYTYPE_FREQ_POSS_COLUMNS = [
   { key: "halfcourt_poss", label: "HC Poss", defaultVisible: false },
   { key: "halfcourt_freq", label: "HC Freq", defaultVisible: false },
-  { key: "transition_poss", label: "Trans Poss", defaultVisible: false },
-  { key: "transition_freq", label: "Trans Freq", defaultVisible: false },
+  { key: "transition_poss", label: "Transition Poss", defaultVisible: false },
+  { key: "transition_freq", label: "Transition Freq", defaultVisible: false },
 ];
 
 const D1_DRIVE_COLUMNS = [
@@ -563,26 +569,28 @@ const D1_ADVANCED_COLUMNS = [
 ];
 
 function getD1PlaytypeMetrics(playtypeId) {
-  if (["cut", "post_up"].includes(playtypeId)) {
-    return D1_PLAYTYPE_METRICS.filter((metric) => !["fg_att", "three_fg_att", "three_fg_pct", "three_pr"].includes(metric.suffix));
-  }
   return D1_PLAYTYPE_METRICS;
 }
 
 function getD1TransitionGroup() {
   const metricColumns = [
-    { key: "transition_poss", label: "Trans Poss", defaultVisible: false },
-    { key: "transition_freq", label: "Trans Freq", defaultVisible: true },
-    { key: "transition_ppp", label: "Trans PPP", defaultVisible: true },
-    { key: "transition_fg_att", label: "Trans FGA", defaultVisible: false },
-    { key: "transition_efg_pct", label: "Trans eFG%", defaultVisible: false },
-    { key: "transition_tov_pct", label: "Trans TO%", defaultVisible: true },
-    { key: "transition_ftr", label: "Trans FTr", defaultVisible: true },
-    { key: "transition_two_fg_att", label: "Trans 2PA", defaultVisible: false },
-    { key: "transition_two_fg_pct", label: "Trans 2P%", defaultVisible: false },
-    { key: "transition_three_fg_att", label: "Trans 3PA", defaultVisible: false },
-    { key: "transition_three_fg_pct", label: "Trans 3P%", defaultVisible: false },
-    { key: "transition_three_pr", label: "Trans 3Pr", defaultVisible: false },
+    { key: "transition_poss", label: "Transition Poss", defaultVisible: false },
+    { key: "transition_freq", label: "Transition Freq", defaultVisible: true },
+    { key: "transition_ppp", label: "Transition PPP", defaultVisible: true },
+    { key: "transition_fg_att", label: "Transition FGA", defaultVisible: false },
+    { key: "transition_fg_att_pg", label: "Transition FGA/G", defaultVisible: false },
+    { key: "transition_efg_pct", label: "Transition eFG%", defaultVisible: false },
+    { key: "transition_tov_pct", label: "Transition TO%", defaultVisible: true },
+    { key: "transition_ftr", label: "Transition FTr", defaultVisible: true },
+    { key: "transition_fta", label: "Transition FTA", defaultVisible: false },
+    { key: "transition_fta_pg", label: "Transition FTA/G", defaultVisible: false },
+    { key: "transition_two_fg_att", label: "Transition 2PA", defaultVisible: false },
+    { key: "transition_two_fg_att_pg", label: "Transition 2PA/G", defaultVisible: false },
+    { key: "transition_two_fg_pct", label: "Transition 2P%", defaultVisible: false },
+    { key: "transition_three_fg_att", label: "Transition 3PA", defaultVisible: false },
+    { key: "transition_three_fg_att_pg", label: "Transition 3PA/G", defaultVisible: false },
+    { key: "transition_three_fg_pct", label: "Transition 3P%", defaultVisible: false },
+    { key: "transition_three_pr", label: "Transition 3Pr", defaultVisible: false },
   ];
   return {
     group: {
@@ -708,7 +716,7 @@ function buildD1Config() {
     }
 
     metrics.forEach((metric) => {
-      labels[`${playtype.id}_${metric.suffix}`] = `${metric.label} ${playtype.short}`;
+      labels[`${playtype.id}_${metric.suffix}`] = `${playtype.short} ${metric.label}`;
     });
   });
 
@@ -1798,10 +1806,19 @@ function buildTeamCoachConfig() {
     ["freq", "Freq"],
     ["poss", "Poss"],
     ["ppp", "PPP"],
+    ["fga", "FGA"],
+    ["fga_pg", "FGA/G"],
+    ["two_pa", "2PA"],
+    ["two_pa_pg", "2PA/G"],
+    ["three_pa", "3PA"],
+    ["three_pa_pg", "3PA/G"],
+    ["fta", "FTA"],
+    ["fta_pg", "FTA/G"],
     ["efg_pct", "eFG%"],
     ["to_pct", "TO%"],
     ["score_pct", "Score%"],
-    ["fg_pct", "FG%"],
+    ["two_p_pct", "2P%"],
+    ["three_p_pct", "3P%"],
     ["three_pa_rate", "3PA/FGA"],
     ["ft_rate", "FTA/FGA"],
   ];
@@ -1811,7 +1828,7 @@ function buildTeamCoachConfig() {
       const column = `${id}_${suffix}`;
       if (omittedPlaytypeColumns.has(column)) return;
       playtypeColumns.push(column);
-      labels[column] = `${suffixLabel} ${label}`;
+      labels[column] = `${label} ${suffixLabel}`;
     });
   });
   const defaultPlaytypeColumns = playtypes.flatMap(([id]) => [`${id}_freq`, `${id}_ppp`]).filter((column) => !omittedPlaytypeColumns.has(column));
@@ -7631,7 +7648,7 @@ function enrichD1Rows(rows) {
         ["ortg", "ORtg"], ["drtg", "drtg"], ["adjoe", "adjoe"], ["adrtg", "adrtg"], ["porpag", "porpag"], ["dporpag", "dporpag"],
         ["bpm", "bpm"], ["obpm", "obpm"], ["dbpm", "dbpm"], ["orb_pct", "ORB_per"], ["drb_pct", "DRB_per"], ["ast_pct", "AST_per"],
         ["tov_pct_adv", "TO_per"], ["stl_pct", "stl_per"], ["blk_pct", "blk_per"], ["usg_pct", "usg"], ["ast_to", "ast/tov"],
-        ["ft_pct", "FT_per"], ["two_p_pct_adv", "twoP_per"], ["three_p_pct_adv", "TP_per"], ["three_p_per100", "3p/100?"]
+        ["ft_pct", "FT_per"], ["two_p_pct_adv", "twoP_per"], ["three_p_pct_adv", "TP_per"], ["three_p_per100", "3p/100?"], ["pf_per40", "pfr"]
       ].forEach(([target, source]) => assignIfFinite(row, target, advValues[advIndex[source]]));
       [
         ["pts", "pts"], ["orb", "oreb"], ["drb", "dreb"], ["trb", "treb"], ["ast", "ast"], ["stl", "stl"], ["blk", "blk"],
@@ -7653,6 +7670,7 @@ function enrichD1Rows(rows) {
       if (!Number.isFinite(row.tov) && Number.isFinite(row.total_poss) && Number.isFinite(row.tov_pct_adv)) {
         row.tov = roundNumber(row.total_poss * (row.tov_pct_adv / 100), 3);
       }
+      populateD1FoulDerived(row);
       row.conference = getStringValue(advValues[advIndex.conf]) || row.conference;
       row.class_year = normalizeClassValue(advValues[advIndex.yr]) || row.class_year;
       const height = parseHeightToInches(advValues[advIndex.ht]);
@@ -9830,6 +9848,31 @@ function getGroupColumnsForMode(dataset, group, mode) {
   return [];
 }
 
+function getLegendGroupTargetColumns(dataset, group) {
+  if (!group) return [];
+  const defaultColumns = getGroupColumnsForMode(dataset, group, "default");
+  return defaultColumns.length ? defaultColumns : getGroupColumnsForMode(dataset, group, "all");
+}
+
+async function toggleLegendGroupVisibility(dataset, state, group) {
+  if (!dataset || !state || !group?.columns?.length) return;
+  const currentMode = getGroupSelectionState(dataset, group, state);
+  const defaultColumns = getLegendGroupTargetColumns(dataset, group);
+  const targetColumns = currentMode === "none"
+    ? defaultColumns
+    : (currentMode === "default" && defaultColumns.length < (group.columns || []).length ? group.columns : []);
+  const missingColumns = targetColumns.filter((column) => !state.visibleColumns[column]);
+  if (missingColumns.length) {
+    await ensureDeferredColumnsReady(dataset, state, missingColumns, { scope: "visible" });
+    if (appState.currentId !== dataset.id) return;
+  }
+  group.columns.forEach((column) => {
+    if (!(column in state.visibleColumns)) return;
+    state.visibleColumns[column] = targetColumns.includes(column);
+  });
+  renderCurrentDataset();
+}
+
 async function cycleGroupVisibility(dataset, state, group) {
   const cycleActions = getGroupCycleActions(dataset, group);
   const currentMode = getGroupSelectionState(dataset, group, state);
@@ -9854,6 +9897,51 @@ async function cycleGroupVisibility(dataset, state, group) {
   renderCurrentDataset();
 }
 
+function getPlaytypeLegendMetricActions(dataset) {
+  if (!["d1", "team_coach"].includes(dataset?.id)) return [];
+  return [
+    { id: "ppp", label: "PPP" },
+    { id: "efg", label: "eFG%" },
+    { id: "to", label: "TO%" },
+    { id: "two_p", label: "2P%" },
+  ].filter((item) => getPlaytypeLegendMetricColumns(dataset, item.id).length);
+}
+
+function getPlaytypeLegendMetricColumns(dataset, metricId) {
+  const suffixTests = {
+    ppp: [/_ppp$/i],
+    efg: [/_efg_pct$/i],
+    to: [/_to_pct$/i, /_tov_pct$/i],
+    two_p: [/_two_p_pct$/i, /_two_fg_pct$/i],
+  }[metricId] || [];
+  if (!suffixTests.length) return [];
+  const columns = new Set((dataset?.meta?.groups || []).flatMap((group) => group.columns || []));
+  return Array.from(columns).filter((column) => {
+    const baseColumn = stripCompanionPrefix(column);
+    const isPlaytype = dataset?.id === "team_coach"
+      ? isTeamCoachPlaytypeColumn(baseColumn)
+      : D1_TRUE_PLAYTYPE_IDS.some((prefix) => baseColumn === prefix || baseColumn.startsWith(`${prefix}_`));
+    return isPlaytype && suffixTests.some((test) => test.test(baseColumn));
+  });
+}
+
+async function togglePlaytypeLegendMetricVisibility(dataset, state, metricId) {
+  if (!dataset || !state || !metricId) return;
+  const columns = getPlaytypeLegendMetricColumns(dataset, metricId);
+  if (!columns.length) return;
+  const allVisible = columns.every((column) => state.visibleColumns[column]);
+  const targetColumns = allVisible ? [] : columns;
+  const missingColumns = targetColumns.filter((column) => !state.visibleColumns[column]);
+  if (missingColumns.length) {
+    await ensureDeferredColumnsReady(dataset, state, missingColumns, { scope: "visible" });
+    if (appState.currentId !== dataset.id) return;
+  }
+  columns.forEach((column) => {
+    if (column in state.visibleColumns) state.visibleColumns[column] = !allVisible;
+  });
+  renderCurrentDataset();
+}
+
 function renderTableLegend(dataset, state) {
   if (!elements.tableLegend) return;
   const legendKey = `${dataset.id}|${(dataset.meta.groups || []).map((group) => group.id).join("|")}`;
@@ -9875,6 +9963,10 @@ function renderTableLegend(dataset, state) {
     links.push(sep);
     links.push(`<button class="link-button" type="button" data-stat-group="${escapeAttribute(group.id)}">${escapeHtml(group.label)}</button>`);
   });
+  getPlaytypeLegendMetricActions(dataset).forEach((item) => {
+    links.push(sep);
+    links.push(`<button class="link-button" type="button" data-stat-playtype-metric="${escapeAttribute(item.id)}">${escapeHtml(item.label)}</button>`);
+  });
   links.push(sep);
   links.push(`<button class="link-button" type="button" data-reset-filters="true">Reset</button>`);
   elements.tableLegend.innerHTML = `<span class="table-legend__title">Show:</span> <span class="table-legend__links">${links.join("")}</span>`;
@@ -9895,7 +9987,16 @@ function renderTableLegend(dataset, state) {
       const groupId = button.dataset.statGroup;
       const group = currentDataset?.meta?.groups?.find((item) => item.id === groupId);
       if (!currentDataset || !currentState || !group) return;
-      await cycleGroupVisibility(currentDataset, currentState, group);
+      await toggleLegendGroupVisibility(currentDataset, currentState, group);
+    });
+  });
+
+  elements.tableLegend.querySelectorAll("[data-stat-playtype-metric]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const currentDataset = getCurrentDataset();
+      const currentState = getCurrentUiState();
+      if (!currentDataset || !currentState) return;
+      await togglePlaytypeLegendMetricVisibility(currentDataset, currentState, button.dataset.statPlaytypeMetric);
     });
   });
 
@@ -11819,7 +11920,15 @@ function grassrootsAliasRowScore(row) {
 }
 
 const TEAM_COACH_PLAYTYPE_IDS = ["transition", "spot_up", "pnr_ball_handler", "pnr_roll_man", "post_up", "cut", "off_screen", "hand_off", "isolation", "offensive_rebounds"];
-const TEAM_COACH_PLAYTYPE_WEIGHTED_SUFFIXES = ["ppp", "efg_pct", "to_pct", "score_pct", "fg_pct", "three_pa_rate", "ft_rate"];
+const TEAM_COACH_PLAYTYPE_TOTAL_SUFFIXES = ["fga", "two_pa", "three_pa", "fta"];
+const TEAM_COACH_PLAYTYPE_WEIGHT_MAP = {
+  ppp: "poss",
+  efg_pct: "fga",
+  to_pct: "poss",
+  score_pct: "poss",
+  two_p_pct: "two_pa",
+  three_p_pct: "three_pa",
+};
 
 function aggregateTeamCoachCareerRows(dataset, rows) {
   if (!rows.length) return {};
@@ -11869,20 +11978,44 @@ function aggregateTeamCoachCareerRows(dataset, rows) {
   TEAM_COACH_PLAYTYPE_IDS.forEach((id) => {
     let totalPoss = 0;
     let totalBasePoss = 0;
+    const playtypeTotals = {};
+    TEAM_COACH_PLAYTYPE_TOTAL_SUFFIXES.forEach((suffix) => {
+      playtypeTotals[suffix] = 0;
+    });
     rows.forEach((row) => {
       const poss = firstFinite(row?.[`${id}_poss`], Number.NaN);
-      if (!Number.isFinite(poss)) return;
-      totalPoss += poss;
-      const total = firstFinite(row?.playtype_total_poss, estimateTeamCoachTotalPoss(row, id), Number.NaN);
-      if (Number.isFinite(total) && total > 0) totalBasePoss += total;
+      if (Number.isFinite(poss)) {
+        totalPoss += poss;
+        const total = firstFinite(row?.playtype_total_poss, estimateTeamCoachTotalPoss(row, id), Number.NaN);
+        if (Number.isFinite(total) && total > 0) totalBasePoss += total;
+      }
+      TEAM_COACH_PLAYTYPE_TOTAL_SUFFIXES.forEach((suffix) => {
+        const value = firstFinite(row?.[`${id}_${suffix}`], Number.NaN);
+        if (Number.isFinite(value)) playtypeTotals[suffix] += value;
+      });
     });
     if (totalPoss > 0) aggregate[`${id}_poss`] = roundNumber(totalPoss, 1);
     if (totalBasePoss > 0) aggregate[`${id}_freq`] = roundNumber((totalPoss / totalBasePoss) * 100, 3);
-    TEAM_COACH_PLAYTYPE_WEIGHTED_SUFFIXES.forEach((suffix) => {
-      const column = `${id}_${suffix}`;
-      const weighted = weightedFiniteAverage(rows, column, `${id}_poss`);
-      if (Number.isFinite(weighted)) aggregate[column] = roundNumber(weighted, 3);
+    TEAM_COACH_PLAYTYPE_TOTAL_SUFFIXES.forEach((suffix) => {
+      const total = playtypeTotals[suffix];
+      if (total > 0 || rows.some((row) => Number.isFinite(row?.[`${id}_${suffix}`]))) {
+        aggregate[`${id}_${suffix}`] = roundNumber(total, 1);
+        if (games > 0) aggregate[`${id}_${suffix}_pg`] = roundNumber(total / games, 3);
+      }
     });
+    Object.entries(TEAM_COACH_PLAYTYPE_WEIGHT_MAP).forEach(([suffix, weightSuffix]) => {
+      const column = `${id}_${suffix}`;
+      const weighted = weightedFiniteAverageStrict(rows, column, `${id}_${weightSuffix}`);
+      const fallback = Number.isFinite(weighted) ? weighted : weightedFiniteAverage(rows, column, `${id}_poss`);
+      if (Number.isFinite(fallback)) aggregate[column] = roundNumber(fallback, 3);
+    });
+    const fga = firstFinite(aggregate[`${id}_fga`], Number.NaN);
+    if (Number.isFinite(fga) && fga > 0) {
+      const threePa = firstFinite(aggregate[`${id}_three_pa`], Number.NaN);
+      const fta = firstFinite(aggregate[`${id}_fta`], Number.NaN);
+      if (Number.isFinite(threePa)) aggregate[`${id}_three_pa_rate`] = roundNumber(threePa / fga, 4);
+      if (Number.isFinite(fta)) aggregate[`${id}_ft_rate`] = roundNumber(fta / fga, 4);
+    }
   });
 
   aggregate[dataset.yearColumn] = "Career";
@@ -11919,6 +12052,19 @@ function weightedFiniteAverage(rows, column, weightColumn) {
     const value = firstFinite(row?.[column], Number.NaN);
     if (!Number.isFinite(value)) return;
     const weight = Math.max(firstFinite(row?.[weightColumn], row?.games, 1), 1);
+    weightedSum += value * weight;
+    totalWeight += weight;
+  });
+  return totalWeight > 0 ? weightedSum / totalWeight : Number.NaN;
+}
+
+function weightedFiniteAverageStrict(rows, column, weightColumn) {
+  let weightedSum = 0;
+  let totalWeight = 0;
+  rows.forEach((row) => {
+    const value = firstFinite(row?.[column], Number.NaN);
+    const weight = firstFinite(row?.[weightColumn], Number.NaN);
+    if (!Number.isFinite(value) || !Number.isFinite(weight) || weight <= 0) return;
     weightedSum += value * weight;
     totalWeight += weight;
   });
@@ -12874,6 +13020,52 @@ async function collectPlayerProfileBucketRows(identity) {
   return rows;
 }
 
+async function ensureD1FoulLookupLoaded() {
+  if (window.D1_FOUL_LOOKUP) return window.D1_FOUL_LOOKUP;
+  if (!appState.d1FoulLookupLoad) {
+    appState.d1FoulLookupLoad = loadScriptOnce(`${D1_FOUL_LOOKUP_SCRIPT}?v=${encodeURIComponent(SCRIPT_CACHE_BUST)}`)
+      .then(() => window.D1_FOUL_LOOKUP || {});
+  }
+  return appState.d1FoulLookupLoad;
+}
+
+async function applyD1ProfileFoulLookup(rows) {
+  const needsLookup = (rows || []).some((row) => {
+    const level = normalizeProfileLevel(row);
+    return level === "D1" && (!Number.isFinite(row?.pf) || !Number.isFinite(row?.pf_pg) || !Number.isFinite(row?.pf_per40));
+  });
+  if (!needsLookup) return rows || [];
+  try {
+    const lookup = await ensureD1FoulLookupLoaded();
+    (rows || []).forEach((row) => applyD1ProfileFoulLookupRow(row, lookup));
+  } catch (error) {
+    console.warn("D1 foul lookup failed to load.", error);
+  }
+  return rows || [];
+}
+
+function applyD1ProfileFoulLookupRow(row, lookup) {
+  if (!row || normalizeProfileLevel(row) !== "D1") return;
+  const season = getStringValue(row.season).trim();
+  const candidateIds = [
+    row.realgm_player_id,
+    row.source_player_id,
+    row.player_id,
+    row.pid,
+    row.canonical_player_id,
+  ].map((value) => getStringValue(value).replace(/^rgm_/i, "").trim()).filter(Boolean);
+  if (!season || !candidateIds.length) return;
+  const entry = candidateIds.map((id) => lookup?.[`${id}|${season}`]).find(Boolean);
+  if (!entry) return;
+  const values = Array.isArray(entry)
+    ? { pf: entry[0], pf_pg: entry[1], pf_per40: entry[2] }
+    : entry;
+  ["pf", "pf_pg", "pf_per40"].forEach((column) => {
+    const value = firstFinite(values[column], Number.NaN);
+    if (Number.isFinite(value) && !Number.isFinite(row[column])) row[column] = value;
+  });
+}
+
 function prefetchPlayerProfileBuckets(identity) {
   const realgmIds = getPlayerProfileRealgmIds(identity);
   if (!realgmIds.length) return;
@@ -12998,6 +13190,7 @@ async function getPlayerProfileRows(sourceRow, datasetId = "") {
   } else if (!hasPrimaryProfileRows && sourceRow) {
     rows.push(sourceRow);
   }
+  await applyD1ProfileFoulLookup(rows);
   rows = dedupePlayerProfileRows(rows);
   const seasonRows = fillPlayerProfileReboundSplitsFromKnownRows(rows
     .filter((row) => !row?._careerAggregate)
@@ -13097,6 +13290,7 @@ const PLAYER_PROFILE_TOTAL_ALIASES = {
 };
 
 const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumnsV2";
+const PLAYER_PROFILE_COLOR_STORAGE_KEY = "multiExplorerPlayerProfileColorsV1";
 const PLAYER_PROFILE_LOCKED_COLUMNS = ["season", "competition_level", "league", "team_name"];
 const PLAYER_PROFILE_COLUMN_GROUPS = [
   {
@@ -13142,7 +13336,7 @@ const PLAYER_PROFILE_ALL_COLUMNS = [...new Set(PLAYER_PROFILE_COLUMN_GROUPS.flat
 const PLAYER_PROFILE_DEFAULT_COLUMNS = [
   ...PLAYER_PROFILE_LOCKED_COLUMNS,
   "gp", "min", "mpg",
-  "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "stocks_pg",
+  "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "pf_pg", "stocks_pg",
   "fg_pct", "three_p_pct", "ft_pct", "ast_to",
 ];
 const PLAYER_PROFILE_LABELS = {
@@ -13595,6 +13789,7 @@ function renderPlayerProfileModal(modal, name, rows) {
 function buildPlayerProfileContentHtml(name, rows, options = {}) {
   const columns = PLAYER_PROFILE_ALL_COLUMNS;
   const visibleColumns = getPlayerProfileVisibleColumns();
+  const colorsEnabled = getPlayerProfileColorsEnabled();
   const dataset = getPlayerProfileRenderDataset(rows);
   const profileColorState = { extraSelects: { view_mode: "player", color_mode: "competition" } };
   const profileReferenceRows = getPlayerProfileColorReferenceRows(rows);
@@ -13608,8 +13803,9 @@ function buildPlayerProfileContentHtml(name, rows, options = {}) {
       const hidden = visibleColumns.has(column) ? "" : " hidden";
       const rawValue = getRowColumnValue(dataset, row, column);
       const style = getCellStyle(dataset, profileColorState, column, rawValue, colorScale, row);
-      const styleAttribute = style ? ` style="${escapeAttribute(style)}"` : "";
-      return `<td data-profile-column="${escapeAttribute(column)}"${hidden}${styleAttribute}>${escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, rawValue, row)))}</td>`;
+      const styleAttribute = colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : "";
+      const storedStyleAttribute = style ? ` data-profile-color-style="${escapeAttribute(style)}"` : "";
+      return `<td data-profile-column="${escapeAttribute(column)}"${hidden}${styleAttribute}${storedStyleAttribute}>${escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, rawValue, row)))}</td>`;
     }).join("")}</tr>`).join("")
     : `<tr><td colspan="${Math.max(visibleColumns.size, 1)}">No logged seasons found.</td></tr>`;
   const backLink = options.standalone ? `<div><a href="#player_career">Player/Career</a></div>` : "";
@@ -13675,7 +13871,24 @@ function savePlayerProfileVisibleColumns(columns) {
   }
 }
 
+function getPlayerProfileColorsEnabled() {
+  try {
+    return localStorage.getItem(PLAYER_PROFILE_COLOR_STORAGE_KEY) !== "off";
+  } catch (_error) {
+    return true;
+  }
+}
+
+function savePlayerProfileColorsEnabled(enabled) {
+  try {
+    localStorage.setItem(PLAYER_PROFILE_COLOR_STORAGE_KEY, enabled ? "on" : "off");
+  } catch (_error) {
+    // Ignore storage failures; the current profile view still updates.
+  }
+}
+
 function buildPlayerProfileColumnControlsHtml(visibleColumns) {
+  const colorChecked = getPlayerProfileColorsEnabled() ? " checked" : "";
   const groups = PLAYER_PROFILE_COLUMN_GROUPS.map((group) => {
     const options = group.columns.map((column) => {
       const locked = PLAYER_PROFILE_LOCKED_COLUMNS.includes(column);
@@ -13692,6 +13905,7 @@ function buildPlayerProfileColumnControlsHtml(visibleColumns) {
         <button type="button" data-profile-column-mode="default">Default</button>
         <button type="button" data-profile-column-mode="all">Show All</button>
         <button type="button" data-profile-column-mode="none">Hide All</button>
+        <label class="player-profile-color-toggle"><input type="checkbox" data-profile-color-toggle${colorChecked}> Colors</label>
       </div>
       <div class="player-profile-column-groups">${groups}</div>
     </div>
@@ -13704,6 +13918,11 @@ function bindPlayerProfileColumnControls(root) {
   container.dataset.bound = "true";
   container.addEventListener("change", (event) => {
     const input = event.target instanceof HTMLInputElement ? event.target : null;
+    if (input?.matches("[data-profile-color-toggle]")) {
+      savePlayerProfileColorsEnabled(input.checked);
+      applyPlayerProfileColorVisibility(root, input.checked);
+      return;
+    }
     if (!input?.matches("[data-profile-column-toggle]")) return;
     const selected = new Set(PLAYER_PROFILE_LOCKED_COLUMNS);
     container.querySelectorAll("[data-profile-column-toggle]").forEach((item) => {
@@ -13747,6 +13966,15 @@ function bindPlayerProfileColumnControls(root) {
       savePlayerProfileVisibleColumns(selected);
       applyPlayerProfileColumnVisibility(root, selected);
     });
+  });
+}
+
+function applyPlayerProfileColorVisibility(root, enabled) {
+  root?.querySelectorAll?.("[data-profile-color-style]").forEach((cell) => {
+    if (!(cell instanceof HTMLElement)) return;
+    const style = getStringValue(cell.dataset.profileColorStyle);
+    if (enabled && style) cell.setAttribute("style", style);
+    else cell.removeAttribute("style");
   });
 }
 
@@ -14838,6 +15066,7 @@ function enhanceCommonRow(row, datasetId) {
 
 function enhanceD1Row(row) {
   normalizeD1PlaytypeColumns(row);
+  populateD1PlaytypeVolumeMetrics(row);
   normalizeD1TruePlaytypeFrequencies(row);
   if (!Number.isFinite(row.transition_poss) && Number.isFinite(row.total_poss) && Number.isFinite(row.transition_freq) && row.total_poss > 0) {
     row.transition_poss = roundNumber((row.total_poss * row.transition_freq) / 100, 1);
@@ -14873,6 +15102,7 @@ function enhanceD1Row(row) {
   if (!Number.isFinite(row.tov) && Number.isFinite(row.total_poss) && Number.isFinite(row.tov_pct_adv)) {
     row.tov = roundNumber((row.total_poss * row.tov_pct_adv) / 100, 1);
   }
+  populateD1FoulDerived(row);
   row.ftr = firstFinite(row.ftr, ratioIfPossible(row.fta, row.fga), Number.NaN);
   row.three_pr = firstFinite(row.three_pr, ratioIfPossible(firstFinite(row.three_p_att, row.three_pa, Number.NaN), row.fga), Number.NaN);
   if (!Number.isFinite(row.ftr)) row.ftr = 0;
@@ -15694,6 +15924,60 @@ function normalizeD1PlaytypeColumns(row) {
       row[column] = roundNumber(row[column] * gp, 1);
     }
   });
+}
+
+function populateD1PlaytypeVolumeMetrics(row) {
+  if (!row || row._careerAggregate) return;
+  const gp = firstFinite(row.gp, Number.NaN);
+  D1_TRUE_PLAYTYPE_IDS.forEach((id) => {
+    const fgAttColumn = `${id}_fg_att`;
+    const twoAttColumn = `${id}_two_fg_att`;
+    const threeAttColumn = `${id}_three_fg_att`;
+    const ftaColumn = `${id}_fta`;
+    let fgAtt = firstFinite(row[fgAttColumn], Number.NaN);
+    let twoAtt = firstFinite(row[twoAttColumn], Number.NaN);
+    let threeAtt = firstFinite(row[threeAttColumn], Number.NaN);
+    if (!Number.isFinite(fgAtt) && Number.isFinite(twoAtt) && Number.isFinite(threeAtt)) {
+      fgAtt = twoAtt + threeAtt;
+      row[fgAttColumn] = roundNumber(fgAtt, 1);
+    }
+    if (!Number.isFinite(twoAtt) && Number.isFinite(fgAtt) && Number.isFinite(threeAtt)) {
+      twoAtt = Math.max(0, fgAtt - threeAtt);
+      row[twoAttColumn] = roundNumber(twoAtt, 1);
+    }
+    if (!Number.isFinite(threeAtt) && Number.isFinite(fgAtt) && Number.isFinite(twoAtt)) {
+      threeAtt = Math.max(0, fgAtt - twoAtt);
+      row[threeAttColumn] = roundNumber(threeAtt, 1);
+    }
+    const ftr = ratioValueFromMaybePercent(firstFinite(row[`${id}_ftr`], Number.NaN));
+    if (!Number.isFinite(row[ftaColumn]) && Number.isFinite(fgAtt) && Number.isFinite(ftr)) {
+      row[ftaColumn] = roundNumber(fgAtt * ftr, 1);
+    }
+    [
+      [fgAttColumn, `${id}_fg_att_pg`],
+      [twoAttColumn, `${id}_two_fg_att_pg`],
+      [threeAttColumn, `${id}_three_fg_att_pg`],
+      [ftaColumn, `${id}_fta_pg`],
+    ].forEach(([totalColumn, perGameColumn]) => {
+      const total = firstFinite(row[totalColumn], Number.NaN);
+      const pg = perGameValue(total, gp);
+      if (pg !== "") row[perGameColumn] = pg;
+    });
+  });
+}
+
+function populateD1FoulDerived(row) {
+  if (!row || row._careerAggregate) return;
+  const pfPer40 = firstFinite(row.pf_per40, row.pfr, Number.NaN);
+  if (Number.isFinite(pfPer40) && !Number.isFinite(row.pf_per40)) row.pf_per40 = roundNumber(pfPer40, 1);
+  const minutes = firstFinite(row.min, Number.isFinite(row.gp) && Number.isFinite(row.mpg) ? row.gp * row.mpg : Number.NaN, Number.NaN);
+  if (!Number.isFinite(row.pf) && Number.isFinite(pfPer40) && Number.isFinite(minutes) && minutes > 0) {
+    row.pf = roundNumber((pfPer40 * minutes) / 40, 1);
+  }
+  const pfPg = perGameValue(row.pf, row.gp);
+  if (pfPg !== "") row.pf_pg = pfPg;
+  const pf40 = per40Value(row.pf, minutes);
+  if (pf40 !== "" && !Number.isFinite(row.pf_per40)) row.pf_per40 = pf40;
 }
 
 function normalizeD1TruePlaytypeFrequencies(row) {
@@ -16615,6 +16899,8 @@ function formatValue(dataset, column, value, row) {
   if (/^(season|year|rookie_year)$/i.test(column) && Number.isInteger(value)) return String(value);
   if (column === "age") return value.toFixed(1);
   if (/^(gp|g|gs|min|mp|total_poss|games|wins|losses)$/i.test(column)) return String(Math.round(value));
+  if (dataset?.id === "team_coach" && /_(?:fga|two_pa|three_pa|fta)_pg$/i.test(column)) return value.toFixed(1);
+  if (dataset?.id === "team_coach" && /_(?:fga|two_pa|three_pa|fta)$/i.test(column)) return value.toFixed(1);
   if (isIntegerCountColumn(column)) return String(Math.round(value));
   if (/_poss$/i.test(column)) return value.toFixed(1);
   if (/(_att$|_made$|_miss$)/i.test(column)) return String(Math.round(value));

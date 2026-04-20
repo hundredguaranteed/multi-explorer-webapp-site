@@ -28,10 +28,19 @@ const PLAYTYPE_METRICS = [
   ["freq", "%Time"],
   ["poss", "Poss"],
   ["ppp", "PPP"],
+  ["fga", "FG Att"],
+  ["fga_pg", ""],
+  ["two_pa", "2 FG Att"],
+  ["two_pa_pg", ""],
+  ["three_pa", "3FG Att"],
+  ["three_pa_pg", ""],
+  ["fta", ""],
+  ["fta_pg", ""],
   ["efg_pct", "eFG%"],
   ["to_pct", "TO%"],
   ["score_pct", "Score%"],
-  ["fg_pct", "FG%"],
+  ["two_p_pct", "2 FG%"],
+  ["three_p_pct", "3 FG%"],
   ["three_pa_rate", "3PA/FGA"],
   ["ft_rate", "FTA/FGA"],
 ];
@@ -561,14 +570,44 @@ function loadPlaytypeRows(aliasMap) {
         if (!byPrimaryTeam.has(primaryKey)) byPrimaryTeam.set(primaryKey, { season, team_name: team });
         const row = byPrimaryTeam.get(primaryKey);
         PLAYTYPE_METRICS.forEach(([suffix, sourceColumn]) => {
+          if (!sourceColumn) return;
           const column = `${playtypeId}_${suffix}`;
           if (!OMIT_PLAYTYPE_COLUMNS.has(column)) row[column] = parseNumber(source[sourceColumn]);
+        });
+        const games = parseNumber(source.GP);
+        const possPerGame = parseNumber(source.Poss);
+        const fgaPerGame = parseNumber(source["FG Att"]);
+        const twoPaPerGame = parseNumber(source["2 FG Att"]);
+        const threePaPerGame = parseNumber(source["3FG Att"]);
+        const ftRate = parseNumber(source["FTA/FGA"]);
+        const ftaPerGame = Number.isFinite(fgaPerGame) && Number.isFinite(ftRate) ? roundNumber(fgaPerGame * ftRate, 3) : "";
+        if (Number.isFinite(possPerGame) && Number.isFinite(games) && games > 0) {
+          const possColumn = `${playtypeId}_poss`;
+          if (!OMIT_PLAYTYPE_COLUMNS.has(possColumn)) row[possColumn] = roundNumber(possPerGame * games, 3);
+        }
+        [
+          ["fga", fgaPerGame],
+          ["two_pa", twoPaPerGame],
+          ["three_pa", threePaPerGame],
+          ["fta", ftaPerGame],
+        ].forEach(([suffix, perGameValue]) => {
+          const column = `${playtypeId}_${suffix}`;
+          if (!OMIT_PLAYTYPE_COLUMNS.has(column) && Number.isFinite(perGameValue) && Number.isFinite(games) && games > 0) {
+            row[column] = roundNumber(perGameValue * games, 3);
+          } else if (!OMIT_PLAYTYPE_COLUMNS.has(column) && Number.isFinite(perGameValue)) {
+            row[column] = perGameValue;
+          }
+          const perGameColumn = `${playtypeId}_${suffix}_pg`;
+          if (!OMIT_PLAYTYPE_COLUMNS.has(perGameColumn) && Number.isFinite(perGameValue)) {
+            row[perGameColumn] = roundNumber(perGameValue, 4);
+          }
         });
         const poss = parseNumber(source.Poss);
         const freq = parseNumber(source["%Time"]);
         if (Number.isFinite(poss) && poss > 0 && Number.isFinite(freq) && freq > 0) {
           const estimates = row._playtypeTotalPossEstimates || (row._playtypeTotalPossEstimates = []);
-          estimates.push(poss / (freq / 100));
+          const possTotal = Number.isFinite(games) && games > 0 ? poss * games : poss;
+          estimates.push(possTotal / (freq / 100));
         }
         teamAliasKeys(source.Team, aliasMap).concat(teamAliasKeys(team, aliasMap)).forEach((lookupKey) => {
           byLookupKey.set(`${season}|${lookupKey}`, row);

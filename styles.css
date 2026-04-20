@@ -606,7 +606,7 @@ a,
 }
 
 #statsTable th.cell-header-small {
-  font-size: 8px;
+  font-size: 7.4px;
   line-height: 1;
 }
 
@@ -705,6 +705,18 @@ a,
 }
 
 .player-profile-column-actions button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.player-profile-color-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
