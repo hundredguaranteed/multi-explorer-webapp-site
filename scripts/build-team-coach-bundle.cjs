@@ -4,7 +4,8 @@ const { execFileSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 const CACHE_DIR = path.join(ROOT, ".pwtmp");
-const PLAYTYPE_DIR = process.env.TEAM_PLAYTYPE_DIR || "C:\\Users\\anu5c\\Projects\\TeamCoachingInfo\\Team Playtype Data";
+const PLAYTYPE_BASE_DIR = process.env.TEAM_PLAYTYPE_DIR || "C:\\Users\\anu5c\\Projects\\TeamCoachingInfo\\Team Playtype Data";
+const PLAYTYPE_DIR = fs.existsSync(path.join(PLAYTYPE_BASE_DIR, "D1")) ? path.join(PLAYTYPE_BASE_DIR, "D1") : PLAYTYPE_BASE_DIR;
 const OUT_PATH = path.join(ROOT, "data", "vendor", "team_coach_all_seasons.js");
 const ALIAS_CSV_PATH = path.join(ROOT, "generated", "team_aliases.csv");
 const D1_YEAR_DIR = path.join(ROOT, "data", "vendor", "d1_year_chunks");
@@ -21,6 +22,39 @@ const PLAYTYPE_NAME_TO_ID = {
   "Hand Off": "hand_off",
   "Isolation": "isolation",
   "Offensive Rebounds": "offensive_rebounds",
+};
+
+const PLAYTYPE_METRICS = [
+  ["freq", "%Time"],
+  ["poss", "Poss"],
+  ["ppp", "PPP"],
+  ["efg_pct", "eFG%"],
+  ["to_pct", "TO%"],
+  ["score_pct", "Score%"],
+  ["fg_pct", "FG%"],
+  ["three_pa_rate", "3PA/FGA"],
+  ["ft_rate", "FTA/FGA"],
+];
+
+const OMIT_PLAYTYPE_COLUMNS = new Set(["post_up_three_pa_rate", "cut_three_pa_rate"]);
+
+const BART_AUX_SOURCES = {
+  avg_height: {
+    url: "https://barttorvik.com/all_avg_ht.json",
+    cacheName: "bart-all-avg-ht.json",
+  },
+  eff_height: {
+    url: "https://barttorvik.com/all_eff_ht.json",
+    cacheName: "bart-all-eff-ht.json",
+  },
+  exp: {
+    url: "https://barttorvik.com/exp_history.json?new",
+    cacheName: "bart-exp-history-new.json",
+  },
+  talent: {
+    url: "https://barttorvik.com/effective_talent.json",
+    cacheName: "bart-effective-talent.json",
+  },
 };
 
 const ALIAS_REVERSE_CACHE = new WeakMap();
@@ -76,6 +110,7 @@ const COLUMNS = [
   "games",
   "adj_oe",
   "adj_de",
+  "adj_ne",
   "barthag",
   "efg_pct",
   "efg_pct_def",
@@ -106,20 +141,14 @@ const COLUMNS = [
   "ppp_off",
   "ppp_def",
   "elite_sos",
+  "playtype_total_poss",
 ];
 
 Object.values(PLAYTYPE_NAME_TO_ID).forEach((id) => {
-  COLUMNS.push(
-    `${id}_freq`,
-    `${id}_poss`,
-    `${id}_ppp`,
-    `${id}_efg_pct`,
-    `${id}_to_pct`,
-    `${id}_score_pct`,
-    `${id}_fg_pct`,
-    `${id}_three_pa_rate`,
-    `${id}_ft_rate`,
-  );
+  PLAYTYPE_METRICS.forEach(([suffix]) => {
+    const column = `${id}_${suffix}`;
+    if (!OMIT_PLAYTYPE_COLUMNS.has(column)) COLUMNS.push(column);
+  });
 });
 COLUMNS.push("team_search_text", "coach_search_text");
 
@@ -196,6 +225,21 @@ function parseNumber(value) {
   if (!text) return "";
   const numeric = Number(text);
   return Number.isFinite(numeric) ? Number(numeric.toFixed(6)) : "";
+}
+
+function roundNumber(value, digits = 6) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "";
+  const factor = 10 ** digits;
+  return Math.round(numeric * factor) / factor;
+}
+
+function medianNumber(values) {
+  const sorted = (values || []).map(Number).filter(Number.isFinite).sort((left, right) => left - right);
+  if (!sorted.length) return "";
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2) return sorted[mid];
+  return (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 function parseCsv(text) {
@@ -348,6 +392,10 @@ async function fetchWithCache(url, cacheName, options = {}) {
   return text;
 }
 
+async function fetchJsonWithCache(url, cacheName, options = {}) {
+  return JSON.parse(await fetchWithCache(url, cacheName, options));
+}
+
 async function fetchBartTeamTable(year) {
   const url = `https://barttorvik.com/team-tables_each.php?year=${year}&top=0&conlimit=All`;
   fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -373,6 +421,51 @@ async function fetchBartTeamTable(year) {
     fs.writeFileSync(cachePath, text, "utf8");
   }
   return extractBartGdata(text);
+}
+
+function buildAuxStatIndex(raw, aliasMap) {
+  const index = new Map();
+  Object.entries(raw || {}).forEach(([year, values]) => {
+    const byTeam = new Map();
+    Object.entries(values || {}).forEach(([team, value]) => {
+      const numeric = parseNumber(value);
+      if (numeric === "") return;
+      const keys = new Set([
+        normalizeKey(team),
+        normalizeKey(canonicalTeam(team, aliasMap)),
+        ...teamAliasKeys(team, aliasMap),
+      ]);
+      keys.forEach((key) => {
+        if (key && !byTeam.has(key)) byTeam.set(key, numeric);
+      });
+    });
+    index.set(String(year), byTeam);
+  });
+  return index;
+}
+
+async function loadBartAuxiliaryIndexes(aliasMap) {
+  const output = {};
+  await Promise.all(Object.entries(BART_AUX_SOURCES).map(async ([column, source]) => {
+    const raw = await fetchJsonWithCache(source.url, source.cacheName);
+    output[column] = buildAuxStatIndex(raw, aliasMap);
+  }));
+  return output;
+}
+
+function lookupAuxStat(auxIndexes, column, year, team, rawTeam, aliasMap) {
+  const yearMap = auxIndexes?.[column]?.get(String(year));
+  if (!yearMap) return "";
+  const keys = new Set([
+    normalizeKey(team),
+    normalizeKey(rawTeam),
+    ...teamAliasKeys(team, aliasMap),
+    ...teamAliasKeys(rawTeam, aliasMap),
+  ]);
+  for (const key of keys) {
+    if (key && yearMap.has(key)) return yearMap.get(key);
+  }
+  return "";
 }
 
 function extractBartGdata(text) {
@@ -435,38 +528,58 @@ function loadD1ConferenceMap(aliasMap) {
   return map;
 }
 
+function listCsvFiles(directory) {
+  if (!fs.existsSync(directory)) return [];
+  const output = [];
+  fs.readdirSync(directory, { withFileTypes: true }).forEach((entry) => {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      output.push(...listCsvFiles(fullPath));
+    } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".csv")) {
+      output.push(fullPath);
+    }
+  });
+  return output;
+}
+
 function loadPlaytypeRows(aliasMap) {
   const byPrimaryTeam = new Map();
   const byLookupKey = new Map();
-  fs.readdirSync(PLAYTYPE_DIR)
-    .filter((file) => file.endsWith(".csv"))
-    .forEach((file) => {
-      const match = file.match(/(\d{4})-(\d{4}).+ - (.+) - Team Offensive\.csv$/);
+  listCsvFiles(PLAYTYPE_DIR)
+    .forEach((filePath) => {
+      const file = path.basename(filePath);
+      const match = file.match(/(\d{4})-(\d{4}).+ - (.+) - Team Offensive(?: \(\d+\))?\.csv$/);
       if (!match) return;
       const season = match[2];
       const playtypeId = PLAYTYPE_NAME_TO_ID[match[3]];
       if (!playtypeId) return;
-      const rows = rowsToObjects(parseCsv(fs.readFileSync(path.join(PLAYTYPE_DIR, file), "utf8")));
+      const rows = rowsToObjects(parseCsv(fs.readFileSync(filePath, "utf8")));
       rows.forEach((source) => {
         const team = canonicalTeam(source.Team, aliasMap);
         if (!team) return;
         const primaryKey = `${season}|${normalizeKey(team)}`;
         if (!byPrimaryTeam.has(primaryKey)) byPrimaryTeam.set(primaryKey, { season, team_name: team });
         const row = byPrimaryTeam.get(primaryKey);
-        row[`${playtypeId}_freq`] = parseNumber(source["%Time"]);
-        row[`${playtypeId}_poss`] = parseNumber(source.Poss);
-        row[`${playtypeId}_ppp`] = parseNumber(source.PPP);
-        row[`${playtypeId}_efg_pct`] = parseNumber(source["eFG%"]);
-        row[`${playtypeId}_to_pct`] = parseNumber(source["TO%"]);
-        row[`${playtypeId}_score_pct`] = parseNumber(source["Score%"]);
-        row[`${playtypeId}_fg_pct`] = parseNumber(source["FG%"]);
-        row[`${playtypeId}_three_pa_rate`] = parseNumber(source["3PA/FGA"]);
-        row[`${playtypeId}_ft_rate`] = parseNumber(source["FTA/FGA"]);
+        PLAYTYPE_METRICS.forEach(([suffix, sourceColumn]) => {
+          const column = `${playtypeId}_${suffix}`;
+          if (!OMIT_PLAYTYPE_COLUMNS.has(column)) row[column] = parseNumber(source[sourceColumn]);
+        });
+        const poss = parseNumber(source.Poss);
+        const freq = parseNumber(source["%Time"]);
+        if (Number.isFinite(poss) && poss > 0 && Number.isFinite(freq) && freq > 0) {
+          const estimates = row._playtypeTotalPossEstimates || (row._playtypeTotalPossEstimates = []);
+          estimates.push(poss / (freq / 100));
+        }
         teamAliasKeys(source.Team, aliasMap).concat(teamAliasKeys(team, aliasMap)).forEach((lookupKey) => {
           byLookupKey.set(`${season}|${lookupKey}`, row);
         });
       });
     });
+  byPrimaryTeam.forEach((row) => {
+    const estimate = medianNumber(row._playtypeTotalPossEstimates);
+    if (estimate !== "") row.playtype_total_poss = roundNumber(estimate, 1);
+    delete row._playtypeTotalPossEstimates;
+  });
   return { rows: byPrimaryTeam, index: byLookupKey };
 }
 
@@ -498,6 +611,7 @@ async function main() {
   const coachDict = loadCoachDict();
   const conferences = loadD1ConferenceMap(aliasMap);
   const playtypes = loadPlaytypeRows(aliasMap);
+  const auxStats = await loadBartAuxiliaryIndexes(aliasMap);
   const years = Array.from(new Set(Array.from(playtypes.rows.values()).map((row) => row.season))).sort();
   const rows = [];
   let playtypeMatched = 0;
@@ -513,6 +627,15 @@ async function main() {
         if (column === "team_name") return;
         row[column] = typeof entry[index] === "number" ? Number(entry[index].toFixed(6)) : cleanText(entry[index]);
       });
+      ["avg_height", "eff_height", "exp", "talent"].forEach((column) => {
+        const auxValue = lookupAuxStat(auxStats, column, year, team, entry[0], aliasMap);
+        if (auxValue !== "" && (row[column] === "" || row[column] == null || !Number.isFinite(Number(row[column])))) {
+          row[column] = auxValue;
+        }
+      });
+      if (Number.isFinite(row.adj_oe) && Number.isFinite(row.adj_de)) {
+        row.adj_ne = roundNumber(row.adj_oe - row.adj_de, 3);
+      }
       row.coach = coachForTeam(coachDict, year, team, aliasMap);
       row.conference = teamAliasKeys(team, aliasMap).map((key) => conferences.get(`${year}|${key}`)).find(Boolean) || "";
       row.team_search_text = normalizeKey([team, entry[0], ...teamAliasKeys(team, aliasMap)].filter(Boolean).join(" "));
