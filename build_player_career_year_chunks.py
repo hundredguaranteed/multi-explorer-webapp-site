@@ -33,7 +33,7 @@ PLAYER_CAREER_BASE_COLUMNS = [
     "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
     "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr",
     "rim_made", "rim_att", "rim_pct", "mid_made", "mid_att", "mid_pct",
-    "adjoe", "adrtg", "porpag", "dporpag", "bpm", "fic", "ppr", "per", "rgm_per", "off", "def", "tot", "ewins",
+    "adjoe", "adrtg", "ortg", "drtg", "porpag", "dporpag", "bpm", "fic", "ppr", "per", "rgm_per", "off", "def", "tot", "ewins",
     "orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "usg_pct", "ast_to",
     "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "stl_pg", "blk_pg", "tov_pg", "pf_pg", "stocks_pg",
     "fgm_pg", "fga_pg", "two_pm_pg", "two_pa_pg", "three_pm_pg", "three_pa_pg", "ftm_pg", "fta_pg", "ast_stl_pg",

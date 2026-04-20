@@ -385,7 +385,7 @@ a,
 .demo-range-item,
 .filter-row {
   display: grid;
-  grid-template-columns: 126px 36px 36px;
+  grid-template-columns: 150px 36px 36px;
   gap: 2px;
   align-items: center;
   justify-content: center;
@@ -683,9 +683,17 @@ a,
   color: var(--muted);
 }
 
+.player-profile-layout {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  align-items: stretch;
+}
+
 .player-profile-column-controls {
-  padding: 8px 18px 10px;
-  border-bottom: 1px solid var(--line-soft);
+  max-height: calc(92vh - 86px);
+  overflow: auto;
+  padding: 10px;
+  border-right: 1px solid var(--line-soft);
   background: #fafafa;
 }
 
@@ -706,14 +714,11 @@ a,
 }
 
 .player-profile-column-groups {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 6px;
 }
 
 .player-profile-column-group {
-  min-width: 132px;
-  max-width: 220px;
   border: 1px solid var(--line-soft);
   border-radius: 6px;
   background: #fff;
@@ -725,7 +730,23 @@ a,
   cursor: pointer;
 }
 
-.player-profile-column-group > div {
+.player-profile-column-group-actions {
+  display: flex;
+  gap: 4px;
+  padding: 0 7px 5px;
+}
+
+.player-profile-column-group-actions button {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 2px 5px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.player-profile-column-options {
   max-height: 190px;
   overflow: auto;
   padding: 2px 7px 7px;
@@ -743,7 +764,7 @@ a,
 }
 
 .player-profile-table-wrap {
-  max-height: calc(92vh - 150px);
+  max-height: calc(92vh - 86px);
   overflow: auto;
 }
 
@@ -851,7 +872,7 @@ body.profile-route-active .home-content.profile-content {
 
 body.profile-route-active .player-profile-table-wrap {
   width: 100%;
-  max-height: calc(100vh - 178px);
+  max-height: calc(100vh - 122px);
   border-top: 1px solid var(--line-soft);
 }
 
@@ -1059,6 +1080,20 @@ body.profile-route-active .player-profile-table td {
 
   .table-legend {
     font-size: 10px;
+  }
+
+  .player-profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .player-profile-column-controls {
+    max-height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .player-profile-table-wrap {
+    max-height: calc(100vh - 320px);
   }
 }
 

@@ -23,6 +23,9 @@ const PLAYTYPE_NAME_TO_ID = {
   "Offensive Rebounds": "offensive_rebounds",
 };
 
+const ALIAS_REVERSE_CACHE = new WeakMap();
+const TEAM_ALIAS_KEYS_CACHE = new WeakMap();
+
 const BART_FIELDS = [
   ["team_name", 0],
   ["adj_oe", 1],
@@ -135,6 +138,59 @@ function cleanText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+const TEAM_MASCOT_SUFFIX_RE = /\b(49ers|aggies|anteaters|bears|bearcats|bengals|bison|blackbirds|blue devils|bluejays|bobcats|broncos|bruin|bruins|bulldogs|cardinals|cavaliers|colonels|colonials|commodores|cougars|cowboys|crusaders|dons|dragons|dukes|eagles|falcons|flames|friars|gaels|gators|golden bears|golden eagles|hawks|highlanders|hilltoppers|horned frogs|hornets|huskies|jaguars|jayhawks|lions|lobos|longhorns|minutemen|mountaineers|mustangs|nittany lions|owls|panthers|patriots|pilots|pioneers|pirates|rams|razorbacks|rebels|red raiders|redbirds|retrievers|road runners|roadrunners|seawolves|spartans|spiders|tar heels|terriers|tigers|titans|toreros|trojans|volunteers|wildcats|wolf pack|wolfpack|wolverines|yellow jackets)$/i;
+const GENERIC_TEAM_ALIAS_KEYS = new Set(["state", "st", "saint", "university", "college", "the"]);
+const MANUAL_D1_TEAM_ALIASES = {
+  byu: "Brigham Young",
+  smu: "Southern Methodist",
+  "n c state": "North Carolina State",
+  "nc state": "North Carolina State",
+  "cal baptist": "California Baptist",
+  "cal baptist university": "California Baptist",
+  penn: "Pennsylvania",
+  fiu: "Florida International",
+  "detroit mercy": "Detroit",
+  liu: "Long Island",
+  "iu indy": "Indianapolis",
+  iupui: "Indianapolis",
+  utsa: "Texas San Antonio",
+  vmi: "Virginia Military",
+  "texas a and m corpus chris": "Texas A&M Corpus Christi",
+  "texas a m corpus chris": "Texas A&M Corpus Christi",
+};
+
+function stripTeamSuffixKey(value) {
+  return normalizeKey(value)
+    .replace(TEAM_MASCOT_SUFFIX_RE, "")
+    .replace(/\b(university|college|the)\b/g, " ")
+    .replace(/\bof\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function addExpandedTeamKeys(keys, value) {
+  const normalized = normalizeKey(value);
+  const stripped = stripTeamSuffixKey(value);
+  [normalized, stripped].filter(Boolean).forEach((key) => {
+    keys.add(key);
+    keys.add(key.replace(/\s+/g, ""));
+    if (/\bst\b/.test(key)) {
+      keys.add(key.replace(/\bst\b/g, "state"));
+      keys.add(key.replace(/\bst\b/g, "saint"));
+      keys.add(key.replace(/\bst\b/g, "state").replace(/\s+/g, ""));
+      keys.add(key.replace(/\bst\b/g, "saint").replace(/\s+/g, ""));
+    }
+    if (/\bstate\b/.test(key)) {
+      keys.add(key.replace(/\bstate\b/g, "st"));
+      keys.add(key.replace(/\bstate\b/g, "st").replace(/\s+/g, ""));
+    }
+    if (/\bsaint\b/.test(key)) {
+      keys.add(key.replace(/\bsaint\b/g, "st"));
+      keys.add(key.replace(/\bsaint\b/g, "st").replace(/\s+/g, ""));
+    }
+  });
+}
+
 function parseNumber(value) {
   const text = cleanText(value).replace(/,/g, "").replace(/%$/, "");
   if (!text) return "";
@@ -221,9 +277,62 @@ function loadAliasMap() {
 function canonicalTeam(value, aliasMap) {
   const key = normalizeKey(value);
   if (!key) return "";
+  if (MANUAL_D1_TEAM_ALIASES[key]) return MANUAL_D1_TEAM_ALIASES[key];
   if (aliasMap.has(key)) return aliasMap.get(key);
-  const stripped = key.replace(/\b(aggies|bears|bengals|bison|blue devils|bobcats|broncos|bulldogs|cardinals|cavaliers|colonials|cowboys|crusaders|eagles|falcons|flames|friars|gaels|golden bears|golden eagles|hawks|highlanders|hornets|huskies|jaguars|lions|minutemen|mountaineers|mustangs|panthers|patriots|pilots|pioneers|rams|rebels|redbirds|seawolves|spiders|tigers|titans|trojans|wildcats|wolfpack)$/i, "").trim();
-  return aliasMap.get(stripped) || cleanText(value).replace(/\s+(Aggies|Bears|Bengals|Bison|Blue Devils|Bobcats|Broncos|Bulldogs|Cardinals|Cavaliers|Colonials|Cowboys|Crusaders|Eagles|Falcons|Flames|Friars|Gaels|Golden Bears|Golden Eagles|Hawks|Highlanders|Hornets|Huskies|Jaguars|Lions|Minutemen|Mountaineers|Mustangs|Panthers|Patriots|Pilots|Pioneers|Rams|Rebels|Redbirds|Seawolves|Spiders|Tigers|Titans|Trojans|Wildcats|Wolfpack)$/i, "");
+  const stripped = stripTeamSuffixKey(value);
+  if (MANUAL_D1_TEAM_ALIASES[stripped]) return MANUAL_D1_TEAM_ALIASES[stripped];
+  if (aliasMap.has(stripped)) return aliasMap.get(stripped);
+  const expanded = new Set();
+  addExpandedTeamKeys(expanded, value);
+  for (const candidate of expanded) {
+    if (aliasMap.has(candidate)) return aliasMap.get(candidate);
+  }
+  return aliasMap.get(stripped) || cleanText(value).replace(TEAM_MASCOT_SUFFIX_RE, "").trim();
+}
+
+function teamAliasKeys(value, aliasMap) {
+  if (!aliasMap || !aliasMap.size) {
+    const keys = new Set();
+    addExpandedTeamKeys(keys, value);
+    return Array.from(keys).filter(Boolean);
+  }
+  let memo = TEAM_ALIAS_KEYS_CACHE.get(aliasMap);
+  if (!memo) {
+    memo = new Map();
+    TEAM_ALIAS_KEYS_CACHE.set(aliasMap, memo);
+  }
+  const memoKey = normalizeKey(value);
+  if (memo.has(memoKey)) return memo.get(memoKey);
+  const keys = new Set();
+  addExpandedTeamKeys(keys, value);
+  const canonical = canonicalTeam(value, aliasMap);
+  addExpandedTeamKeys(keys, canonical);
+  const direct = aliasMap.get(normalizeKey(value)) || aliasMap.get(stripTeamSuffixKey(value));
+  addExpandedTeamKeys(keys, direct);
+  if (canonical) {
+    (getAliasReverseMap(aliasMap).get(normalizeKey(canonical)) || []).forEach((aliasKey) => addExpandedTeamKeys(keys, aliasKey));
+  }
+  const out = Array.from(keys).filter((key) => key && !GENERIC_TEAM_ALIAS_KEYS.has(key));
+  memo.set(memoKey, out);
+  return out;
+}
+
+function getAliasReverseMap(aliasMap) {
+  if (ALIAS_REVERSE_CACHE.has(aliasMap)) return ALIAS_REVERSE_CACHE.get(aliasMap);
+  const reverse = new Map();
+  for (const [aliasKey, aliasCanonical] of aliasMap.entries()) {
+    const canonicalKey = normalizeKey(aliasCanonical);
+    if (!canonicalKey) continue;
+    if (!reverse.has(canonicalKey)) reverse.set(canonicalKey, []);
+    reverse.get(canonicalKey).push(aliasKey);
+  }
+  ALIAS_REVERSE_CACHE.set(aliasMap, reverse);
+  return reverse;
+}
+
+function teamKeySetsOverlap(left, right) {
+  const rightSet = new Set(right || []);
+  return (left || []).some((key) => rightSet.has(key));
 }
 
 async function fetchWithCache(url, cacheName, options = {}) {
@@ -316,14 +425,19 @@ function loadD1ConferenceMap(aliasMap) {
       rows.forEach((row) => {
         const team = canonicalTeam(row.team_name || row.team_full, aliasMap);
         const conf = cleanText(row.conference);
-        if (team && conf && !map.has(`${year}|${normalizeKey(team)}`)) map.set(`${year}|${normalizeKey(team)}`, conf);
+        if (!team || !conf) return;
+        teamAliasKeys(team, aliasMap).forEach((key) => {
+          const mapKey = `${year}|${key}`;
+          if (!map.has(mapKey)) map.set(mapKey, conf);
+        });
       });
     });
   return map;
 }
 
 function loadPlaytypeRows(aliasMap) {
-  const byYearTeam = new Map();
+  const byPrimaryTeam = new Map();
+  const byLookupKey = new Map();
   fs.readdirSync(PLAYTYPE_DIR)
     .filter((file) => file.endsWith(".csv"))
     .forEach((file) => {
@@ -336,9 +450,9 @@ function loadPlaytypeRows(aliasMap) {
       rows.forEach((source) => {
         const team = canonicalTeam(source.Team, aliasMap);
         if (!team) return;
-        const key = `${season}|${normalizeKey(team)}`;
-        if (!byYearTeam.has(key)) byYearTeam.set(key, { season, team_name: team });
-        const row = byYearTeam.get(key);
+        const primaryKey = `${season}|${normalizeKey(team)}`;
+        if (!byPrimaryTeam.has(primaryKey)) byPrimaryTeam.set(primaryKey, { season, team_name: team });
+        const row = byPrimaryTeam.get(primaryKey);
         row[`${playtypeId}_freq`] = parseNumber(source["%Time"]);
         row[`${playtypeId}_poss`] = parseNumber(source.Poss);
         row[`${playtypeId}_ppp`] = parseNumber(source.PPP);
@@ -348,18 +462,33 @@ function loadPlaytypeRows(aliasMap) {
         row[`${playtypeId}_fg_pct`] = parseNumber(source["FG%"]);
         row[`${playtypeId}_three_pa_rate`] = parseNumber(source["3PA/FGA"]);
         row[`${playtypeId}_ft_rate`] = parseNumber(source["FTA/FGA"]);
+        teamAliasKeys(source.Team, aliasMap).concat(teamAliasKeys(team, aliasMap)).forEach((lookupKey) => {
+          byLookupKey.set(`${season}|${lookupKey}`, row);
+        });
       });
     });
-  return byYearTeam;
+  return { rows: byPrimaryTeam, index: byLookupKey };
+}
+
+function lookupPlaytypeRow(playtypes, year, team, rawTeam, aliasMap) {
+  const keys = new Set([
+    ...teamAliasKeys(team, aliasMap),
+    ...teamAliasKeys(rawTeam, aliasMap),
+  ]);
+  for (const key of keys) {
+    const row = playtypes.index.get(`${year}|${key}`);
+    if (row) return row;
+  }
+  return null;
 }
 
 function coachForTeam(coachDict, year, team, aliasMap) {
   const yearDict = coachDict[String(year)] || {};
   const direct = yearDict[team] || yearDict[canonicalTeam(team, aliasMap)];
   if (direct) return cleanText(direct);
-  const targetKey = normalizeKey(canonicalTeam(team, aliasMap));
+  const targetKeys = teamAliasKeys(team, aliasMap);
   for (const [candidate, coach] of Object.entries(yearDict)) {
-    if (normalizeKey(canonicalTeam(candidate, aliasMap)) === targetKey) return cleanText(coach);
+    if (teamKeySetsOverlap(targetKeys, teamAliasKeys(candidate, aliasMap))) return cleanText(coach);
   }
   return "";
 }
@@ -369,22 +498,24 @@ async function main() {
   const coachDict = loadCoachDict();
   const conferences = loadD1ConferenceMap(aliasMap);
   const playtypes = loadPlaytypeRows(aliasMap);
-  const years = Array.from(new Set(Array.from(playtypes.values()).map((row) => row.season))).sort();
+  const years = Array.from(new Set(Array.from(playtypes.rows.values()).map((row) => row.season))).sort();
   const rows = [];
+  let playtypeMatched = 0;
   for (const year of years) {
     const gdata = await fetchBartTeamTable(year);
     gdata.forEach((entry) => {
       const team = canonicalTeam(entry[0], aliasMap);
       if (!team) return;
-      const key = `${year}|${normalizeKey(team)}`;
-      const row = { ...(playtypes.get(key) || {}), season: Number(year), team_name: team };
+      const playtypeRow = lookupPlaytypeRow(playtypes, year, team, entry[0], aliasMap);
+      if (playtypeRow) playtypeMatched += 1;
+      const row = { ...(playtypeRow || {}), season: Number(year), team_name: team };
       BART_FIELDS.forEach(([column, index]) => {
         if (column === "team_name") return;
         row[column] = typeof entry[index] === "number" ? Number(entry[index].toFixed(6)) : cleanText(entry[index]);
       });
       row.coach = coachForTeam(coachDict, year, team, aliasMap);
-      row.conference = conferences.get(key) || "";
-      row.team_search_text = normalizeKey([team, entry[0]].filter(Boolean).join(" "));
+      row.conference = teamAliasKeys(team, aliasMap).map((key) => conferences.get(`${year}|${key}`)).find(Boolean) || "";
+      row.team_search_text = normalizeKey([team, entry[0], ...teamAliasKeys(team, aliasMap)].filter(Boolean).join(" "));
       row.coach_search_text = normalizeKey(row.coach);
       rows.push(row);
     });
@@ -406,7 +537,7 @@ async function main() {
   });
   const csv = dictRowsToCsv(rows, COLUMNS);
   fs.writeFileSync(OUT_PATH, `window.TEAM_COACH_ALL_CSV=${JSON.stringify(csv)};\n`, "utf8");
-  console.log(`Wrote ${rows.length} team/coach rows to ${path.relative(ROOT, OUT_PATH)}`);
+  console.log(`Wrote ${rows.length} team/coach rows to ${path.relative(ROOT, OUT_PATH)} (${playtypeMatched} matched playtype rows)`);
 }
 
 main().catch((error) => {

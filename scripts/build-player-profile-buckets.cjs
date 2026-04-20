@@ -83,6 +83,8 @@ const PROFILE_COLUMNS = [
   "three_pr",
   "adjoe",
   "adrtg",
+  "ortg",
+  "drtg",
   "porpag",
   "dporpag",
   "bpm",

@@ -996,14 +996,14 @@ def normalize_realgm_reference_family(value: object) -> str:
         candidates.append(clean_text(value))
 
     normalized = {normalize_key(candidate) for candidate in candidates if clean_text(candidate)}
+    if normalized & {"college", "ncaa", "college crawl", "player seasons csv", "season summary"}:
+        return "college"
     if normalized & {"international", "fiba", "international summary", "international player seasons csv"}:
         return "international"
     if normalized & {"gleague", "g league", "gleague crawl", "g league crawl"}:
         return "gleague"
     if normalized & {"nba", "nba crawl", "nba totals csv", "nba advanced csv"}:
         return "nba"
-    if normalized & {"college", "ncaa", "college crawl", "player seasons csv", "season summary"}:
-        return "college"
     return ""
 
 
@@ -2559,11 +2559,13 @@ def apply_college_rim_dataset(dataset_id: str, rows: list[dict[str, object]], co
     matched = 0
     ambiguous = 0
     missing = 0
+    zero_inferred = 0
     index = build_rim_row_index(rows, dataset_id, config["player_column"], config["team_column"], team_alias_map)
     for file_path in sorted(config["rim_dir"].glob("*.csv")):
         season = config["season_parser"](file_path.name)
         if not season:
             continue
+        matched_row_ids: set[int] = set()
         for rim_row in load_plain_csv_rows(file_path):
             total += 1
             match = resolve_rim_match(index, dataset_id, season, rim_row.get("Player"), rim_row.get("Team"), team_alias_map, rim_row.get("GP"))
@@ -2579,8 +2581,10 @@ def apply_college_rim_dataset(dataset_id: str, rows: list[dict[str, object]], co
                 continue
             matched += 1
             match["row"].update(supplement)
+            matched_row_ids.add(id(match["row"]))
             register_team_alias(team_alias_map, team_alias_details, rim_row.get("Team"), clean_text(match["row"].get(config["team_column"])), "rim", SITE_DATASETS[dataset_id]["profile_level"], 0.9)
-    return {"total": total, "matched": matched, "ambiguous": ambiguous, "missing": missing}
+        zero_inferred += infer_zero_rim_rows_for_context(rows, dataset_id, season, "", config["two_att"], config["two_made"], matched_row_ids)
+    return {"total": total, "matched": matched, "ambiguous": ambiguous, "missing": missing, "zero_inferred": zero_inferred}
 
 
 def apply_fiba_rim_dataset(rows: list[dict[str, object]], config: dict[str, object], team_alias_map: dict[str, dict[str, object]], team_alias_details: dict[str, dict[str, object]]) -> dict[str, int]:
@@ -2588,12 +2592,14 @@ def apply_fiba_rim_dataset(rows: list[dict[str, object]], config: dict[str, obje
     matched = 0
     ambiguous = 0
     missing = 0
+    zero_inferred = 0
     index = build_rim_row_index(rows, "fiba", config["player_column"], config["team_column"], team_alias_map)
     for rim_dir, competition_key in config["rim_dirs"]:
         for file_path in sorted(rim_dir.glob("*.csv")):
             season = config["season_parser"](file_path.name)
             if not season:
                 continue
+            matched_row_ids: set[int] = set()
             for rim_row in load_plain_csv_rows(file_path):
                 total += 1
                 match = resolve_rim_match(index, "fiba", season, rim_row.get("Player"), rim_row.get("Team"), team_alias_map, rim_row.get("GP"), competition_key)
@@ -2609,8 +2615,10 @@ def apply_fiba_rim_dataset(rows: list[dict[str, object]], config: dict[str, obje
                     continue
                 matched += 1
                 match["row"].update(supplement)
+                matched_row_ids.add(id(match["row"]))
                 register_team_alias(team_alias_map, team_alias_details, rim_row.get("Team"), clean_text(match["row"].get("team_name")), "rim", "FIBA", 0.9)
-    return {"total": total, "matched": matched, "ambiguous": ambiguous, "missing": missing}
+            zero_inferred += infer_zero_rim_rows_for_context(rows, "fiba", season, competition_key, config["two_att"], config["two_made"], matched_row_ids)
+    return {"total": total, "matched": matched, "ambiguous": ambiguous, "missing": missing, "zero_inferred": zero_inferred}
 
 
 def build_rim_row_index(rows: list[dict[str, object]], dataset_id: str, player_column: str, team_column: str, team_alias_map: dict[str, dict[str, object]]) -> dict[str, object]:
@@ -2766,6 +2774,62 @@ def score_rim_gp_match(site_gp: object, rim_gp: object) -> float:
     if gap <= 3.0:
         return 1.0
     return 0.0
+
+
+def row_has_rim_mid_profile(row: dict[str, object]) -> bool:
+    for column in ("rim_made", "rim_att", "mid_made", "mid_att"):
+        if first_number(row.get(column)) is not None:
+            return True
+    return bool(clean_text(row.get("rim_pct")) or clean_text(row.get("mid_pct")))
+
+
+def build_zero_rim_supplement(row: dict[str, object], two_att_fn, two_made_fn) -> dict[str, object] | None:
+    two_att = two_att_fn(row)
+    two_made = two_made_fn(row)
+    if two_att is None or two_att <= 0:
+        return None
+    if two_made is None:
+        return None
+    two_att = max(0.0, float(two_att))
+    two_made = max(0.0, min(float(two_made), two_att))
+    return {
+        "rim_made": 0,
+        "rim_att": 0,
+        "rim_pct": 0,
+        "mid_made": round_number(two_made, 3),
+        "mid_att": round_number(two_att, 3),
+        "mid_pct": round_number(zero_safe_percent(two_made, two_att), 1),
+        "rim_source_gp": first_number(row.get("gp"), row.get("g")) or "",
+    }
+
+
+def infer_zero_rim_rows_for_context(
+    rows: list[dict[str, object]],
+    dataset_id: str,
+    season: str,
+    competition_key: str,
+    two_att_fn,
+    two_made_fn,
+    matched_row_ids: set[int],
+) -> int:
+    inferred = 0
+    season_key = clean_text(season)
+    competition = clean_text(competition_key)
+    for row in rows:
+        if id(row) in matched_row_ids:
+            continue
+        if clean_text(row.get("season")) != season_key:
+            continue
+        if dataset_id == "fiba" and clean_text(row.get("competition_key")) != competition:
+            continue
+        if row_has_rim_mid_profile(row):
+            continue
+        supplement = build_zero_rim_supplement(row, two_att_fn, two_made_fn)
+        if not supplement:
+            continue
+        row.update(supplement)
+        inferred += 1
+    return inferred
 
 
 def build_rim_supplement(row: dict[str, object], rim_row: dict[str, object], two_att_fn, two_made_fn) -> dict[str, object] | None:
@@ -3062,39 +3126,21 @@ def build_realgm_overlay_for_site_row(dataset_id: str, row: dict[str, object], p
     stats = match.get("stats") if isinstance(match, dict) else {}
     if not isinstance(stats, dict):
         return {}
-
-    gp = to_float(stats.get("gp"))
-    mpg = to_float(stats.get("min"))
-    pts_pg = to_float(stats.get("pts"))
-    trb_pg = first_number(stats.get("trb"), stats.get("reb"))
-    ast_pg = to_float(stats.get("ast"))
-    stl_pg = to_float(stats.get("stl"))
-    blk_pg = to_float(stats.get("blk"))
-    tov_pg = to_float(stats.get("tov"))
-
-    return {
-        "dob": clean_text(profile.get("born_iso")),
-        "age": to_float(stats.get("age")),
-        "class_year": clean_text(stats.get("class")),
-        "gp": gp,
-        "mpg": mpg,
-        "min": round_number(gp * mpg, 3) if gp is not None and mpg is not None else "",
-        "pts_pg": pts_pg,
-        "trb_pg": trb_pg,
-        "ast_pg": ast_pg,
-        "stl_pg": stl_pg,
-        "blk_pg": blk_pg,
-        "tov_pg": tov_pg,
-        "pts": round_number(gp * pts_pg, 3) if gp is not None and pts_pg is not None else "",
-        "trb": round_number(gp * trb_pg, 3) if gp is not None and trb_pg is not None else "",
-        "ast": round_number(gp * ast_pg, 3) if gp is not None and ast_pg is not None else "",
-        "stl": round_number(gp * stl_pg, 3) if gp is not None and stl_pg is not None else "",
-        "blk": round_number(gp * blk_pg, 3) if gp is not None and blk_pg is not None else "",
-        "tov": round_number(gp * tov_pg, 3) if gp is not None and tov_pg is not None else "",
-        "fg_pct": normalize_site_percent_value("realgm", "fg_pct", first_non_blank(stats.get("fg"), stats.get("fg_pct"))),
-        "three_p_pct": normalize_site_percent_value("realgm", "three_p_pct", first_non_blank(stats.get("3p"), stats.get("3p_pct"))),
-        "ft_pct": normalize_site_percent_value("realgm", "ft_pct", first_non_blank(stats.get("ft"), stats.get("ft_pct"))),
-    }
+    source_name = {
+        "d1": "realgm_college",
+        "d2": "realgm_college",
+        "naia": "realgm_college",
+        "juco": "realgm_college",
+        "fiba": "realgm_international",
+        "nba": "realgm_nba",
+    }.get(dataset_id)
+    if not source_name:
+        return {}
+    canonical_id = clean_text(row.get("_canonical_player_id") or row.get("canonical_player_id") or profile.get("canonical_player_id"))
+    overlay = standardize_realgm_row_for_player_career(source_name, canonical_id, profile, profile, stats)
+    if clean_text(profile.get("born_iso")):
+        overlay["dob"] = clean_text(profile.get("born_iso"))
+    return overlay
 
 
 def find_matching_realgm_season_entry(dataset_id: str, row: dict[str, object], profile: dict[str, object]) -> dict[str, object] | None:
@@ -3429,22 +3475,22 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "mpg": first_number(row.get("mpg"), realgm_overlay.get("mpg")),
         "pts": first_number(row.get("pts"), realgm_overlay.get("pts")),
         "trb": first_number(row.get("trb"), row.get("reb"), realgm_overlay.get("trb")),
-        "orb": first_number(row.get("orb")),
-        "drb": first_number(row.get("drb")),
+        "orb": first_number(row.get("orb"), realgm_overlay.get("orb")),
+        "drb": first_number(row.get("drb"), realgm_overlay.get("drb")),
         "ast": first_number(row.get("ast"), realgm_overlay.get("ast")),
         "stl": first_number(row.get("stl"), realgm_overlay.get("stl")),
         "blk": first_number(row.get("blk"), realgm_overlay.get("blk")),
         "tov": first_number(row.get("tov"), realgm_overlay.get("tov")),
-        "pf": first_number(row.get("pf")),
+        "pf": first_number(row.get("pf"), realgm_overlay.get("pf")),
         "stocks": first_number(row.get("stocks"), add_numbers(first_number(row.get("stl"), realgm_overlay.get("stl")), first_number(row.get("blk"), realgm_overlay.get("blk")))),
-        "fgm": first_number(row.get("fgm")),
-        "fga": first_number(row.get("fga"), row.get("fg_att")),
-        "two_pm": first_number(row.get("two_pm"), row.get("2pm"), row.get("two_p_made")),
-        "two_pa": first_number(row.get("two_pa"), row.get("2pa"), row.get("two_p_att")),
-        "three_pm": first_number(row.get("three_pm"), row.get("3pm"), row.get("tpm"), row.get("three_p_made")),
-        "three_pa": first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa"), row.get("three_p_att")),
-        "ftm": first_number(row.get("ftm")),
-        "fta": first_number(row.get("fta")),
+        "fgm": first_number(row.get("fgm"), realgm_overlay.get("fgm")),
+        "fga": first_number(row.get("fga"), row.get("fg_att"), realgm_overlay.get("fga")),
+        "two_pm": first_number(row.get("two_pm"), row.get("2pm"), row.get("two_p_made"), realgm_overlay.get("two_pm")),
+        "two_pa": first_number(row.get("two_pa"), row.get("2pa"), row.get("two_p_att"), realgm_overlay.get("two_pa")),
+        "three_pm": first_number(row.get("three_pm"), row.get("3pm"), row.get("tpm"), row.get("three_p_made"), realgm_overlay.get("three_pm")),
+        "three_pa": first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa"), row.get("three_p_att"), realgm_overlay.get("three_pa")),
+        "ftm": first_number(row.get("ftm"), realgm_overlay.get("ftm")),
+        "fta": first_number(row.get("fta"), realgm_overlay.get("fta")),
         "fga_75": first_number(row.get("fga_75")),
         "fta_75": first_number(row.get("fta_75")),
         "fg3a_75": first_number(row.get("fg3a_75")),
@@ -3454,8 +3500,8 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "ft_pct": first_non_blank(normalize_site_percent_value(dataset_id, "ft_pct", first_non_blank(row.get("ft_pct"), row.get("ftpct"))), realgm_overlay.get("ft_pct")),
         "efg_pct": first_non_blank(normalize_site_percent_value(dataset_id, "efg_pct", first_non_blank(row.get("efg_pct"), row.get("efg"))), realgm_overlay.get("efg_pct")),
         "ts_pct": first_non_blank(normalize_site_percent_value(dataset_id, "ts_pct", first_non_blank(row.get("ts_pct"), row.get("tspct"))), realgm_overlay.get("ts_pct")),
-        "ftr": normalize_ratio_field(ftr_value),
-        "three_pr": normalize_ratio_field(three_pr_value),
+        "ftr": first_non_blank(normalize_ratio_field(ftr_value), realgm_overlay.get("ftr")),
+        "three_pr": first_non_blank(normalize_ratio_field(three_pr_value), realgm_overlay.get("three_pr")),
         "rim_made": first_number(row.get("rim_made")),
         "rim_att": first_number(row.get("rim_att")),
         "rim_pct": normalize_site_percent_value(dataset_id, "rim_pct", first_non_blank(row.get("rim_pct"), row.get("fgpct_rim"))),
@@ -3464,10 +3510,12 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "mid_pct": normalize_site_percent_value(dataset_id, "mid_pct", first_non_blank(row.get("mid_pct"), row.get("fgpct_mid"))),
         "adjoe": first_number(row.get("adjoe")),
         "adrtg": first_number(row.get("adrtg")),
+        "ortg": first_number(row.get("ortg"), realgm_overlay.get("ortg")),
+        "drtg": first_number(row.get("drtg"), realgm_overlay.get("drtg")),
         "porpag": first_number(row.get("porpag")),
         "dporpag": first_number(row.get("dporpag")),
         "bpm": first_number(row.get("bpm")),
-        "per": first_number(row.get("per")),
+        "per": first_number(row.get("per"), realgm_overlay.get("per")),
         "rgm_per": first_number(row.get("rgm_per")),
         "off": first_number(row.get("off")),
         "def": first_number(row.get("def")),
@@ -3481,7 +3529,7 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "stl_pct": first_non_blank(normalize_site_percent_value(dataset_id, "stl_pct", first_non_blank(row.get("stl_pct"), row.get("stlpct"))), realgm_overlay.get("stl_pct")),
         "blk_pct": first_non_blank(normalize_site_percent_value(dataset_id, "blk_pct", first_non_blank(row.get("blk_pct"), row.get("blkpct"))), realgm_overlay.get("blk_pct")),
         "usg_pct": first_non_blank(normalize_site_percent_value(dataset_id, "usg_pct", first_non_blank(row.get("usg_pct"), row.get("usg"))), realgm_overlay.get("usg_pct")),
-        "ast_to": first_number(row.get("ast_to")),
+        "ast_to": first_number(row.get("ast_to"), realgm_overlay.get("ast_to")),
     }
     append_player_career_passthrough_fields(out, row)
     apply_player_career_shooting_derivations(out)
@@ -3500,21 +3548,37 @@ GRASSROOTS_PLAYER_CAREER_SUM_COLUMNS = (
 
 GRASSROOTS_PLAYER_CAREER_WEIGHTED_COLUMNS = (
     "usg_pct", "ram", "c_ram", "psp", "three_pe", "dsi", "adj_bpm",
-    "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct",
-    "ftr", "three_pr", "ftm_fga", "three_pr_plus_ftm_fga", "blk_pf", "stl_pf", "stocks_pf",
+    "ftm_fga", "three_pr_plus_ftm_fga", "blk_pf", "stl_pf", "stocks_pf",
 )
+
+
+def normalize_grassroots_career_event_key(value: object) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    text = re.sub(r"\s+-\s+Session\s+[IVXLC0-9]+(?:\s*\([^)]*\))?", "", text, flags=re.I)
+    text = re.sub(r"\s+Session\s+[IVXLC0-9]+(?:\s*\([^)]*\))?", "", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text).strip()
+    return normalize_key(text)
 
 
 def get_grassroots_player_career_group_key(row: dict[str, object]) -> tuple[str, ...]:
     season = clean_text(row.get("season"))
     name_key = normalize_name_key(row.get("player_name"))
+    event_key = (
+        normalize_grassroots_career_event_key(row.get("event_group"))
+        or normalize_grassroots_career_event_key(row.get("event_name"))
+        or normalize_grassroots_career_event_key(row.get("league"))
+        or "event"
+    )
+    team_key = normalize_key(row.get("team_name") or row.get("team_full")) or "team"
     if name_key and season:
-        return ("name", name_key, season)
+        return ("name", name_key, season, event_key, team_key)
     realgm_player_id = clean_text(row.get("realgm_player_id"))
     if realgm_player_id and season:
-        return ("rgm", realgm_player_id, season)
+        return ("rgm", realgm_player_id, season, event_key, team_key)
     canonical_id = clean_text(row.get("canonical_player_id") or row.get("player_id"))
-    return ("fallback", canonical_id, season)
+    return ("fallback", canonical_id, season, event_key, team_key)
 
 
 def aggregate_grassroots_player_career_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -3552,14 +3616,21 @@ def aggregate_grassroots_player_career_rows(rows: list[dict[str, object]]) -> li
         out["team_name"] = team_names[0] if len(team_names) == 1 else ("Multiple" if team_names else clean_text(out.get("team_name")))
         out["team_full"] = team_fulls[0] if len(team_fulls) == 1 else ("Multiple" if team_fulls else out["team_name"])
         out["league"] = circuits[0] if len(circuits) == 1 else ("Multiple" if circuits else clean_text(out.get("league")))
-        out["event_name"] = "Year Total"
-        out["event_group"] = "Year Total"
-        out["event_raw_name"] = ""
-        out["event_aliases"] = ""
-        out["event_url"] = ""
+        event_groups = sorted({clean_text(row.get("event_group")) for row in group_rows if clean_text(row.get("event_group"))})
+        event_names = sorted({clean_text(row.get("event_name")) for row in group_rows if clean_text(row.get("event_name"))})
+        raw_events = sorted({clean_text(row.get("event_raw_name")) for row in group_rows if clean_text(row.get("event_raw_name"))})
+        urls = sorted({clean_text(row.get("event_url")) for row in group_rows if clean_text(row.get("event_url"))})
+        out["event_group"] = event_groups[0] if len(event_groups) == 1 else (event_names[0] if len(event_names) == 1 else clean_text(out.get("event_group")))
+        out["event_name"] = out["event_group"] or (event_names[0] if event_names else clean_text(out.get("event_name")))
+        out["event_raw_name"] = " / ".join(raw_events[:4])
+        out["event_aliases"] = " / ".join(sorted({clean_text(row.get("event_aliases")) for row in group_rows if clean_text(row.get("event_aliases"))})[:4])
+        out["event_url"] = " / ".join(urls[:4])
         out["page_index"] = ""
         out["rank"] = ""
         out["event_total_players"] = ""
+        apply_player_career_shooting_derivations(out)
+        fill_per_game_and_per40(out)
+        fill_player_career_impact_metrics(out)
         aggregated.append(out)
 
     aggregated.sort(key=lambda row: (normalize_name_key(row.get("player_name")), clean_text(row.get("season")), normalize_key(row.get("team_name"))))
@@ -3648,12 +3719,11 @@ def build_realgm_only_rows(
         if not realgm_player_id:
             continue
         source_groups = [
+            ("realgm_college", profile.get("college_seasons") or []),
             ("realgm_international", profile.get("intl_seasons") or []),
             ("realgm_gleague", profile.get("gleague_seasons") or []),
             ("realgm_nba", profile.get("nba_seasons") or []),
         ]
-        if canonical_id not in site_player_ids and (profile.get("college_seasons") or []):
-            source_groups.insert(0, ("realgm_college", profile.get("college_seasons") or []))
         for source_name, season_entries in source_groups:
             for entry in season_entries:
                 season_row = entry.get("stats") if isinstance(entry, dict) else {}
@@ -3683,6 +3753,14 @@ def realgm_counting_or_scaled_total(season_row: dict[str, object], column: str, 
     return round_number(gp * value, 3)
 
 
+def realgm_counting_or_scaled_total_any(season_row: dict[str, object], columns: tuple[str, ...], gp: float | None) -> float | str:
+    for column in columns:
+        value = realgm_counting_or_scaled_total(season_row, column, gp)
+        if first_number(value) is not None:
+            return value
+    return ""
+
+
 def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str, profile: dict[str, object], player_info: dict[str, object], season_row: dict[str, object]) -> dict[str, object]:
     team_name = clean_text(season_row.get("school") or season_row.get("team") or season_row.get("league"))
     gp = to_float(season_row.get("gp"))
@@ -3699,6 +3777,9 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
     three_pa_total = realgm_counting_or_scaled_total(season_row, "3pa", gp)
     ftm_total = realgm_counting_or_scaled_total(season_row, "ftm", gp)
     fta_total = realgm_counting_or_scaled_total(season_row, "fta", gp)
+    orb_total = realgm_counting_or_scaled_total_any(season_row, ("orb", "off"), gp)
+    drb_total = realgm_counting_or_scaled_total_any(season_row, ("drb", "def"), gp)
+    pf_total = realgm_counting_or_scaled_total(season_row, "pf", gp)
     two_pm_total = subtract_numbers(first_number(fgm_total), first_number(three_pm_total))
     two_pa_total = subtract_numbers(first_number(fga_total), first_number(three_pa_total))
     out = {
@@ -3737,13 +3818,13 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "mpg": mpg,
         "pts": round_number((gp * pts_pg), 3) if gp is not None and pts_pg is not None else "",
         "trb": round_number((gp * reb_pg), 3) if gp is not None and reb_pg is not None else "",
-        "orb": "",
-        "drb": "",
+        "orb": orb_total,
+        "drb": drb_total,
         "ast": round_number((gp * ast_pg), 3) if gp is not None and ast_pg is not None else "",
         "stl": round_number((gp * stl_pg), 3) if gp is not None and stl_pg is not None else "",
         "blk": round_number((gp * blk_pg), 3) if gp is not None and blk_pg is not None else "",
         "tov": round_number((gp * tov_pg), 3) if gp is not None and tov_pg is not None else "",
-        "pf": "",
+        "pf": pf_total,
         "stocks": round_number(gp * ((stl_pg or 0.0) + (blk_pg or 0.0)), 3) if gp is not None and (stl_pg is not None or blk_pg is not None) else "",
         "fgm": fgm_total,
         "fga": fga_total,
@@ -3772,24 +3853,26 @@ def standardize_realgm_row_for_player_career(source_name: str, canonical_id: str
         "mid_pct": "",
         "adjoe": "",
         "adrtg": "",
+        "ortg": first_number(season_row.get("ortg")),
+        "drtg": first_number(season_row.get("drtg")),
         "porpag": "",
         "dporpag": "",
         "bpm": "",
-        "per": "",
+        "per": first_number(season_row.get("per")),
         "rgm_per": "",
         "off": "",
         "def": "",
         "tot": "",
         "ewins": "",
-        "orb_pct": "",
-        "drb_pct": "",
-        "trb_pct": "",
-        "ast_pct": "",
-        "tov_pct": "",
-        "stl_pct": "",
-        "blk_pct": "",
-        "usg_pct": "",
-        "ast_to": "",
+        "orb_pct": normalize_site_percent_value("realgm", "orb_pct", season_row.get("orb_pct")),
+        "drb_pct": normalize_site_percent_value("realgm", "drb_pct", season_row.get("drb_pct")),
+        "trb_pct": normalize_site_percent_value("realgm", "trb_pct", season_row.get("trb_pct")),
+        "ast_pct": normalize_site_percent_value("realgm", "ast_pct", season_row.get("ast_pct")),
+        "tov_pct": normalize_site_percent_value("realgm", "tov_pct", season_row.get("tov_pct")),
+        "stl_pct": normalize_site_percent_value("realgm", "stl_pct", season_row.get("stl_pct")),
+        "blk_pct": normalize_site_percent_value("realgm", "blk_pct", season_row.get("blk_pct")),
+        "usg_pct": normalize_site_percent_value("realgm", "usg_pct", season_row.get("usg_pct")),
+        "ast_to": first_number(season_row.get("ast_to")),
         "pts_pg": pts_pg,
         "trb_pg": reb_pg,
         "ast_pg": ast_pg,
@@ -5253,11 +5336,15 @@ def pick_preferred_name(current: object, candidate: object) -> str:
 
 
 def player_career_source_key(row: dict[str, object]) -> str:
+    event_key = ""
+    if clean_text(row.get("event_group") or row.get("event_name") or row.get("competition_label")):
+        event_key = normalize_key(row.get("event_group") or row.get("event_name") or row.get("competition_label") or row.get("league"))
     return "|".join([
         clean_text(row.get("canonical_player_id")),
         clean_text(row.get("season")),
         normalize_key(row.get("team_name")),
         normalize_name_key(row.get("player_name")),
+        event_key,
     ])
 
 
