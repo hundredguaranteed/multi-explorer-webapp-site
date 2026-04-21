@@ -42,7 +42,7 @@ const INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT = "data/vendor/international_profi
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
 const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_buckets_manifest.js";
 const D1_FOUL_LOOKUP_SCRIPT = "data/vendor/d1_foul_lookup.js";
-const APP_BUILD_VERSION = "20260421-layout-v77";
+const APP_BUILD_VERSION = "20260421-status-v78";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -5995,6 +5995,7 @@ async function ensureStatusAnnotations(datasetId) {
     const staticIndex = await loadStatusRealgmIndex();
     resolveStaticStatusIdentitiesForDataset(source, staticIndex);
     if (applyStatusFlagsFromStaticRealgmIndex(source, staticIndex)) {
+      applyDirectStatusFlags(source.rows, source.id);
       source._rowVersion = (source._rowVersion || 0) + 1;
       invalidateDatasetDerivedCaches(source.id);
       source._statusAnnotated = true;
@@ -6002,6 +6003,7 @@ async function ensureStatusAnnotations(datasetId) {
     }
     const precomputed = await loadPrecomputedStatusAnnotations();
     if (applyPrecomputedStatusAnnotations(source, precomputed)) {
+      applyDirectStatusFlags(source.rows, source.id);
       source._rowVersion = (source._rowVersion || 0) + 1;
       invalidateDatasetDerivedCaches(source.id);
       source._statusAnnotated = true;
@@ -6013,6 +6015,7 @@ async function ensureStatusAnnotations(datasetId) {
     const graph = buildStatusGraph(datasets);
     annotateLinkedStatusMetrics(fallbackSource, graph);
     annotateStatusFlagsFromRealgmIndex(fallbackSource, datasets);
+    applyDirectStatusFlags(fallbackSource.rows, fallbackSource.id);
     fallbackSource._rowVersion = (fallbackSource._rowVersion || 0) + 1;
     invalidateDatasetDerivedCaches(fallbackSource.id);
     fallbackSource._statusAnnotated = true;
@@ -6535,7 +6538,9 @@ async function resolveGrassrootsStatusIdentities(dataset) {
 function getStaticStatusRangeValue(entry, slotLookup, slotName) {
   if (!Array.isArray(entry) || !slotLookup) return Number.NaN;
   const slotIndex = slotLookup[slotName];
-  const value = typeof slotIndex === "number" ? Number(entry[slotIndex]) : Number.NaN;
+  const rawValue = typeof slotIndex === "number" ? entry[slotIndex] : undefined;
+  if (rawValue == null || rawValue === "") return Number.NaN;
+  const value = Number(rawValue);
   return Number.isFinite(value) ? value : Number.NaN;
 }
 
@@ -12350,7 +12355,156 @@ function aggregateTeamCoachCareerRows(dataset, rows) {
   aggregate._searchHaystack = "";
   aggregate._colorBucketCacheKey = "";
   aggregate._colorBucketValue = "";
-  return enhanceRowForDataset(aggregate, dataset.id);
+  const enhanced = enhanceRowForDataset(aggregate, dataset.id);
+  recomputeCareerAggregateDerivedMetrics(enhanced, rows);
+  return enhanced;
+}
+
+function getFirstFiniteAliasValue(row, aliases) {
+  if (!row || !Array.isArray(aliases)) return Number.NaN;
+  for (const alias of aliases) {
+    const rawValue = row?.[alias];
+    if (rawValue == null || rawValue === "") continue;
+    const value = Number(rawValue);
+    if (Number.isFinite(value)) return value;
+  }
+  return Number.NaN;
+}
+
+function sumAliasColumnValues(rows, aliases) {
+  let total = 0;
+  let hasValue = false;
+  (rows || []).forEach((row) => {
+    const value = getFirstFiniteAliasValue(row, aliases);
+    if (!Number.isFinite(value)) return;
+    total += value;
+    hasValue = true;
+  });
+  return hasValue ? total : Number.NaN;
+}
+
+function rowsHaveOwnColumn(rows, column) {
+  return (rows || []).some((row) => row && Object.prototype.hasOwnProperty.call(row, column));
+}
+
+function hasCareerRelevantColumns(aggregate, rows, columns) {
+  return (columns || []).some((column) => Object.prototype.hasOwnProperty.call(aggregate || {}, column) || rowsHaveOwnColumn(rows, column));
+}
+
+function setCareerDerivedColumns(aggregate, rows, columns, value, requiredColumns = []) {
+  if (!(Number.isFinite(value) || value === 0)) return;
+  if (!hasCareerRelevantColumns(aggregate, rows, [...(columns || []), ...(requiredColumns || [])])) return;
+  (columns || []).forEach((column) => {
+    if (Object.prototype.hasOwnProperty.call(aggregate, column) || rowsHaveOwnColumn(rows, column)) {
+      aggregate[column] = value;
+    }
+  });
+}
+
+function getCareerAggregateTotalValue(aggregate, rows, aliases) {
+  const aggregateValue = getFirstFiniteAliasValue(aggregate, aliases);
+  if (Number.isFinite(aggregateValue)) return aggregateValue;
+  return sumAliasColumnValues(rows, aliases);
+}
+
+function getAssistedMadePct(made, unassistedMade) {
+  if (!Number.isFinite(made) || made < 0 || !Number.isFinite(unassistedMade) || unassistedMade < 0) return Number.NaN;
+  const assistedMade = Math.max(0, made - Math.min(unassistedMade, made));
+  return zeroSafePercent(assistedMade, made);
+}
+
+function recomputeCareerAggregateDerivedMetrics(aggregate, rows) {
+  if (!aggregate || !Array.isArray(rows) || rows.length <= 1) return aggregate;
+
+  const fgm = getCareerAggregateTotalValue(aggregate, rows, ["fgm"]);
+  const fga = getCareerAggregateTotalValue(aggregate, rows, ["fga"]);
+  const twoPm = getCareerAggregateTotalValue(aggregate, rows, ["2pm", "two_pm", "two_p_made"]);
+  const twoPa = getCareerAggregateTotalValue(aggregate, rows, ["2pa", "two_pa", "2pa_total", "two_p_att"]);
+  const threePm = getCareerAggregateTotalValue(aggregate, rows, ["3pm", "three_pm", "tpm", "three_p_made"]);
+  const threePa = getCareerAggregateTotalValue(aggregate, rows, ["3pa", "three_pa", "tpa", "three_p_att"]);
+  const ftm = getCareerAggregateTotalValue(aggregate, rows, ["ftm"]);
+  const fta = getCareerAggregateTotalValue(aggregate, rows, ["fta"]);
+  const pts = getCareerAggregateTotalValue(aggregate, rows, ["pts"]);
+  const ast = getCareerAggregateTotalValue(aggregate, rows, ["ast"]);
+  const tov = getCareerAggregateTotalValue(aggregate, rows, ["tov"]);
+  const stl = getCareerAggregateTotalValue(aggregate, rows, ["stl"]);
+  const blk = getCareerAggregateTotalValue(aggregate, rows, ["blk"]);
+  const pf = getCareerAggregateTotalValue(aggregate, rows, ["pf"]);
+  const stocks = Number.isFinite(stl) && Number.isFinite(blk) ? stl + blk : Number.NaN;
+
+  setCareerDerivedColumns(aggregate, rows, ["fg_pct", "fgpct"], zeroSafePercent(fgm, fga), ["fgm", "fga"]);
+  setCareerDerivedColumns(aggregate, rows, ["2p_pct", "two_p_pct", "fg2pct"], zeroSafePercent(twoPm, twoPa), ["2pm", "two_pm", "two_p_made", "2pa", "two_pa", "2pa_total", "two_p_att"]);
+  setCareerDerivedColumns(aggregate, rows, ["3p_pct", "tp_pct", "three_p_pct", "fg3pct"], zeroSafePercent(threePm, threePa), ["3pm", "three_pm", "tpm", "three_p_made", "3pa", "three_pa", "tpa", "three_p_att"]);
+  setCareerDerivedColumns(aggregate, rows, ["ft_pct", "ftpct"], zeroSafePercent(ftm, fta), ["ftm", "fta"]);
+  setCareerDerivedColumns(aggregate, rows, ["efg_pct", "efg"], zeroSafeEfgPct(fgm, threePm, fga), ["fgm", "fga", "3pm", "three_pm", "tpm", "three_p_made"]);
+  setCareerDerivedColumns(aggregate, rows, ["ts_pct", "tspct"], zeroSafeTsPct(pts, fga, fta), ["pts", "fga", "fta"]);
+  setCareerDerivedColumns(aggregate, rows, ["ftr"], ratioIfPossible(fta, fga), ["fta", "fga"]);
+  setCareerDerivedColumns(aggregate, rows, ["three_pr"], ratioIfPossible(threePa, fga), ["3pa", "three_pa", "tpa", "three_p_att", "fga"]);
+  setCareerDerivedColumns(aggregate, rows, ["ftm_fga"], ratioIfPossible(ftm, fga), ["ftm", "fga"]);
+  if (Number.isFinite(ftm) && Number.isFinite(fga) && Number.isFinite(threePa) && fga > 0) {
+    setCareerDerivedColumns(aggregate, rows, ["three_pr_plus_ftm_fga"], roundNumber((threePa / fga) + (ftm / fga), 3), ["3pa", "three_pa", "tpa", "three_p_att", "ftm", "fga"]);
+  }
+  if (Number.isFinite(ast) && Number.isFinite(tov) && tov > 0) {
+    setCareerDerivedColumns(aggregate, rows, ["ast_to"], roundNumber(ast / tov, 2), ["ast", "tov"]);
+  }
+  if (Number.isFinite(blk) && Number.isFinite(pf) && pf > 0) {
+    setCareerDerivedColumns(aggregate, rows, ["blk_pf"], roundNumber(blk / pf, 2), ["blk", "pf"]);
+  }
+  if (Number.isFinite(stl) && Number.isFinite(pf) && pf > 0) {
+    setCareerDerivedColumns(aggregate, rows, ["stl_pf"], roundNumber(stl / pf, 2), ["stl", "pf"]);
+  }
+  if (Number.isFinite(stocks) && Number.isFinite(pf) && pf > 0) {
+    setCareerDerivedColumns(aggregate, rows, ["stocks_pf"], roundNumber(stocks / pf, 2), ["stl", "blk", "pf"]);
+  }
+
+  const dunkMade = getCareerAggregateTotalValue(aggregate, rows, ["dunk_made"]);
+  const dunkAtt = getCareerAggregateTotalValue(aggregate, rows, ["dunk_att"]);
+  const rimMade = getCareerAggregateTotalValue(aggregate, rows, ["rim_made"]);
+  const rimAtt = getCareerAggregateTotalValue(aggregate, rows, ["rim_att"]);
+  const rimUnastMade = getCareerAggregateTotalValue(aggregate, rows, ["rim_unast_made"]);
+  const midMade = getCareerAggregateTotalValue(aggregate, rows, ["mid_made", "long2_made"]);
+  const midAtt = getCareerAggregateTotalValue(aggregate, rows, ["mid_att", "long2_att"]);
+  const midUnastMade = getCareerAggregateTotalValue(aggregate, rows, ["mid_unast_made"]);
+  const twoPUnastMade = getCareerAggregateTotalValue(aggregate, rows, ["two_p_unast_made"]);
+  const threePUnastMade = getCareerAggregateTotalValue(aggregate, rows, ["three_p_unast_made"]);
+
+  setCareerDerivedColumns(aggregate, rows, ["dunk_pct"], zeroSafePercent(dunkMade, dunkAtt), ["dunk_made", "dunk_att"]);
+  setCareerDerivedColumns(aggregate, rows, ["rim_pct", "fgpct_rim"], zeroSafePercent(rimMade, rimAtt), ["rim_made", "rim_att"]);
+  setCareerDerivedColumns(aggregate, rows, ["mid_pct", "fgpct_mid"], zeroSafePercent(midMade, midAtt), ["mid_made", "mid_att", "long2_made", "long2_att"]);
+  setCareerDerivedColumns(aggregate, rows, ["rim_ast_pct"], getAssistedMadePct(rimMade, rimUnastMade), ["rim_made", "rim_unast_made"]);
+  setCareerDerivedColumns(aggregate, rows, ["mid_ast_pct"], getAssistedMadePct(midMade, midUnastMade), ["mid_made", "mid_unast_made"]);
+  setCareerDerivedColumns(aggregate, rows, ["two_p_ast_pct", "two_ast_pct"], getAssistedMadePct(twoPm, twoPUnastMade), ["2pm", "two_pm", "two_p_made", "two_p_unast_made"]);
+  setCareerDerivedColumns(aggregate, rows, ["three_p_ast_pct", "three_ast_pct"], getAssistedMadePct(threePm, threePUnastMade), ["3pm", "three_pm", "tpm", "three_p_made", "three_p_unast_made"]);
+  setCareerDerivedColumns(aggregate, rows, ["rim_to_mid_att_ratio"], ratioIfPossible(rimAtt, midAtt), ["rim_att", "mid_att", "long2_att"]);
+
+  const drivePoss = getCareerAggregateTotalValue(aggregate, rows, ["drive_poss"]);
+  const totalPoss = getCareerAggregateTotalValue(aggregate, rows, ["total_poss"]);
+  const drivePoints = getCareerAggregateTotalValue(aggregate, rows, ["drive_points"]);
+  const driveFgm = getCareerAggregateTotalValue(aggregate, rows, ["drive_fgm"]);
+  const driveFga = getCareerAggregateTotalValue(aggregate, rows, ["drive_fga"]);
+  const driveTwoPm = getCareerAggregateTotalValue(aggregate, rows, ["drive_two_pm"]);
+  const driveTwoPa = getCareerAggregateTotalValue(aggregate, rows, ["drive_two_pa"]);
+  const driveTov = getCareerAggregateTotalValue(aggregate, rows, ["drive_tov"]);
+  const driveFta = getCareerAggregateTotalValue(aggregate, rows, ["drive_fta"]);
+  const drivePlus1 = getCareerAggregateTotalValue(aggregate, rows, ["drive_plus1"]);
+
+  if (Number.isFinite(drivePoints) && Number.isFinite(drivePoss) && drivePoss > 0) {
+    setCareerDerivedColumns(aggregate, rows, ["drive_ppp"], roundNumber(drivePoints / drivePoss, 3), ["drive_points", "drive_poss"]);
+  }
+  setCareerDerivedColumns(aggregate, rows, ["drive_fg_pct"], zeroSafePercent(driveFgm, driveFga), ["drive_fgm", "drive_fga"]);
+  setCareerDerivedColumns(aggregate, rows, ["drive_two_p_pct"], zeroSafePercent(driveTwoPm, driveTwoPa), ["drive_two_pm", "drive_two_pa"]);
+  if (Number.isFinite(driveTov) && Number.isFinite(drivePoss) && drivePoss > 0) {
+    setCareerDerivedColumns(aggregate, rows, ["drive_tov_pct"], roundNumber((driveTov / drivePoss) * 100, 1), ["drive_tov", "drive_poss"]);
+  }
+  setCareerDerivedColumns(aggregate, rows, ["drive_ftr"], ratioIfPossible(driveFta, driveFga), ["drive_fta", "drive_fga"]);
+  if (Number.isFinite(drivePlus1) && Number.isFinite(drivePoss) && drivePoss > 0) {
+    setCareerDerivedColumns(aggregate, rows, ["drive_plus1_pct"], roundNumber((drivePlus1 / drivePoss) * 100, 1), ["drive_plus1", "drive_poss"]);
+  }
+  if (Number.isFinite(drivePoss) && Number.isFinite(totalPoss) && totalPoss > 0) {
+    setCareerDerivedColumns(aggregate, rows, ["drive_freq"], roundNumber((drivePoss / totalPoss) * 100, 1), ["drive_poss", "total_poss"]);
+  }
+
+  return aggregate;
 }
 
 function sumFiniteValues(rows, column) {
@@ -12588,7 +12742,9 @@ function aggregateCareerRows(dataset, rows) {
   aggregate._searchHaystack = "";
   aggregate._colorBucketCacheKey = "";
   aggregate._colorBucketValue = "";
-  return enhanceRowForDataset(aggregate, dataset.id);
+  const enhanced = enhanceRowForDataset(aggregate, dataset.id);
+  recomputeCareerAggregateDerivedMetrics(enhanced, rows);
+  return enhanced;
 }
 
 function pickPreferredText(values) {
@@ -13635,8 +13791,8 @@ const PLAYER_PROFILE_TOTAL_ALIASES = {
   fta: ["fta"],
 };
 
-const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumnsV2";
-const PLAYER_PROFILE_COLOR_STORAGE_KEY = "multiExplorerPlayerProfileColorsV1";
+const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumnsV3";
+const PLAYER_PROFILE_COLOR_STORAGE_KEY = "multiExplorerPlayerProfileColorsV2";
 const PLAYER_PROFILE_LOCKED_COLUMNS = ["season", "competition_level", "league", "team_name"];
 const PLAYER_PROFILE_COLUMN_GROUPS = [
   {
@@ -13681,9 +13837,13 @@ const PLAYER_PROFILE_COLUMN_GROUPS = [
 const PLAYER_PROFILE_ALL_COLUMNS = [...new Set(PLAYER_PROFILE_COLUMN_GROUPS.flatMap((group) => group.columns))];
 const PLAYER_PROFILE_DEFAULT_COLUMNS = [
   ...PLAYER_PROFILE_LOCKED_COLUMNS,
-  "gp", "min", "mpg",
+  "gp", "mpg",
   "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "pf_pg", "stocks_pg",
-  "fg_pct", "three_p_pct", "ft_pct", "ast_to",
+  "fgm_pg", "fga_pg", "fg_pct",
+  "two_pm_pg", "two_pa_pg", "two_p_pct",
+  "three_pm_pg", "three_pa_pg", "three_p_pct",
+  "ftm_pg", "fta_pg", "ft_pct",
+  "efg_pct", "ts_pct", "ftr", "three_pr", "ast_to",
 ];
 const PLAYER_PROFILE_LABELS = {
   competition_level: "Level",
@@ -14219,9 +14379,9 @@ function savePlayerProfileVisibleColumns(columns) {
 
 function getPlayerProfileColorsEnabled() {
   try {
-    return localStorage.getItem(PLAYER_PROFILE_COLOR_STORAGE_KEY) !== "off";
+    return localStorage.getItem(PLAYER_PROFILE_COLOR_STORAGE_KEY) === "on";
   } catch (_error) {
-    return true;
+    return false;
   }
 }
 
