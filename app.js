@@ -42,7 +42,7 @@ const INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT = "data/vendor/international_profi
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
 const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_buckets_manifest.js";
 const D1_FOUL_LOOKUP_SCRIPT = "data/vendor/d1_foul_lookup.js";
-const APP_BUILD_VERSION = "20260420-playtype-v71";
+const APP_BUILD_VERSION = "20260420-playtype-v72";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -804,7 +804,7 @@ function buildD1Config() {
     demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg", "draft_pick"],
     groups,
     singleFilters: withSharedSingleFilters([
-      { id: "conference_bucket", label: "Conference" },
+      { id: "conference_bucket", label: "Conf Bucket" },
       { id: "coach", label: "Coach", column: "coach", searchable: true },
       {
         id: "status_path",
@@ -1823,12 +1823,29 @@ function buildTeamCoachConfig() {
     ["ft_rate", "FTA/FGA"],
   ];
   const playtypeColumns = [];
+  const playtypeGroups = [];
+  const playtypeSummaryColumns = [];
+  const playtypeSummaryDefaultColumns = [];
   playtypes.forEach(([id, label]) => {
+    const columns = [];
+    const defaultColumns = [];
     playtypeMetrics.forEach(([suffix, suffixLabel]) => {
       const column = `${id}_${suffix}`;
       if (omittedPlaytypeColumns.has(column)) return;
       playtypeColumns.push(column);
+      columns.push(column);
       labels[column] = `${label} ${suffixLabel}`;
+      if (suffix === "freq" || suffix === "ppp") {
+        playtypeSummaryColumns.push(column);
+        playtypeSummaryDefaultColumns.push(column);
+      }
+      if (suffix === "freq" || suffix === "ppp") defaultColumns.push(column);
+    });
+    playtypeGroups.push({
+      id,
+      label,
+      columns,
+      defaultColumns,
     });
   });
   const defaultPlaytypeColumns = playtypes.flatMap(([id]) => [`${id}_freq`, `${id}_ppp`]).filter((column) => !omittedPlaytypeColumns.has(column));
@@ -1853,9 +1870,11 @@ function buildTeamCoachConfig() {
     groups: [
       { id: "info", label: "Info", columns: ["conference", "coach", "record", "wins", "games"], defaultColumns: ["coach", "record"] },
       { id: "bart", label: "Bart", columns: ["adj_oe", "adj_de", "adj_ne", "barthag", "efg_pct", "efg_pct_def", "ft_rate", "ft_rate_def", "tov_pct", "tov_pct_def", "oreb_pct", "opp_oreb_pct", "raw_tempo", "adj_tempo", "two_p_pct", "two_p_pct_def", "three_p_pct", "three_p_pct_def", "block_pct", "blocked_pct", "ast_pct", "opp_ast_pct", "three_p_rate", "three_p_rate_def", "avg_height", "eff_height", "exp", "talent", "ft_pct", "opp_ft_pct", "ppp_off", "ppp_def", "elite_sos", "playtype_total_poss"], defaultColumns: ["adj_oe", "adj_de", "adj_ne", "barthag", "efg_pct", "tov_pct", "oreb_pct", "adj_tempo", "ppp_off", "ppp_def"] },
-      { id: "playtypes", label: "Playtypes", columns: playtypeColumns, defaultColumns: defaultPlaytypeColumns },
+      { id: "playtype_summary", label: "Playtype Summary", columns: [...new Set(playtypeSummaryColumns)], defaultColumns: [...new Set(playtypeSummaryDefaultColumns)] },
+      ...playtypeGroups,
     ],
     singleFilters: withSharedSingleFilters([
+      { id: "conference_bucket", label: "Conf Bucket" },
       { id: "percentile_mode", label: "Percentiles", defaultValue: "off", options: [{ value: "off", label: "Off" }, { value: "year", label: "Year" }, { value: "all_time", label: "All time" }] },
       { id: "conference", label: "Conference", column: "conference" },
       { id: "coach", label: "Coach", column: "coach", searchable: true },
@@ -9491,7 +9510,7 @@ function getSingleFilterOptions(dataset, filter, state) {
     ].join("||")
     : "";
   if (cacheKey && optionsCache.has(cacheKey)) return optionsCache.get(cacheKey);
-  if (filter.id === "conference_bucket" && dataset.id === "d1") {
+  if (filter.id === "conference_bucket" && ["d1", "team_coach"].includes(dataset.id)) {
     const conferences = Array.from(new Set(dataset.rows.map((row) => getStringValue(row.conference)).filter(Boolean))).sort(compareFilterValues);
     const options = [
       { value: "all", label: "All" },
@@ -9899,16 +9918,26 @@ async function cycleGroupVisibility(dataset, state, group) {
 
 function getPlaytypeLegendMetricActions(dataset) {
   if (!["d1", "team_coach"].includes(dataset?.id)) return [];
-  return [
-    { id: "ppp", label: "PPP" },
-    { id: "efg", label: "eFG%" },
-    { id: "to", label: "TO%" },
-    { id: "two_p", label: "2P%" },
-  ].filter((item) => getPlaytypeLegendMetricColumns(dataset, item.id).length);
+  const actions = dataset?.id === "team_coach"
+    ? [
+      { id: "freq", label: "Freq" },
+      { id: "ppp", label: "PPP" },
+      { id: "efg", label: "eFG%" },
+      { id: "to", label: "TO%" },
+      { id: "two_p", label: "2P%" },
+    ]
+    : [
+      { id: "ppp", label: "PPP" },
+      { id: "efg", label: "eFG%" },
+      { id: "to", label: "TO%" },
+      { id: "two_p", label: "2P%" },
+    ];
+  return actions.filter((item) => getPlaytypeLegendMetricColumns(dataset, item.id).length);
 }
 
 function getPlaytypeLegendMetricColumns(dataset, metricId) {
   const suffixTests = {
+    freq: [/_freq$/i],
     ppp: [/_ppp$/i],
     efg: [/_efg_pct$/i],
     to: [/_to_pct$/i, /_tov_pct$/i],
@@ -10118,7 +10147,7 @@ function getFilterContextRows(dataset, state, options = {}) {
     }
 
     for (const { filter, selected } of activeSingleFilters) {
-      if (filter.id === "conference_bucket" && dataset.id === "d1") {
+      if (filter.id === "conference_bucket" && ["d1", "team_coach"].includes(dataset.id)) {
         const conf = getStringValue(row.conference).toUpperCase();
         if (selected === "hm" && !D1_HM_CONFS.has(conf)) return false;
         if (selected === "hmm" && !D1_HMM_CONFS.has(conf)) return false;
