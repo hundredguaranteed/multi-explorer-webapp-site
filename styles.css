@@ -406,6 +406,11 @@ a,
   margin-top: 7px;
 }
 
+.stat-group__body {
+  display: grid;
+  gap: 3px;
+}
+
 .group-cycle-button {
   border-color: var(--line);
 }

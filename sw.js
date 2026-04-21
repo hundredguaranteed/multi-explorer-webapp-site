@@ -1,5 +1,5 @@
-const CACHE_VERSION = "20260421-layout-v75";
-const DATA_CACHE_VERSION = "20260421-layout-v75";
+const CACHE_VERSION = "20260421-layout-v76";
+const DATA_CACHE_VERSION = "20260421-layout-v76";
 const APP_CACHE = `multi-explorer-app-${CACHE_VERSION}`;
 const DATA_CACHE = `multi-explorer-data-${DATA_CACHE_VERSION}`;
 const KNOWN_CACHES = new Set([APP_CACHE, DATA_CACHE]);
@@ -7,8 +7,8 @@ const KNOWN_CACHES = new Set([APP_CACHE, DATA_CACHE]);
 const APP_ASSETS = [
   "./",
   "./index.html",
-  "./app.js?v=20260421-layout-v75",
-  "./styles.css?v=20260421-layout-v75",
+  "./app.js?v=20260421-layout-v76",
+  "./styles.css?v=20260421-layout-v76",
 ];
 
 self.addEventListener("install", (event) => {
