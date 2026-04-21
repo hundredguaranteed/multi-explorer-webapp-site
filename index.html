@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stat Explorers</title>
   <meta name="description" content="D1, D2, NAIA, JUCO, FIBA, International, NBA, and Player/Career explorers in one basic webapp.">
-  <link rel="stylesheet" href="styles.css?v=20260421-teamcoach-v73">
+  <link rel="stylesheet" href="styles.css?v=20260421-layout-v75">
   <script>
 window.__DATA_ASSET_BASE__ = "";
 (function () {
-  var version = "20260421-teamcoach-v73";
+  var version = "20260421-layout-v75";
   var route = (window.location.hash || "#home").replace(/^#/, "").toLowerCase().split("?")[0];
   if (route === "player" || route === "player_profile") route = "profile";
   var preloads = {
@@ -48,10 +48,10 @@ window.__DATA_ASSET_BASE__ = "";
   });
 }());
   </script>
-  <script src="app.js?v=20260421-teamcoach-v73" defer></script>
+  <script src="app.js?v=20260421-layout-v75" defer></script>
   <script>
 if ("serviceWorker" in navigator) {
-navigator.serviceWorker.register("sw.js?v=20260421-teamcoach-v73").catch(function () {});
+navigator.serviceWorker.register("sw.js?v=20260421-layout-v75").catch(function () {});
 }
   </script>
 </head>
@@ -116,6 +116,7 @@ navigator.serviceWorker.register("sw.js?v=20260421-teamcoach-v73").catch(functio
         <div class="multi-filter-stack" id="multiSelectFilters"></div>
         <div class="embedded-demo-controls" id="demoControls">
           <div class="section-header-row section-header-row--inline">
+            <h2>Info</h2>
             <div class="bulk-actions">
               <button class="link-button" id="demoDefaultsBtn" type="button">Default</button>
               <button class="link-button" id="demoAllBtn" type="button">All</button>

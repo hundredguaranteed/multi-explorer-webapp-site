@@ -42,7 +42,7 @@ const INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT = "data/vendor/international_profi
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
 const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_buckets_manifest.js";
 const D1_FOUL_LOOKUP_SCRIPT = "data/vendor/d1_foul_lookup.js";
-const APP_BUILD_VERSION = "20260421-teamcoach-v73";
+const APP_BUILD_VERSION = "20260421-layout-v75";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -465,6 +465,7 @@ const D1_PLAYTYPE_FREQ_POSS_COLUMNS = [
 
 const D1_DRIVE_COLUMNS = [
   { key: "drive_freq", label: "Drive Freq", defaultVisible: true },
+  { key: "drive_plus_trans_freq", label: "Drive+Trans", defaultVisible: true },
   { key: "hc_drive_freq", label: "HC Drive Freq", defaultVisible: false },
   { key: "drive_poss", label: "Drive Poss", defaultVisible: false },
   { key: "drive_ppp", label: "Drive PPP", defaultVisible: true },
@@ -478,35 +479,71 @@ const D1_DRIVE_COLUMNS = [
 ];
 
 const D1_SHOT_PROFILE_COLUMNS = [
-  { key: "dunk_made", label: "Dunk Made", defaultVisible: false },
-  { key: "dunk_att", label: "Dunk Att", defaultVisible: false },
-  { key: "dunk_pct", label: "Dunk%", defaultVisible: true },
-  { key: "dunk_ast_pct", label: "Dunk Ast%", defaultVisible: false },
-  { key: "rim_made", label: "Rim Made", defaultVisible: true },
-  { key: "rim_att", label: "Rim Att", defaultVisible: true },
-  { key: "rim_pct", label: "Rim%", defaultVisible: true },
-  { key: "rim_ast_pct", label: "Rim Ast%", defaultVisible: true },
-  { key: "mid_made", label: "Mid Made", defaultVisible: false },
-  { key: "mid_att", label: "Mid Att", defaultVisible: false },
-  { key: "mid_pct", label: "Mid%", defaultVisible: true },
-  { key: "mid_ast_pct", label: "Mid Ast%", defaultVisible: true },
-  { key: "rim_to_mid_att_ratio", label: "Rim/Long 2", defaultVisible: true },
-  { key: "two_p_made", label: "2P Made", defaultVisible: false },
-  { key: "two_p_att", label: "2P Att", defaultVisible: false },
-  { key: "two_p_pct", label: "2P%", defaultVisible: true },
-  { key: "two_p_ast_pct", label: "2P Ast%", defaultVisible: true },
-  { key: "three_p_made", label: "3P Made", defaultVisible: false },
-  { key: "three_p_att", label: "3P Att", defaultVisible: false },
-  { key: "three_p_pct", label: "3P%", defaultVisible: true },
-  { key: "three_p_ast_pct", label: "3P Ast%", defaultVisible: true },
-  { key: "ftm", label: "FTM", defaultVisible: false },
-  { key: "fta", label: "FTA", defaultVisible: false },
-  { key: "ft_pct", label: "FT%", defaultVisible: true },
-  { key: "efg_pct", label: "eFG%", defaultVisible: true },
-  { key: "ts_pct", label: "TS%", defaultVisible: true },
-  { key: "ftr", label: "FTr", defaultVisible: true },
-  { key: "three_pr", label: "3Pr", defaultVisible: true },
-  { key: "three_p_per100", label: "3PA/100", defaultVisible: true },
+  { key: "dunk_made", label: "Dunk Made", defaultVisible: false, mode: "totals" },
+  { key: "dunk_att", label: "Dunk Att", defaultVisible: false, mode: "totals" },
+  { key: "dunk_made_pg", label: "Dunk Made/G", defaultVisible: false, mode: "per_game" },
+  { key: "dunk_att_pg", label: "Dunk Att/G", defaultVisible: false, mode: "per_game" },
+  { key: "dunk_made_per40", label: "Dunk Made/40", defaultVisible: false, mode: "per40" },
+  { key: "dunk_att_per40", label: "Dunk Att/40", defaultVisible: false, mode: "per40" },
+  { key: "dunk_pct", label: "Dunk%", defaultVisible: true, mode: "always" },
+  { key: "dunk_ast_pct", label: "Dunk Ast%", defaultVisible: false, mode: "always" },
+  { key: "rim_made", label: "Rim Made", defaultVisible: false, mode: "totals" },
+  { key: "rim_att", label: "Rim Att", defaultVisible: true, mode: "totals" },
+  { key: "rim_unast_made", label: "Rim Unast", defaultVisible: false, mode: "totals" },
+  { key: "rim_made_pg", label: "Rim Made/G", defaultVisible: false, mode: "per_game" },
+  { key: "rim_att_pg", label: "Rim Att/G", defaultVisible: false, mode: "per_game" },
+  { key: "rim_unast_made_pg", label: "Rim Unast/G", defaultVisible: false, mode: "per_game" },
+  { key: "rim_made_per40", label: "Rim Made/40", defaultVisible: false, mode: "per40" },
+  { key: "rim_att_per40", label: "Rim Att/40", defaultVisible: false, mode: "per40" },
+  { key: "rim_unast_made_per40", label: "Rim Unast/40", defaultVisible: false, mode: "per40" },
+  { key: "rim_pct", label: "Rim%", defaultVisible: true, mode: "always" },
+  { key: "rim_ast_pct", label: "Rim Ast%", defaultVisible: true, mode: "always" },
+  { key: "mid_made", label: "Mid Made", defaultVisible: false, mode: "totals" },
+  { key: "mid_att", label: "Mid Att", defaultVisible: false, mode: "totals" },
+  { key: "mid_unast_made", label: "Mid Unast", defaultVisible: false, mode: "totals" },
+  { key: "mid_made_pg", label: "Mid Made/G", defaultVisible: false, mode: "per_game" },
+  { key: "mid_att_pg", label: "Mid Att/G", defaultVisible: false, mode: "per_game" },
+  { key: "mid_unast_made_pg", label: "Mid Unast/G", defaultVisible: false, mode: "per_game" },
+  { key: "mid_made_per40", label: "Mid Made/40", defaultVisible: false, mode: "per40" },
+  { key: "mid_att_per40", label: "Mid Att/40", defaultVisible: false, mode: "per40" },
+  { key: "mid_unast_made_per40", label: "Mid Unast/40", defaultVisible: false, mode: "per40" },
+  { key: "mid_pct", label: "Mid%", defaultVisible: true, mode: "always" },
+  { key: "mid_ast_pct", label: "Mid Ast%", defaultVisible: true, mode: "always" },
+  { key: "rim_to_mid_att_ratio", label: "Rim/Long 2", defaultVisible: true, mode: "always" },
+  { key: "two_p_made", label: "2P Made", defaultVisible: false, mode: "totals" },
+  { key: "two_p_att", label: "2P Att", defaultVisible: false, mode: "totals" },
+  { key: "two_p_unast_made", label: "2P Unast", defaultVisible: false, mode: "totals" },
+  { key: "two_p_made_pg", label: "2P Made/G", defaultVisible: false, mode: "per_game" },
+  { key: "two_p_att_pg", label: "2P Att/G", defaultVisible: false, mode: "per_game" },
+  { key: "two_p_unast_made_pg", label: "2P Unast/G", defaultVisible: false, mode: "per_game" },
+  { key: "two_p_made_per40", label: "2P Made/40", defaultVisible: false, mode: "per40" },
+  { key: "two_p_att_per40", label: "2P Att/40", defaultVisible: false, mode: "per40" },
+  { key: "two_p_unast_made_per40", label: "2P Unast/40", defaultVisible: false, mode: "per40" },
+  { key: "two_p_pct", label: "2P%", defaultVisible: true, mode: "always" },
+  { key: "two_p_ast_pct", label: "2P Ast%", defaultVisible: true, mode: "always" },
+  { key: "three_p_made", label: "3P Made", defaultVisible: false, mode: "totals" },
+  { key: "three_p_att", label: "3P Att", defaultVisible: false, mode: "totals" },
+  { key: "three_p_unast_made", label: "3P Unast", defaultVisible: false, mode: "totals" },
+  { key: "three_p_made_pg", label: "3P Made/G", defaultVisible: false, mode: "per_game" },
+  { key: "three_p_att_pg", label: "3P Att/G", defaultVisible: false, mode: "per_game" },
+  { key: "three_p_unast_made_pg", label: "3P Unast/G", defaultVisible: false, mode: "per_game" },
+  { key: "three_p_made_per40", label: "3P Made/40", defaultVisible: false, mode: "per40" },
+  { key: "three_p_att_per40", label: "3P Att/40", defaultVisible: false, mode: "per40" },
+  { key: "three_p_unast_made_per40", label: "3P Unast/40", defaultVisible: false, mode: "per40" },
+  { key: "three_p_pct", label: "3P%", defaultVisible: true, mode: "always" },
+  { key: "three_pr", label: "3Pr", defaultVisible: true, mode: "always" },
+  { key: "three_p_ast_pct", label: "3P Ast%", defaultVisible: true, mode: "always" },
+  { key: "ftm", label: "FTM", defaultVisible: false, mode: "totals" },
+  { key: "fta", label: "FTA", defaultVisible: false, mode: "totals" },
+  { key: "ftm_pg", label: "FTM/G", defaultVisible: false, mode: "per_game" },
+  { key: "fta_pg", label: "FTA/G", defaultVisible: false, mode: "per_game" },
+  { key: "ftm_per40", label: "FTM/40", defaultVisible: false, mode: "per40" },
+  { key: "fta_per40", label: "FTA/40", defaultVisible: false, mode: "per40" },
+  { key: "ft_pct", label: "FT%", defaultVisible: true, mode: "always" },
+  { key: "ftr", label: "FTr", defaultVisible: true, mode: "always" },
+  { key: "efg_pct", label: "eFG%", defaultVisible: true, mode: "always" },
+  { key: "ts_pct", label: "TS%", defaultVisible: true, mode: "always" },
+  { key: "three_p_per100", label: "3PA/100", defaultVisible: true, mode: "always" },
 ];
 
 const LOWER_TIER_SHOT_PROFILE_COLUMNS = [
@@ -545,7 +582,7 @@ const D2_PDF_NBA_OVERRIDE_ROWS = [
 ];
 
 const D1_ADVANCED_COLUMNS = [
-  { key: "min_per", label: "Min%", defaultVisible: false },
+  { key: "min_per", label: "Min%", defaultVisible: true },
   { key: "ortg", label: "ORtg", defaultVisible: false },
   { key: "drtg", label: "DRtg", defaultVisible: false },
   { key: "per", label: "PER", defaultVisible: false },
@@ -560,8 +597,10 @@ const D1_ADVANCED_COLUMNS = [
   { key: "drb_pct", label: "DRB%", defaultVisible: true },
   { key: "usg_pct", label: "USG%", defaultVisible: true },
   { key: "ast_pct", label: "AST%", defaultVisible: true },
-  { key: "ast_to", label: "AST/TO", defaultVisible: true },
   { key: "tov_pct_adv", label: "TOV%", defaultVisible: true },
+  { key: "ast_to", label: "A:TO", defaultVisible: true },
+  { key: "ast_pct_usg_pct", label: "AST%:USG%", defaultVisible: false },
+  { key: "ast_pct_tov_pct", label: "AST%:TOV%", defaultVisible: false },
   { key: "stl_pct", label: "STL%", defaultVisible: true },
   { key: "blk_pct", label: "BLK%", defaultVisible: true },
   { key: "stl_pct_percentile", label: "STL Pctl", defaultVisible: false },
@@ -569,7 +608,12 @@ const D1_ADVANCED_COLUMNS = [
 ];
 
 function getD1PlaytypeMetrics(playtypeId) {
-  return D1_PLAYTYPE_METRICS;
+  const omitted = {
+    post_up: new Set(["three_fg_att", "three_fg_att_pg", "three_fg_pct", "three_pr"]),
+    cut: new Set(["three_fg_att", "three_fg_att_pg", "three_fg_pct", "three_pr"]),
+  }[playtypeId];
+  if (!omitted?.size) return D1_PLAYTYPE_METRICS;
+  return D1_PLAYTYPE_METRICS.filter((metric) => !omitted.has(metric.suffix));
 }
 
 function getD1TransitionGroup() {
@@ -649,7 +693,7 @@ function buildD1Config() {
       id: "info",
       label: "Info",
       columns: ["conference", "coach", "pos", "class_year"],
-      defaultColumns: ["coach"],
+      defaultColumns: [],
     },
     {
       id: "advanced",
@@ -796,7 +840,7 @@ function buildD1Config() {
     yearColumn: "season",
     playerColumn: "player_name",
     teamColumn: "team_name",
-    lockedColumns: ["rank", "season", "player_name"],
+    lockedColumns: ["rank", "season", "player_name", "team_name"],
     searchColumns: withUniversalSearchColumns(["player_name", "player_search_text", "team_name", "conference", "coach", "team_search_text", "coach_search_text"]),
     sortBy: "min",
     sortDir: "desc",
@@ -804,7 +848,7 @@ function buildD1Config() {
     demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg", "draft_pick"],
     groups,
     singleFilters: withSharedSingleFilters([
-      { id: "conference_bucket", label: "Conf Bucket" },
+      { id: "conference_bucket", label: "Conf" },
       { id: "coach", label: "Coach", column: "coach", searchable: true },
       {
         id: "status_path",
@@ -822,7 +866,7 @@ function buildD1Config() {
       { id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C"] },
       { id: "class_year", label: "Class", column: "class_year", sort: ["Fr", "So", "Jr", "Sr", "Gr"] },
     ],
-    defaultVisible: [...new Set([...demoColumns.filter((column) => !["conference", "bmi", "draft_pick", "weight_lb", "mpg", "dob"].includes(column)), ...defaultVisible])],
+    defaultVisible: [...new Set([...demoColumns.filter((column) => !["conference", "coach", "bmi", "draft_pick", "weight_lb", "mpg", "dob", "min"].includes(column)), ...defaultVisible])],
     labels,
   };
 }
@@ -1760,8 +1804,8 @@ function buildTeamCoachConfig() {
     barthag: "Barthag",
     efg_pct: "eFG%",
     efg_pct_def: "eFG% D",
-    ft_rate: "FT Rate",
-    ft_rate_def: "FT Rate D",
+    ft_rate: "FTr",
+    ft_rate_def: "FTr D",
     tov_pct: "TOV%",
     tov_pct_def: "TOV% D",
     oreb_pct: "O Reb%",
@@ -1776,16 +1820,17 @@ function buildTeamCoachConfig() {
     blocked_pct: "Blked%",
     ast_pct: "Ast%",
     opp_ast_pct: "Opp Ast%",
-    three_p_rate: "3P Rate",
-    three_p_rate_def: "3P Rate D",
+    three_p_rate: "3Pr",
+    three_p_rate_def: "3Pr D",
     avg_height: "Avg Hgt",
     eff_height: "Eff Hgt",
     exp: "Exp",
     talent: "Talent",
     ft_pct: "FT%",
     opp_ft_pct: "Opp FT%",
-    ppp_off: "PPP Off",
-    ppp_def: "PPP Def",
+    ppp_off: "Off PPP",
+    ppp_def: "Def PPP",
+    ppp_net: "PPP Net",
     elite_sos: "Elite SOS",
     playtype_total_poss: "Poss",
   };
@@ -1801,7 +1846,16 @@ function buildTeamCoachConfig() {
     ["isolation", "Iso"],
     ["offensive_rebounds", "OREB"],
   ];
-  const omittedPlaytypeColumns = new Set(["post_up_three_pa_rate", "cut_three_pa_rate"]);
+  const omittedPlaytypeColumns = new Set([
+    "post_up_three_pa",
+    "post_up_three_pa_pg",
+    "post_up_three_p_pct",
+    "post_up_three_pa_rate",
+    "cut_three_pa",
+    "cut_three_pa_pg",
+    "cut_three_p_pct",
+    "cut_three_pa_rate",
+  ]);
   const playtypeMetrics = [
     ["freq", "Freq"],
     ["poss", "Poss"],
@@ -1810,17 +1864,16 @@ function buildTeamCoachConfig() {
     ["fga_pg", "FGA/G"],
     ["two_pa", "2PA"],
     ["two_pa_pg", "2PA/G"],
+    ["two_p_pct", "2P%"],
     ["three_pa", "3PA"],
     ["three_pa_pg", "3PA/G"],
+    ["three_p_pct", "3P%"],
+    ["three_pa_rate", "3Pr"],
     ["fta", "FTA"],
     ["fta_pg", "FTA/G"],
+    ["ft_rate", "FTr"],
     ["efg_pct", "eFG%"],
     ["to_pct", "TO%"],
-    ["score_pct", "Score%"],
-    ["two_p_pct", "2P%"],
-    ["three_p_pct", "3P%"],
-    ["three_pa_rate", "3PA/FGA"],
-    ["ft_rate", "FTA/FGA"],
   ];
   const playtypeColumns = [];
   const playtypeGroups = [];
@@ -1869,8 +1922,8 @@ function buildTeamCoachConfig() {
     demoFilterColumns: [],
     groups: [
       { id: "info", label: "Info", columns: ["conference", "coach", "record", "wins", "games"], defaultColumns: ["coach", "record"] },
-      { id: "bart", label: "Bart", columns: ["adj_oe", "adj_de", "adj_ne", "barthag", "efg_pct", "efg_pct_def", "ft_rate", "ft_rate_def", "tov_pct", "tov_pct_def", "oreb_pct", "opp_oreb_pct", "raw_tempo", "adj_tempo", "two_p_pct", "two_p_pct_def", "three_p_pct", "three_p_pct_def", "block_pct", "blocked_pct", "ast_pct", "opp_ast_pct", "three_p_rate", "three_p_rate_def", "avg_height", "eff_height", "exp", "talent", "ft_pct", "opp_ft_pct", "ppp_off", "ppp_def", "elite_sos", "playtype_total_poss"], defaultColumns: ["adj_oe", "adj_de", "adj_ne", "barthag", "efg_pct", "tov_pct", "oreb_pct", "adj_tempo", "ppp_off", "ppp_def"] },
-      { id: "playtype_summary", label: "Playtype Summary", columns: [...new Set(playtypeSummaryColumns)], defaultColumns: [...new Set(playtypeSummaryDefaultColumns)] },
+      { id: "bart", label: "Bart", columns: ["adj_oe", "adj_de", "adj_ne", "barthag", "efg_pct", "efg_pct_def", "ft_rate", "ft_rate_def", "tov_pct", "tov_pct_def", "oreb_pct", "opp_oreb_pct", "raw_tempo", "adj_tempo", "two_p_pct", "two_p_pct_def", "three_p_pct", "three_p_pct_def", "block_pct", "blocked_pct", "ast_pct", "opp_ast_pct", "three_p_rate", "three_p_rate_def", "avg_height", "eff_height", "exp", "talent", "ft_pct", "opp_ft_pct", "ppp_off", "ppp_def", "ppp_net", "elite_sos", "playtype_total_poss"], defaultColumns: ["adj_oe", "adj_de", "adj_ne", "barthag", "efg_pct", "tov_pct", "oreb_pct", "adj_tempo", "ppp_off", "ppp_def", "ppp_net"] },
+      { id: "playtype_summary", label: "Playtype Summary", columns: [...new Set(playtypeSummaryColumns)], defaultColumns: [...new Set(playtypeSummaryDefaultColumns)], hiddenInFilters: true },
       ...playtypeGroups,
     ],
     singleFilters: withSharedSingleFilters([
@@ -5314,7 +5367,16 @@ function syncGrassrootsCareerYears(dataset, state, active) {
 function renderDatasetLoadingState(config) {
   elements.searchInput.value = "";
   elements.searchInput.disabled = false;
+  const searchLabel = document.querySelector('label[for="searchInput"]');
+  if (searchLabel) searchLabel.textContent = getDatasetSearchLabelText(config);
+  elements.searchInput.placeholder = getDatasetSearchPlaceholder(config);
+  const globalSearchLabel = document.querySelector('label[for="globalPlayerSearchInput"]');
+  if (globalSearchLabel) globalSearchLabel.textContent = getDatasetSearchEntityLabel(config);
+  if (elements.globalPlayerSearchInput) {
+    elements.globalPlayerSearchInput.placeholder = config?.id === "team_coach" ? "Find coach" : "Find player";
+  }
   elements.yearPills.innerHTML = "";
+  elements.yearQuickSelect.innerHTML = '<option value="all">All years</option>';
   elements.teamSelect.innerHTML = '<option value="all">Loading...</option>';
   elements.teamSelect.disabled = true;
   if (elements.viewModeFilters) elements.viewModeFilters.innerHTML = "";
@@ -5322,6 +5384,8 @@ function renderDatasetLoadingState(config) {
   elements.multiSelectFilters.innerHTML = "";
   elements.demoRangeFilters.innerHTML = "";
   elements.statGroups.innerHTML = "";
+  elements.finderQuery.textContent = "";
+  elements.finderTitle.textContent = `Loading ${escapeHtml(config?.navLabel || "dataset")}`;
   elements.tableLegend.innerHTML = "";
   elements.tableLegend.dataset.legendKey = "";
   elements.loadMoreBtn.hidden = true;
@@ -9794,7 +9858,8 @@ function getDemoControlColumns(dataset) {
 function renderStatGroups(dataset, state) {
   const numericColumnSet = dataset.meta.numericColumnSet || new Set(dataset.meta.numericColumns || []);
   const groups = dataset.meta.groups
-    .filter((group) => !(dataset.id === "d1" && group.id === "playtype_analysis"));
+    .filter((group) => !(dataset.id === "d1" && group.id === "playtype_analysis"))
+    .filter((group) => !group.hiddenInFilters);
   const shellKey = [
     dataset?.id,
     getUiStateRenderKey(state),
@@ -9870,6 +9935,11 @@ function getGroupSelectionState(dataset, group, state) {
     if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "freq"))) return "freq";
     if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "poss"))) return "poss";
   }
+  if (dataset?.id === "d1" && group?.id === "shot_profile") {
+    if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "totals"))) return "totals";
+    if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "per_game"))) return "per_game";
+    if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "per40"))) return "per40";
+  }
   return "custom";
 }
 
@@ -9881,6 +9951,7 @@ function areSameColumns(left = [], right = []) {
 
 function getGroupCycleActions(dataset, group) {
   if (dataset?.id === "d1" && group?.id === "playtype_analysis") return ["default", "freq", "poss", "all", "none"];
+  if (dataset?.id === "d1" && group?.id === "shot_profile") return ["default", "totals", "per_game", "per40", "all", "none"];
   return ["default", "all", "none"];
 }
 
@@ -9892,32 +9963,12 @@ function getGroupColumnsForMode(dataset, group, mode) {
     if (mode === "freq") return (group.columns || []).filter((column) => /_freq$/i.test(column));
     if (mode === "poss") return (group.columns || []).filter((column) => /_poss$/i.test(column));
   }
-  return [];
-}
-
-function getLegendGroupTargetColumns(dataset, group) {
-  if (!group) return [];
-  const defaultColumns = getGroupColumnsForMode(dataset, group, "default");
-  return defaultColumns.length ? defaultColumns : getGroupColumnsForMode(dataset, group, "all");
-}
-
-async function toggleLegendGroupVisibility(dataset, state, group) {
-  if (!dataset || !state || !group?.columns?.length) return;
-  const currentMode = getGroupSelectionState(dataset, group, state);
-  const defaultColumns = getLegendGroupTargetColumns(dataset, group);
-  const targetColumns = currentMode === "none"
-    ? defaultColumns
-    : (currentMode === "default" && defaultColumns.length < (group.columns || []).length ? group.columns : []);
-  const missingColumns = targetColumns.filter((column) => !state.visibleColumns[column]);
-  if (missingColumns.length) {
-    await ensureDeferredColumnsReady(dataset, state, missingColumns, { scope: "visible" });
-    if (appState.currentId !== dataset.id) return;
+  if (dataset?.id === "d1" && group.id === "shot_profile") {
+    if (mode === "totals") return getD1ShotProfileColumnsForMode("totals");
+    if (mode === "per_game") return getD1ShotProfileColumnsForMode("per_game");
+    if (mode === "per40") return getD1ShotProfileColumnsForMode("per40");
   }
-  group.columns.forEach((column) => {
-    if (!(column in state.visibleColumns)) return;
-    state.visibleColumns[column] = targetColumns.includes(column);
-  });
-  renderCurrentDataset();
+  return [];
 }
 
 async function cycleGroupVisibility(dataset, state, group) {
@@ -9955,6 +10006,7 @@ function getPlaytypeLegendMetricActions(dataset) {
       { id: "two_p", label: "2P%" },
     ]
     : [
+      { id: "freq", label: "Freq" },
       { id: "ppp", label: "PPP" },
       { id: "efg", label: "eFG%" },
       { id: "to", label: "TO%" },
@@ -10004,10 +10056,10 @@ function renderTableLegend(dataset, state) {
   const legendKey = `${dataset.id}|${(dataset.meta.groups || []).map((group) => group.id).join("|")}`;
   if (elements.tableLegend.dataset.legendKey === legendKey) return;
   const footerGroups = dataset.id === "d1"
-    ? ["summary", "playtype_analysis", "advanced", "shot_profile", "drive", "runner"]
+    ? ["summary", "playtype_analysis", "advanced", "shot_profile", "scoring_data"]
       .map((groupId) => (dataset.meta.groups || []).find((group) => group.id === groupId))
       .filter(Boolean)
-    : (dataset.meta.groups || []);
+    : (dataset.meta.groups || []).filter((group) => !["info", "meta"].includes(group.id) && !group.hiddenInLegend);
   const sep = '<span class="table-legend__sep">&bull;</span>';
   const links = [
     `<button class="link-button" type="button" data-stat-mode="default">Default</button>`,
@@ -10044,7 +10096,7 @@ function renderTableLegend(dataset, state) {
       const groupId = button.dataset.statGroup;
       const group = currentDataset?.meta?.groups?.find((item) => item.id === groupId);
       if (!currentDataset || !currentState || !group) return;
-      await toggleLegendGroupVisibility(currentDataset, currentState, group);
+      await cycleGroupVisibility(currentDataset, currentState, group);
     });
   });
 
@@ -11991,7 +12043,6 @@ const TEAM_COACH_PLAYTYPE_WEIGHT_MAP = {
   ppp: "poss",
   efg_pct: "fga",
   to_pct: "poss",
-  score_pct: "poss",
   two_p_pct: "two_pa",
   three_p_pct: "three_pa",
 };
@@ -12039,6 +12090,9 @@ function aggregateTeamCoachCareerRows(dataset, rows) {
   });
   if (Number.isFinite(aggregate.adj_oe) && Number.isFinite(aggregate.adj_de)) {
     aggregate.adj_ne = roundNumber(aggregate.adj_oe - aggregate.adj_de, 3);
+  }
+  if (Number.isFinite(aggregate.ppp_off) && Number.isFinite(aggregate.ppp_def)) {
+    aggregate.ppp_net = roundNumber(aggregate.ppp_off - aggregate.ppp_def, 3);
   }
 
   TEAM_COACH_PLAYTYPE_IDS.forEach((id) => {
@@ -12784,12 +12838,12 @@ function getColumnWidth(column, dataset) {
   if (baseColumn === "ast_stl_pg" || baseColumn === "ast_stl_per40") return 56;
   if (baseColumn === "blk_pf" || baseColumn === "stl_pf" || baseColumn === "stocks_pf") return 54;
   if (baseColumn === "three_pr_plus_ftm_fga") return 72;
-  if (dataset.id === "team_coach" && isTeamCoachPlaytypeColumn(baseColumn)) return 78;
-  if (dataset.id === "d1" && isD1PlaytypeColumn(baseColumn)) return 78;
+  if (dataset.id === "team_coach" && isTeamCoachPlaytypeColumn(baseColumn)) return 68;
+  if (dataset.id === "d1" && isD1PlaytypeColumn(baseColumn)) return 68;
   if (/player/i.test(baseColumn)) return 116;
   if (baseColumn === "competition_label") return 90;
   if (/^nationality$|^team_code$/.test(baseColumn)) return 52;
-  if (baseColumn === "coach") return 96;
+  if (baseColumn === "coach") return 88;
   if (/^conference$|^region$/.test(baseColumn)) return 60;
   if (/^division$|^level$/.test(baseColumn)) return 44;
   if (/^pos$|^pos_text$|class/.test(baseColumn)) return 38;
@@ -12876,8 +12930,20 @@ function renderHeaderCell(dataset, state, column) {
   if (dataset.id === "grassroots" && ["team_name", "team_full", "event_name", "event_group", "event_raw_name", "circuit"].includes(column)) {
     classes.push("cell-small-text");
   }
-  if (isPercentileDisplayColumn(column) || isD1PlaytypeColumn(column) || isTeamCoachPlaytypeColumn(column) || /^ncaa_|^nba_/i.test(column) || label.length >= 11) classes.push("cell-header-small");
+  classes.push("cell-header-small");
   return `<th class="${classes.join(" ")}"${sortable ? ` data-sort="${escapeAttribute(column)}"` : ""}>${escapeHtml(label)}</th>`;
+}
+
+function getD1ShotProfileColumnsForMode(mode) {
+  const normalizedMode = mode === "totals" || mode === "per_game" || mode === "per40" ? mode : "default";
+  return D1_SHOT_PROFILE_COLUMNS
+    .filter((item) => {
+      const itemMode = item.mode || "always";
+      if (normalizedMode === "default") return !!item.defaultVisible;
+      if (normalizedMode === "totals") return itemMode === "totals" || itemMode === "always";
+      return itemMode === normalizedMode || itemMode === "always";
+    })
+    .map((item) => item.key);
 }
 
 function updateLoadMoreButton(totalRows, renderedRows) {
@@ -14183,7 +14249,7 @@ function shouldColorColumn(dataset, column) {
 }
 
 function isNonPerformanceInfoColorColumn(column) {
-  return /^(rank|season|year|age|dob|birthday|draft_year|draft_pick|pick|rookie_year|height|height_in|inches|weight|weight_lb|bmi|exp|experience)$/i.test(stripCompanionPrefix(column));
+  return /^(rank|season|year|age|dob|birthday|draft_year|draft_pick|pick|rookie_year|height|height_in|inches|weight|weight_lb|bmi)$/i.test(stripCompanionPrefix(column));
 }
 
 function isInverseColorColumn(column) {
@@ -14475,13 +14541,17 @@ function colorFromPercentile(pct) {
   const clamped = Math.min(1, Math.max(0, pct));
   const stops = [
     [0.00, "#c95f56"],
-    [0.16, "#de9388"],
-    [0.32, "#f0cbc4"],
+    [0.12, "#d97d72"],
+    [0.24, "#e8a89f"],
+    [0.36, "#f3d3cd"],
+    [0.45, "#ffffff"],
     [0.50, "#ffffff"],
-    [0.60, "#dff0d7"],
-    [0.70, "#bddfab"],
-    [0.82, "#8dca7c"],
-    [0.92, "#62b765"],
+    [0.55, "#ffffff"],
+    [0.62, "#eaf6e5"],
+    [0.70, "#d1ebc8"],
+    [0.78, "#b7deaa"],
+    [0.86, "#92cf83"],
+    [0.93, "#67bb65"],
     [1.00, "#389a4f"],
   ];
   for (let index = 1; index < stops.length; index += 1) {
@@ -14597,7 +14667,7 @@ function renderFinderBar(dataset, state) {
   elements.yearQuickSelect.value = singleYear;
   elements.yearQuickSelect.disabled = Boolean(state?._grassrootsLoadingScope || getGrassrootsPendingYearsKey(state) || getPlayerCareerPendingYearsKey(state) || getD1PendingYearsKey(state));
   const yearLabel = careerMode ? getCareerYearLabel(dataset, state) : (selectedYears.length === 1 ? formatYearValueLabel(selectedYears[0]) : "All Years");
-  elements.finderTitle.textContent = `${yearLabel} ${dataset.navLabel} ${getDatasetSearchEntityLabel(dataset)} Finder`;
+  elements.finderTitle.textContent = `${yearLabel} ${dataset.navLabel} Finder`;
   elements.finderQuery.textContent = buildFinderQueryText(dataset, state);
 
   elements.yearQuickSelect.onchange = async () => {
@@ -14896,6 +14966,7 @@ function enhanceRowForDataset(row, datasetId) {
   const out = { ...row };
   enhanceCommonRow(out, datasetId);
   if (datasetId === "d1") enhanceD1Row(out);
+  if (datasetId === "team_coach") enhanceTeamCoachRow(out);
   if (datasetId === "d2") enhanceD2Row(out);
   if (datasetId === "naia") enhanceCollegeRow(out, datasetId);
   if (datasetId === "juco") enhanceCollegeRow(out, datasetId);
@@ -15175,9 +15246,29 @@ function enhanceD1Row(row) {
   if (!Number.isFinite(row.ftr)) row.ftr = 0;
   if (!Number.isFinite(row.three_pr)) row.three_pr = 0;
   populateAstTo(row);
+  row.drive_plus_trans_freq = firstFinite(
+    row.drive_plus_trans_freq,
+    Number.isFinite(row.drive_freq) || Number.isFinite(row.transition_freq)
+      ? roundNumber(firstFinite(row.drive_freq, 0) + firstFinite(row.transition_freq, 0), 1)
+      : Number.NaN,
+    Number.NaN
+  );
+  row.ast_pct_usg_pct = firstFinite(row.ast_pct_usg_pct, ratioIfPossible(row.ast_pct, row.usg_pct), Number.NaN);
+  row.ast_pct_tov_pct = firstFinite(row.ast_pct_tov_pct, ratioIfPossible(row.ast_pct, firstFinite(row.tov_pct_adv, row.tov_pct, Number.NaN)), Number.NaN);
+  populateD1ShotProfileDisplayModes(row);
   fillMissingRateStats(row, ["orb_pct", "drb_pct", "ast_pct", "stl_pct", "blk_pct", "usg_pct"]);
   scalePercentRatioColumns(row);
   populateImpactMetrics(row);
+}
+
+function enhanceTeamCoachRow(row) {
+  if (!row || typeof row !== "object") return;
+  if (!Number.isFinite(row.adj_ne) && Number.isFinite(row.adj_oe) && Number.isFinite(row.adj_de)) {
+    row.adj_ne = roundNumber(row.adj_oe - row.adj_de, 3);
+  }
+  if (!Number.isFinite(row.ppp_net) && Number.isFinite(row.ppp_off) && Number.isFinite(row.ppp_def)) {
+    row.ppp_net = roundNumber(row.ppp_off - row.ppp_def, 3);
+  }
 }
 
 function enhanceD2Row(row) {
@@ -16047,6 +16138,43 @@ function populateD1FoulDerived(row) {
   if (pf40 !== "" && !Number.isFinite(row.pf_per40)) row.pf_per40 = pf40;
 }
 
+function populateD1ShotProfileDisplayModes(row) {
+  const gp = firstFinite(row.gp, Number.NaN);
+  const minutes = firstFinite(row.min, Number.isFinite(gp) && Number.isFinite(row.mpg) ? row.gp * row.mpg : Number.NaN, Number.NaN);
+  const assistedRatio = (value) => {
+    const ratio = ratioValueFromMaybePercent(firstFinite(value, Number.NaN));
+    return Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : Number.NaN;
+  };
+
+  [
+    ["rim_unast_made", "rim_made", "rim_ast_pct"],
+    ["mid_unast_made", "mid_made", "mid_ast_pct"],
+    ["two_p_unast_made", "two_p_made", "two_p_ast_pct"],
+    ["three_p_unast_made", "three_p_made", "three_p_ast_pct"],
+  ].forEach(([target, madeColumn, astPctColumn]) => {
+    const made = firstFinite(row[madeColumn], Number.NaN);
+    const astRatio = assistedRatio(row[astPctColumn]);
+    if (!Number.isFinite(row[target]) && Number.isFinite(made) && Number.isFinite(astRatio)) {
+      row[target] = roundNumber(made * (1 - astRatio), 3);
+    }
+  });
+
+  [
+    "dunk_made", "dunk_att",
+    "rim_made", "rim_att", "rim_unast_made",
+    "mid_made", "mid_att", "mid_unast_made",
+    "two_p_made", "two_p_att", "two_p_unast_made",
+    "three_p_made", "three_p_att", "three_p_unast_made",
+    "ftm", "fta",
+  ].forEach((column) => {
+    const total = firstFinite(row[column], Number.NaN);
+    const perGame = perGameValue(total, gp);
+    const per40 = per40Value(total, minutes);
+    if (perGame !== "") row[`${column}_pg`] = perGame;
+    if (per40 !== "") row[`${column}_per40`] = per40;
+  });
+}
+
 function normalizeD1TruePlaytypeFrequencies(row) {
   const possColumns = [
     "iso_poss",
@@ -16883,7 +17011,11 @@ function formatAutoDisplayLabelToken(token) {
     mpg: "MPG",
     min: "MIN",
     mp: "MIN",
-  }[normalized] || normalized.split(/[\s-]+/).map((part) => part ? (part.charAt(0).toUpperCase() + part.slice(1)) : "").join(" ");
+  }[normalized] || normalized.split(/[\s-]+/).map((part) => {
+    if (!part) return "";
+    if (/^[a-z]{2}$/.test(part) && !/[aeiou]/.test(part)) return part.toUpperCase();
+    return part.charAt(0).toUpperCase() + part.slice(1);
+  }).join(" ");
 }
 
 function buildAutoDisplayLabel(column) {
@@ -16965,6 +17097,7 @@ function formatValue(dataset, column, value, row) {
   if (column === "rank") return String(value);
   if (/^(season|year|rookie_year)$/i.test(column) && Number.isInteger(value)) return String(value);
   if (column === "age") return value.toFixed(1);
+  if (column === "exp") return value.toFixed(2);
   if (/^(gp|g|gs|min|mp|total_poss|games|wins|losses)$/i.test(column)) return String(Math.round(value));
   if (dataset?.id === "team_coach" && /_(?:fga|two_pa|three_pa|fta)_pg$/i.test(column)) return value.toFixed(1);
   if (dataset?.id === "team_coach" && /_(?:fga|two_pa|three_pa|fta)$/i.test(column)) return value.toFixed(1);
@@ -16972,10 +17105,11 @@ function formatValue(dataset, column, value, row) {
   if (/_poss$/i.test(column)) return value.toFixed(1);
   if (/(_att$|_made$|_miss$)/i.test(column)) return String(Math.round(value));
   if (column === "ast_to") return value.toFixed(2);
+  if (/^ast_pct_(?:usg|tov)_pct$/i.test(column)) return value.toFixed(2);
   if (column === "rim_to_mid_att_ratio") return value.toFixed(2);
   if (column === "blk_pf" || column === "stl_pf" || column === "stocks_pf") return value.toFixed(2);
   if (/^barthag$/i.test(column)) return value.toFixed(3);
-  if (/^ppp_(off|def)$/i.test(column)) return value.toFixed(3);
+  if (/^ppp_(off|def|net)$/i.test(column)) return value.toFixed(3);
   if (/ppp$/i.test(column)) return value.toFixed(3);
   if (dataset?.id === "team_coach" && /_(?:three_pa_rate|ft_rate)$/i.test(column)) {
     const displayValue = Math.abs(value) <= 1.5 ? value * 100 : value;
