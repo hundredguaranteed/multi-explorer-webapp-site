@@ -42,7 +42,7 @@ const INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT = "data/vendor/international_profi
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
 const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_buckets_manifest.js";
 const D1_FOUL_LOOKUP_SCRIPT = "data/vendor/d1_foul_lookup.js";
-const APP_BUILD_VERSION = "20260420-playtype-v72";
+const APP_BUILD_VERSION = "20260421-teamcoach-v73";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -1874,7 +1874,6 @@ function buildTeamCoachConfig() {
       ...playtypeGroups,
     ],
     singleFilters: withSharedSingleFilters([
-      { id: "conference_bucket", label: "Conf Bucket" },
       { id: "percentile_mode", label: "Percentiles", defaultValue: "off", options: [{ value: "off", label: "Off" }, { value: "year", label: "Year" }, { value: "all_time", label: "All time" }] },
       { id: "conference", label: "Conference", column: "conference" },
       { id: "coach", label: "Coach", column: "coach", searchable: true },
@@ -9140,16 +9139,33 @@ function renderPrimaryFilters(dataset, state) {
   elements.searchInput.disabled = false;
   const searchLabel = document.querySelector('label[for="searchInput"]');
   if (searchLabel) {
-    searchLabel.textContent = "Player";
+    searchLabel.textContent = getDatasetSearchLabelText(dataset);
   }
-  elements.searchInput.placeholder = dataset.id === "grassroots"
-    ? "Player name; use && for OR"
-    : "Player name";
+  elements.searchInput.placeholder = getDatasetSearchPlaceholder(dataset);
+  const globalSearchLabel = document.querySelector('label[for="globalPlayerSearchInput"]');
+  if (globalSearchLabel) globalSearchLabel.textContent = getDatasetSearchEntityLabel(dataset);
+  if (elements.globalPlayerSearchInput) {
+    elements.globalPlayerSearchInput.placeholder = dataset?.id === "team_coach" ? "Find coach" : "Find player";
+  }
 }
 
 function renderSecondaryFilters(dataset, state) {
   renderDemoRangeFilters(dataset, state);
   renderStatGroups(dataset, state);
+}
+
+function getDatasetSearchEntityLabel(dataset) {
+  return dataset?.id === "team_coach" ? "Coach" : "Player";
+}
+
+function getDatasetSearchLabelText(dataset) {
+  return dataset?.id === "team_coach" ? "Coach" : "Player / Team";
+}
+
+function getDatasetSearchPlaceholder(dataset) {
+  if (dataset?.id === "grassroots") return "Player name; use && for OR";
+  if (dataset?.id === "team_coach") return "Coach name";
+  return "Player name";
 }
 
 function renderYearPills(dataset, state) {
@@ -9510,7 +9526,19 @@ function getSingleFilterOptions(dataset, filter, state) {
     ].join("||")
     : "";
   if (cacheKey && optionsCache.has(cacheKey)) return optionsCache.get(cacheKey);
-  if (filter.id === "conference_bucket" && ["d1", "team_coach"].includes(dataset.id)) {
+  if (filter.id === "conference_bucket" && dataset.id === "d1") {
+    const conferences = Array.from(new Set(dataset.rows.map((row) => getStringValue(row.conference)).filter(Boolean))).sort(compareFilterValues);
+    const options = [
+      { value: "all", label: "All" },
+      { value: "hm", label: "HM" },
+      { value: "hmm", label: "HMM" },
+      { value: "hm_hmm", label: "HM+HMM" },
+      { value: "low_major", label: "Low Major" },
+      ...conferences.map((conference) => ({ value: `conf:${conference}`, label: conference })),
+    ];
+    return options;
+  }
+  if (filter.id === "conference" && dataset.id === "team_coach") {
     const conferences = Array.from(new Set(dataset.rows.map((row) => getStringValue(row.conference)).filter(Boolean))).sort(compareFilterValues);
     const options = [
       { value: "all", label: "All" },
@@ -10147,7 +10175,16 @@ function getFilterContextRows(dataset, state, options = {}) {
     }
 
     for (const { filter, selected } of activeSingleFilters) {
-      if (filter.id === "conference_bucket" && ["d1", "team_coach"].includes(dataset.id)) {
+      if (filter.id === "conference_bucket" && dataset.id === "d1") {
+        const conf = getStringValue(row.conference).toUpperCase();
+        if (selected === "hm" && !D1_HM_CONFS.has(conf)) return false;
+        if (selected === "hmm" && !D1_HMM_CONFS.has(conf)) return false;
+        if (selected === "hm_hmm" && !D1_HM_CONFS.has(conf) && !D1_HMM_CONFS.has(conf)) return false;
+        if (selected === "low_major" && (D1_HM_CONFS.has(conf) || D1_HMM_CONFS.has(conf))) return false;
+        if (selected.startsWith("conf:") && conf !== selected.slice(5).toUpperCase()) return false;
+        continue;
+      }
+      if (filter.id === "conference" && dataset.id === "team_coach") {
         const conf = getStringValue(row.conference).toUpperCase();
         if (selected === "hm" && !D1_HM_CONFS.has(conf)) return false;
         if (selected === "hmm" && !D1_HMM_CONFS.has(conf)) return false;
@@ -14560,7 +14597,7 @@ function renderFinderBar(dataset, state) {
   elements.yearQuickSelect.value = singleYear;
   elements.yearQuickSelect.disabled = Boolean(state?._grassrootsLoadingScope || getGrassrootsPendingYearsKey(state) || getPlayerCareerPendingYearsKey(state) || getD1PendingYearsKey(state));
   const yearLabel = careerMode ? getCareerYearLabel(dataset, state) : (selectedYears.length === 1 ? formatYearValueLabel(selectedYears[0]) : "All Years");
-  elements.finderTitle.textContent = `${yearLabel} ${dataset.navLabel} Player Finder`;
+  elements.finderTitle.textContent = `${yearLabel} ${dataset.navLabel} ${getDatasetSearchEntityLabel(dataset)} Finder`;
   elements.finderQuery.textContent = buildFinderQueryText(dataset, state);
 
   elements.yearQuickSelect.onchange = async () => {
@@ -14618,7 +14655,8 @@ function buildFinderQueryText(dataset, state) {
   (dataset.singleFilters || []).forEach((filter) => {
     if (["view_mode", "color_mode"].includes(filter.id)) return;
     const value = state.extraSelects[filter.id];
-    if (!value || value === "all") return;
+    const defaultValue = getStringValue(filter.defaultValue ?? "all");
+    if (!value || value === "all" || value === defaultValue) return;
     const label = getSingleFilterOptions(dataset, filter, state).find((option) => option.value === value)?.label || value;
     parts.push(`${filter.label}: ${label}`);
   });
