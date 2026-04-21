@@ -42,7 +42,7 @@ const INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT = "data/vendor/international_profi
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
 const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_buckets_manifest.js";
 const D1_FOUL_LOOKUP_SCRIPT = "data/vendor/d1_foul_lookup.js";
-const APP_BUILD_VERSION = "20260421-layout-v76";
+const APP_BUILD_VERSION = "20260421-layout-v77";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -443,16 +443,20 @@ const D1_PLAYTYPE_METRICS = [
   { source: "PPP", suffix: "ppp", label: "PPP", defaultVisible: true },
   { source: "FG Att", suffix: "fg_att", label: "FGA", defaultVisible: false },
   { source: "", suffix: "fg_att_pg", label: "FGA/G", defaultVisible: false },
+  { source: "", suffix: "fg_att_per40", label: "FGA/40", defaultVisible: false },
   { source: "eFG%", suffix: "efg_pct", label: "eFG%", defaultVisible: false },
   { source: "TO%", suffix: "tov_pct", label: "TO%", defaultVisible: true },
   { source: "FTA/FGA", suffix: "ftr", label: "FTr", defaultVisible: true },
   { source: "", suffix: "fta", label: "FTA", defaultVisible: false },
   { source: "", suffix: "fta_pg", label: "FTA/G", defaultVisible: false },
+  { source: "", suffix: "fta_per40", label: "FTA/40", defaultVisible: false },
   { source: "2 FG Att", suffix: "two_fg_att", label: "2PA", defaultVisible: false },
   { source: "", suffix: "two_fg_att_pg", label: "2PA/G", defaultVisible: false },
+  { source: "", suffix: "two_fg_att_per40", label: "2PA/40", defaultVisible: false },
   { source: "2 FG%", suffix: "two_fg_pct", label: "2P%", defaultVisible: false },
   { source: "3FG Att", suffix: "three_fg_att", label: "3PA", defaultVisible: false },
   { source: "", suffix: "three_fg_att_pg", label: "3PA/G", defaultVisible: false },
+  { source: "", suffix: "three_fg_att_per40", label: "3PA/40", defaultVisible: false },
   { source: "3 FG%", suffix: "three_fg_pct", label: "3P%", defaultVisible: false },
   { source: "3PA/FGA", suffix: "three_pr", label: "3Pr", defaultVisible: false },
 ];
@@ -633,16 +637,20 @@ function getD1TransitionGroup() {
     { key: "transition_ppp", label: "Transition PPP", defaultVisible: true },
     { key: "transition_fg_att", label: "Transition FGA", defaultVisible: false },
     { key: "transition_fg_att_pg", label: "Transition FGA/G", defaultVisible: false },
+    { key: "transition_fg_att_per40", label: "Transition FGA/40", defaultVisible: false },
     { key: "transition_efg_pct", label: "Transition eFG%", defaultVisible: false },
     { key: "transition_tov_pct", label: "Transition TO%", defaultVisible: true },
     { key: "transition_ftr", label: "Transition FTr", defaultVisible: true },
     { key: "transition_fta", label: "Transition FTA", defaultVisible: false },
     { key: "transition_fta_pg", label: "Transition FTA/G", defaultVisible: false },
+    { key: "transition_fta_per40", label: "Transition FTA/40", defaultVisible: false },
     { key: "transition_two_fg_att", label: "Transition 2PA", defaultVisible: false },
     { key: "transition_two_fg_att_pg", label: "Transition 2PA/G", defaultVisible: false },
+    { key: "transition_two_fg_att_per40", label: "Transition 2PA/40", defaultVisible: false },
     { key: "transition_two_fg_pct", label: "Transition 2P%", defaultVisible: false },
     { key: "transition_three_fg_att", label: "Transition 3PA", defaultVisible: false },
     { key: "transition_three_fg_att_pg", label: "Transition 3PA/G", defaultVisible: false },
+    { key: "transition_three_fg_att_per40", label: "Transition 3PA/40", defaultVisible: false },
     { key: "transition_three_fg_pct", label: "Transition 3P%", defaultVisible: false },
     { key: "transition_three_pr", label: "Transition 3Pr", defaultVisible: false },
   ];
@@ -2874,6 +2882,14 @@ function wireGlobalEvents() {
       await cycleGroupVisibility(dataset, state, group);
       return;
     }
+    const groupUnitButton = target.closest("[data-group-unit]");
+    if (groupUnitButton) {
+      const groupId = groupUnitButton.dataset.groupUnit;
+      const group = dataset.meta.groups.find((item) => item.id === groupId);
+      if (!group) return;
+      await cycleGroupUnitMode(dataset, state, group);
+      return;
+    }
     const statButton = target.closest("[data-stat-column]");
     if (!statButton) return;
     const column = statButton.dataset.statColumn;
@@ -5005,6 +5021,7 @@ function snapshotGrassrootsUiState(state) {
     extraSelects: { ...(state?.extraSelects || {}) },
     multiSelects: Object.fromEntries(Object.entries(state?.multiSelects || {}).map(([filterId, selected]) => [filterId, Array.from(selected || [])])),
     visibleColumns: { ...(state?.visibleColumns || {}) },
+    groupUnitModes: { ...(state?.groupUnitModes || {}) },
     demoFilters: cloneGrassrootsRangeFilters(state?.demoFilters),
     numericFilters: cloneGrassrootsRangeFilters(state?.numericFilters),
     groupCycles: { ...(state?.groupCycles || {}) },
@@ -5031,6 +5048,7 @@ function restoreGrassrootsUiState(dataset, snapshot, viewMode) {
       new Set(Array.isArray(snapshot.multiSelects?.[filter.id]) ? snapshot.multiSelects[filter.id] : []),
     ]));
     state.visibleColumns = { ...state.visibleColumns, ...(snapshot.visibleColumns || {}) };
+    state.groupUnitModes = { ...state.groupUnitModes, ...(snapshot.groupUnitModes || {}) };
     state.demoFilters = cloneGrassrootsRangeFilters(snapshot.demoFilters);
     state.numericFilters = cloneGrassrootsRangeFilters(snapshot.numericFilters);
     state.groupCycles = Object.fromEntries((dataset.meta?.groups || []).map((group) => [
@@ -8898,6 +8916,7 @@ function createInitialUiState(dataset) {
     extraSelects: Object.fromEntries((dataset.singleFilters || []).map((filter) => [filter.id, filter.defaultValue ?? "all"])),
     multiSelects: Object.fromEntries((dataset.multiFilters || []).map((filter) => [filter.id, new Set()])),
     visibleColumns,
+    groupUnitModes: Object.fromEntries(dataset.meta.groups.map((group) => [group.id, getDefaultGroupUnitMode(dataset, group)])),
     demoFilters,
     numericFilters,
     groupCycles: Object.fromEntries(dataset.meta.groups.map((group) => [group.id, 0])),
@@ -9903,6 +9922,120 @@ function getDemoControlColumns(dataset) {
   ]));
 }
 
+const GROUP_VISIBILITY_ACTIONS = ["default", "all", "none"];
+const GROUP_UNIT_MODE_ORDER = [
+  { id: "totals", label: "Totals" },
+  { id: "per_game", label: "Per G" },
+  { id: "per40", label: "Per 40" },
+];
+
+function getColumnUnitMode(column) {
+  const baseColumn = stripCompanionPrefix(column);
+  if (/_per40$/i.test(baseColumn)) return "per40";
+  if (/_pg$/i.test(baseColumn) || /_per_g$/i.test(baseColumn)) return "per_game";
+  return "totals";
+}
+
+function getGroupUnitModes(dataset, group) {
+  if (!group?.columns?.length) return [];
+  if (Array.isArray(group._unitModesCache)) return group._unitModesCache;
+  const columnsByMode = new Map();
+  (group.columns || []).forEach((column) => {
+    const unitMode = getColumnUnitMode(column);
+    if (!columnsByMode.has(unitMode)) columnsByMode.set(unitMode, []);
+    columnsByMode.get(unitMode).push(column);
+  });
+  group._unitModesCache = GROUP_UNIT_MODE_ORDER
+    .filter((item) => columnsByMode.has(item.id))
+    .map((item) => ({ ...item, columns: columnsByMode.get(item.id).slice() }));
+  return group._unitModesCache;
+}
+
+function getDefaultGroupUnitMode(dataset, group) {
+  const unitModes = getGroupUnitModes(dataset, group);
+  if (!unitModes.length) return "totals";
+  return unitModes.find((item) => item.id === "totals")?.id || unitModes[0].id;
+}
+
+function getGroupUnitMode(state, dataset, group) {
+  const unitModes = getGroupUnitModes(dataset, group);
+  if (!unitModes.length) return "totals";
+  const fallback = getDefaultGroupUnitMode(dataset, group);
+  const requested = getStringValue(state?.groupUnitModes?.[group.id] || fallback);
+  return unitModes.find((item) => item.id === requested)?.id || fallback;
+}
+
+function getGroupUnitModeLabel(state, dataset, group) {
+  const unitMode = getGroupUnitMode(state, dataset, group);
+  return getGroupUnitModes(dataset, group).find((item) => item.id === unitMode)?.label || "Totals";
+}
+
+function getVisibleGroupColumns(group, state) {
+  return (group?.columns || []).filter((column) => state.visibleColumns[column]);
+}
+
+function findEquivalentGroupUnitColumn(group, column, targetUnitMode) {
+  if (!group?.columns?.length || !column) return "";
+  const baseColumn = stripCompanionPrefix(column).replace(/(_pg|_per_g|_per40)$/i, "");
+  const candidates = targetUnitMode === "per40"
+    ? [`${baseColumn}_per40`]
+    : targetUnitMode === "per_game"
+    ? [`${baseColumn}_pg`, `${baseColumn}_per_g`]
+    : [baseColumn];
+  return group.columns.find((item) => candidates.includes(stripCompanionPrefix(item))) || "";
+}
+
+function mapGroupColumnsToUnitMode(group, columns, targetUnitMode) {
+  const mapped = [];
+  const seen = new Set();
+  (columns || []).forEach((column) => {
+    const nextColumn = findEquivalentGroupUnitColumn(group, column, targetUnitMode);
+    if (!nextColumn || seen.has(nextColumn)) return;
+    seen.add(nextColumn);
+    mapped.push(nextColumn);
+  });
+  return mapped;
+}
+
+function getGroupColumnsForUnitMode(dataset, group, unitMode) {
+  const unitModes = getGroupUnitModes(dataset, group);
+  if (!unitModes.length) return group?.columns || [];
+  return unitModes.find((item) => item.id === unitMode)?.columns.slice() || unitModes[0].columns.slice();
+}
+
+function getGroupDefaultColumnsForUnitMode(dataset, group, unitMode) {
+  const unitColumns = getGroupColumnsForUnitMode(dataset, group, unitMode);
+  if (!unitColumns.length) return [];
+  const directDefaults = (group.defaultColumns || []).filter((column) => unitColumns.includes(column));
+  if (directDefaults.length) return directDefaults;
+  const mappedDefaults = mapGroupColumnsToUnitMode(group, group.defaultColumns || [], unitMode).filter((column) => unitColumns.includes(column));
+  if (mappedDefaults.length >= Math.min(2, unitColumns.length)) return mappedDefaults;
+  return unitColumns;
+}
+
+function getGroupScopeColumns(dataset, group, state, scope, unitMode = getGroupUnitMode(state, dataset, group)) {
+  const unitColumns = getGroupColumnsForUnitMode(dataset, group, unitMode);
+  if (scope === "none") return [];
+  if (scope === "all") return unitColumns;
+  if (scope === "custom") {
+    const mappedVisible = mapGroupColumnsToUnitMode(group, getVisibleGroupColumns(group, state), unitMode).filter((column) => unitColumns.includes(column));
+    return mappedVisible.length ? mappedVisible : getGroupDefaultColumnsForUnitMode(dataset, group, unitMode);
+  }
+  return getGroupDefaultColumnsForUnitMode(dataset, group, unitMode);
+}
+
+function getNextGroupVisibilityState(dataset, group, state) {
+  const currentColumns = getVisibleGroupColumns(group, state);
+  const currentState = getGroupSelectionState(dataset, group, state);
+  const startIndex = GROUP_VISIBILITY_ACTIONS.indexOf(currentState);
+  for (let offset = 1; offset <= GROUP_VISIBILITY_ACTIONS.length; offset += 1) {
+    const candidate = GROUP_VISIBILITY_ACTIONS[(Math.max(startIndex, -1) + offset) % GROUP_VISIBILITY_ACTIONS.length];
+    const targetColumns = getGroupScopeColumns(dataset, group, state, candidate);
+    if (!areSameColumns(currentColumns, targetColumns)) return candidate;
+  }
+  return currentState === "none" ? "default" : "none";
+}
+
 function renderStatGroups(dataset, state) {
   const numericColumnSet = dataset.meta.numericColumnSet || new Set(dataset.meta.numericColumns || []);
   const groups = dataset.meta.groups
@@ -9912,6 +10045,7 @@ function renderStatGroups(dataset, state) {
   const shellKey = [
     dataset?.id,
     Array.from(dataset.meta.allColumns || []).map((column) => (state.visibleColumns[column] ? column : "")).join("|"),
+    groups.map((group) => `${group.id}:${getGroupUnitMode(state, dataset, group)}`).join("|"),
     Number(dataset?._rowVersion) || 0,
     groups.map((group) => `${group.id}:${(renderedGroupColumns.get(group.id) || []).join(",")}`).join("|"),
     Array.from(numericColumnSet).sort(compareFilterValues).join("|"),
@@ -9925,6 +10059,12 @@ function renderStatGroups(dataset, state) {
       const groupState = getGroupSelectionState(dataset, group, state);
       const note = button.querySelector(".cycle-note");
       if (note) note.textContent = `(${groupState})`;
+    });
+    elements.statGroups.querySelectorAll("[data-group-unit]").forEach((button) => {
+      const groupId = getStringValue(button.dataset.groupUnit);
+      const group = groups.find((item) => item.id === groupId);
+      if (!group) return;
+      button.textContent = getGroupUnitModeLabel(state, dataset, group);
     });
     elements.statGroups.querySelectorAll("[data-stat-column]").forEach((button) => {
       const column = getStringValue(button.dataset.statColumn);
@@ -9945,6 +10085,10 @@ function renderStatGroups(dataset, state) {
   elements.statGroups.innerHTML = groups
     .map((group) => {
       const groupState = getGroupSelectionState(dataset, group, state);
+      const unitModes = getGroupUnitModes(dataset, group);
+      const unitModeButton = unitModes.length > 1
+        ? `<button class="group-unit-button" type="button" data-group-unit="${escapeAttribute(group.id)}">${escapeHtml(getGroupUnitModeLabel(state, dataset, group))}</button>`
+        : "";
       const filterColumns = renderedGroupColumns.get(group.id) || [];
       const rowsHtml = filterColumns
         .map((column) => {
@@ -9954,7 +10098,7 @@ function renderStatGroups(dataset, state) {
           return `<div class="filter-row"><button class="pill-toggle filter-row__label ${active}" type="button" data-stat-column="${escapeAttribute(column)}">${escapeHtml(displayLabel(dataset, column))}</button><input class="filter-input" type="text" inputmode="decimal" autocomplete="off" placeholder="Min" value="${escapeAttribute(filter.min ?? "")}" data-stat-min="${escapeAttribute(column)}"${disabled}><input class="filter-input" type="text" inputmode="decimal" autocomplete="off" placeholder="Max" value="${escapeAttribute(filter.max ?? "")}" data-stat-max="${escapeAttribute(column)}"${disabled}></div>`;
         })
         .join("");
-      return `<section class="stat-group"><div class="stat-group__header"><button class="group-cycle-button ${group.columns.some((column) => state.visibleColumns[column]) ? "is-active" : ""}" type="button" data-group-cycle="${escapeAttribute(group.id)}">${escapeHtml(group.label)} <span class="cycle-note">(${escapeHtml(groupState)})</span></button></div><div class="stat-group__body">${rowsHtml}</div></section>`;
+      return `<section class="stat-group"><div class="stat-group__header"><button class="group-cycle-button ${group.columns.some((column) => state.visibleColumns[column]) ? "is-active" : ""}" type="button" data-group-cycle="${escapeAttribute(group.id)}">${escapeHtml(group.label)} <span class="cycle-note">(${escapeHtml(groupState)})</span></button>${unitModeButton}</div><div class="stat-group__body">${rowsHtml}</div></section>`;
     })
     .join("");
   elements.statGroups.dataset.shellKey = shellKey;
@@ -9977,29 +10121,21 @@ function renderStatGroups(dataset, state) {
 }
 
 function getGroupSelectionState(dataset, group, state) {
-  const visible = group.columns.filter((column) => state.visibleColumns[column]);
+  const visible = getVisibleGroupColumns(group, state);
   if (!visible.length) return "none";
-  if (visible.length === group.columns.length) return "all";
-  if (areSameColumns(visible, group.defaultColumns || [])) return "default";
-  if (dataset?.id === "d1" && group?.id === "playtype_analysis") {
-    if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "freq"))) return "freq";
-    if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "poss"))) return "poss";
-  }
-  if (dataset?.id === "d1" && group?.id === "shot_profile") {
-    if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "totals"))) return "totals";
-    if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "per_game"))) return "per_game";
-    if (areSameColumns(visible, getGroupColumnsForMode(dataset, group, "per40"))) return "per40";
-  }
+  const unitMode = getGroupUnitMode(state, dataset, group);
+  if (areSameColumns(visible, getGroupScopeColumns(dataset, group, state, "default", unitMode))) return "default";
+  if (areSameColumns(visible, getGroupScopeColumns(dataset, group, state, "all", unitMode))) return "all";
   return "custom";
 }
 
 function getRenderedFilterColumnsForGroup(dataset, group, state) {
   if (!group) return [];
-  const mode = getGroupSelectionState(dataset, group, state);
-  if (mode === "all" || mode === "custom") return group.columns || [];
-  const modeColumns = getGroupColumnsForMode(dataset, group, mode);
-  if (modeColumns.length) return modeColumns;
-  return group.defaultColumns?.length ? group.defaultColumns : (group.columns || []);
+  const groupState = getGroupSelectionState(dataset, group, state);
+  const unitMode = getGroupUnitMode(state, dataset, group);
+  if (groupState === "all") return getGroupScopeColumns(dataset, group, state, "all", unitMode);
+  if (groupState === "custom") return getGroupScopeColumns(dataset, group, state, "custom", unitMode);
+  return getGroupScopeColumns(dataset, group, state, "default", unitMode);
 }
 
 function areSameColumns(left = [], right = []) {
@@ -10009,48 +10145,42 @@ function areSameColumns(left = [], right = []) {
 }
 
 function getGroupCycleActions(dataset, group) {
-  if (dataset?.id === "d1" && group?.id === "playtype_analysis") return ["default", "freq", "poss", "all", "none"];
-  if (dataset?.id === "d1" && group?.id === "shot_profile") return ["default", "totals", "per_game", "per40", "all", "none"];
-  return ["default", "all", "none"];
-}
-
-function getGroupColumnsForMode(dataset, group, mode) {
-  if (!group) return [];
-  if (mode === "all") return group.columns || [];
-  if (mode === "default") return group.defaultColumns || [];
-  if (dataset?.id === "d1" && group.id === "playtype_analysis") {
-    if (mode === "freq") return (group.columns || []).filter((column) => /_freq$/i.test(column));
-    if (mode === "poss") return (group.columns || []).filter((column) => /_poss$/i.test(column));
-  }
-  if (dataset?.id === "d1" && group.id === "shot_profile") {
-    if (mode === "totals") return getD1ShotProfileColumnsForMode("totals");
-    if (mode === "per_game") return getD1ShotProfileColumnsForMode("per_game");
-    if (mode === "per40") return getD1ShotProfileColumnsForMode("per40");
-  }
-  return [];
+  return GROUP_VISIBILITY_ACTIONS;
 }
 
 async function cycleGroupVisibility(dataset, state, group) {
-  const cycleActions = getGroupCycleActions(dataset, group);
-  const currentMode = getGroupSelectionState(dataset, group, state);
-  const currentIndex = cycleActions.indexOf(currentMode);
-  const nextMode = cycleActions[(currentIndex + 1) % cycleActions.length] || cycleActions[0] || "none";
-  const targetModeColumns = getGroupColumnsForMode(dataset, group, nextMode);
-  const targetColumns = nextMode === "all"
-    ? group.columns.filter((column) => !state.visibleColumns[column])
-    : group.columns.filter((column) => targetModeColumns.includes(column) && !state.visibleColumns[column]);
-
-  if (targetColumns.length) {
-    await ensureDeferredColumnsReady(dataset, state, targetColumns, { scope: "visible" });
+  const nextState = getNextGroupVisibilityState(dataset, group, state);
+  const targetColumns = getGroupScopeColumns(dataset, group, state, nextState);
+  const missingColumns = targetColumns.filter((column) => !state.visibleColumns[column]);
+  if (missingColumns.length) {
+    await ensureDeferredColumnsReady(dataset, state, missingColumns, { scope: "visible" });
     if (appState.currentId !== dataset.id) return;
   }
-
   group.columns.forEach((column) => {
     if (!(column in state.visibleColumns)) return;
-    const shouldShow = nextMode === "all" ? true : nextMode !== "none" && targetModeColumns.includes(column);
-    state.visibleColumns[column] = shouldShow;
+    state.visibleColumns[column] = targetColumns.includes(column);
   });
+  renderCurrentDataset();
+}
 
+async function cycleGroupUnitMode(dataset, state, group) {
+  const unitModes = getGroupUnitModes(dataset, group);
+  if (unitModes.length < 2) return;
+  const currentMode = getGroupUnitMode(state, dataset, group);
+  const currentIndex = unitModes.findIndex((item) => item.id === currentMode);
+  const nextMode = unitModes[(currentIndex + 1) % unitModes.length]?.id || unitModes[0].id;
+  const currentState = getGroupSelectionState(dataset, group, state);
+  const targetColumns = getGroupScopeColumns(dataset, group, state, currentState, nextMode);
+  const missingColumns = targetColumns.filter((column) => !state.visibleColumns[column]);
+  if (missingColumns.length) {
+    await ensureDeferredColumnsReady(dataset, state, missingColumns, { scope: "visible" });
+    if (appState.currentId !== dataset.id) return;
+  }
+  state.groupUnitModes[group.id] = nextMode;
+  group.columns.forEach((column) => {
+    if (!(column in state.visibleColumns)) return;
+    state.visibleColumns[column] = targetColumns.includes(column);
+  });
   renderCurrentDataset();
 }
 
@@ -16171,6 +16301,7 @@ function normalizeD1PlaytypeColumns(row) {
 function populateD1PlaytypeVolumeMetrics(row) {
   if (!row || row._careerAggregate) return;
   const gp = firstFinite(row.gp, Number.NaN);
+  const minutes = firstFinite(row.min, Number.isFinite(gp) && Number.isFinite(row.mpg) ? row.gp * row.mpg : Number.NaN, Number.NaN);
   D1_TRUE_PLAYTYPE_IDS.forEach((id) => {
     const fgAttColumn = `${id}_fg_att`;
     const twoAttColumn = `${id}_two_fg_att`;
@@ -16204,6 +16335,16 @@ function populateD1PlaytypeVolumeMetrics(row) {
       const total = firstFinite(row[totalColumn], Number.NaN);
       const pg = perGameValue(total, gp);
       if (pg !== "") row[perGameColumn] = pg;
+    });
+    [
+      [fgAttColumn, `${id}_fg_att_per40`],
+      [twoAttColumn, `${id}_two_fg_att_per40`],
+      [threeAttColumn, `${id}_three_fg_att_per40`],
+      [ftaColumn, `${id}_fta_per40`],
+    ].forEach(([totalColumn, per40Column]) => {
+      const total = firstFinite(row[totalColumn], Number.NaN);
+      const per40 = per40Value(total, minutes);
+      if (per40 !== "") row[per40Column] = per40;
     });
   });
 }

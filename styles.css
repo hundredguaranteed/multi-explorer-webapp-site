@@ -354,7 +354,8 @@ a,
 
 .pill-toggle,
 .demo-toggle-button,
-.group-cycle-button {
+.group-cycle-button,
+.group-unit-button {
   appearance: none;
   border: 1px solid var(--line);
   background: #ffffff;
@@ -367,7 +368,8 @@ a,
 
 .pill-toggle.is-active,
 .demo-toggle-button.is-active,
-.group-cycle-button.is-active {
+.group-cycle-button.is-active,
+.group-unit-button.is-active {
   background: var(--active-fill);
 }
 
@@ -406,17 +408,29 @@ a,
   margin-top: 7px;
 }
 
+.stat-group__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px;
+  align-items: center;
+}
+
 .stat-group__body {
   display: grid;
   gap: 3px;
 }
 
-.group-cycle-button {
+.group-cycle-button,
+.group-unit-button {
   border-color: var(--line);
 }
 
 .group-cycle-button .cycle-note {
   color: var(--muted);
+}
+
+.group-unit-button {
+  min-width: 56px;
 }
 
 .table-area {
