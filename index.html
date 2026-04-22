@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stat Explorers</title>
   <meta name="description" content="D1, D2, NAIA, JUCO, FIBA, International, NBA, and Player/Career explorers in one basic webapp.">
-<link rel="stylesheet" href="styles.css?v=20260421-status-v78">
+<link rel="stylesheet" href="styles.css?v=20260421-status-v80">
   <script>
 window.__DATA_ASSET_BASE__ = "";
 (function () {
-  var version = "20260421-status-v78";
+  var version = "20260421-status-v80";
   var route = (window.location.hash || "#home").replace(/^#/, "").toLowerCase().split("?")[0];
   if (route === "player" || route === "player_profile") route = "profile";
   var preloads = {
@@ -23,6 +23,7 @@ window.__DATA_ASSET_BASE__ = "";
     ],
     profile: [
       "data/vendor/player_profile_buckets_manifest.js",
+      "data/vendor/player_profile_year_index.js",
       "data/vendor/d1_foul_lookup.js",
     ],
     international: [
@@ -48,10 +49,10 @@ window.__DATA_ASSET_BASE__ = "";
   });
 }());
   </script>
-<script src="app.js?v=20260421-status-v78" defer></script>
+<script src="app.js?v=20260421-status-v80" defer></script>
   <script>
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js?v=20260421-status-v78").catch(function () {});
+  navigator.serviceWorker.register("sw.js?v=20260421-status-v80").catch(function () {});
 }
   </script>
 </head>
@@ -102,8 +103,10 @@ if ("serviceWorker" in navigator) {
         <div class="section-header-row">
           <h2>Search</h2>
         </div>
+        <div class="select-stack" id="singleSelectFilters"></div>
+        <div class="multi-filter-stack" id="multiSelectFilters"></div>
         <div class="field-stack field-stack--compact">
-          <label class="field-label" for="searchInput">Player / Team</label>
+          <label class="field-label" for="searchInput">Player</label>
           <input class="form-control" id="searchInput" type="text" placeholder="Start typing">
           <datalist id="searchSuggestions"></datalist>
         </div>
@@ -113,8 +116,6 @@ if ("serviceWorker" in navigator) {
             <option value="all">All teams</option>
           </select>
         </div>
-        <div class="select-stack" id="singleSelectFilters"></div>
-        <div class="multi-filter-stack" id="multiSelectFilters"></div>
         <div class="embedded-demo-controls" id="demoControls">
           <div class="section-header-row section-header-row--inline">
             <h2>Info</h2>
