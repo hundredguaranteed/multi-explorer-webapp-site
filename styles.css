@@ -6,10 +6,10 @@
   --line-soft: #e0e0e0;
   --link: #0f2ea5;
   --active-fill: #e0d7c6;
-  --low-fill: #d7b5ab;
-  --high-fill: #bfd6b2;
+  --low-fill: #efd9d2;
+  --high-fill: #dbe7ef;
   --shell-width: 3440px;
-  --sidebar-width: 248px;
+  --sidebar-width: 236px;
   --table-max-width: 2600px;
   --shell-gap: 96px;
   --num-col-width: 42px;
@@ -411,7 +411,7 @@ a,
 .demo-range-item,
 .filter-row {
   display: grid;
-  grid-template-columns: 122px 48px 48px;
+  grid-template-columns: 112px 48px 48px;
   gap: 3px;
   align-items: center;
   justify-content: center;
@@ -551,14 +551,25 @@ a,
   box-shadow: inset 0 2px 0 rgba(226, 154, 41, 0.9), inset 0 -2px 0 rgba(226, 154, 41, 0.9);
 }
 
+#statsTable th.cell-group-start,
+#statsTable td.cell-group-start {
+  border-left: 1px solid #8a8a8a;
+}
+
+#statsTable th.cell-group-end,
+#statsTable td.cell-group-end {
+  border-right: 1px solid #8a8a8a;
+}
+
 #statsTable *,
 .player-profile-table * {
   text-overflow: clip !important;
 }
 
 .player-season-link {
-  display: block;
-  width: 100%;
+  display: inline-block;
+  width: auto;
+  max-width: 100%;
   min-width: 0;
   padding: 0;
   border: 0;
@@ -1131,7 +1142,7 @@ body.profile-route-active .player-profile-table td {
 
   .demo-range-item,
   .filter-row {
-    grid-template-columns: minmax(0, 1fr) 58px 58px;
+    grid-template-columns: minmax(0, 1fr) 54px 54px;
     gap: 4px;
     justify-content: stretch;
   }
@@ -1219,7 +1230,7 @@ body.profile-route-active .player-profile-table td {
 
   .demo-range-item,
   .filter-row {
-    grid-template-columns: minmax(0, 1fr) 56px 56px;
+    grid-template-columns: minmax(0, 1fr) 52px 52px;
   }
 
   .load-more-link {

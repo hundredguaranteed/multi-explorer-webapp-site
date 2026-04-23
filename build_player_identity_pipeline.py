@@ -5,6 +5,8 @@ import io
 import json
 import math
 import re
+import subprocess
+import sys
 from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -30,6 +32,7 @@ RIM_ROOT = PROJECTS_ROOT / "Rim Data"
 BARTTORVIK_DIR = PROJECTS_ROOT / "cbb_onoff_lab" / "cache" / "barttorvik"
 NBA_EPM_DIR = PROJECTS_ROOT / "NBA EPM"
 NCAA_SPI_DIR = PROJECTS_ROOT / "SPI for former JUCO D1 Players"
+RAW_SITE_DATA_ROOT = PROJECTS_ROOT / "multi-explorer-site-data" / "tab_sources"
 
 PLAYER_CAREER_BUNDLE_PATH = ROOT / "data" / "vendor" / "player_career_all_seasons.js"
 PLAYER_CAREER_YEAR_MANIFEST_PATH = ROOT / "data" / "vendor" / "player_career_year_manifest.js"
@@ -198,6 +201,11 @@ SITE_DATASETS = {
         "profile_level": "NBA",
         "type": "nba",
     },
+}
+
+RAW_SITE_DATA_OVERRIDES = {
+    "juco": RAW_SITE_DATA_ROOT / "JUCO" / "njcaa_all_seasons.csv",
+    "naia": RAW_SITE_DATA_ROOT / "NAIA" / "naia_all_seasons.csv",
 }
 
 RIM_DATASETS = {
@@ -430,6 +438,11 @@ EXPLICIT_SCHOOL_KEY_VARIANTS = {
 }
 
 
+def run_downstream_build(label: str, command: list[str]) -> None:
+    print(f"Running downstream build: {label}")
+    subprocess.run(command, cwd=ROOT, check=True)
+
+
 def main() -> None:
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
@@ -458,6 +471,8 @@ def main() -> None:
     spi_summary = apply_ncaa_spi_data(site_data, team_alias_map, team_alias_details)
 
     grassroots_rows, grassroots_summary = load_and_match_grassroots_rows(player_name_index)
+    invalid_lower_level_link_summary = prune_impossible_lower_level_links(site_data, profiles, grassroots_rows)
+    finalize_row_identity_fields(site_data, profiles)
 
     player_profiles = build_player_profiles(site_data, profiles, grassroots_rows)
     backfill_site_rows_from_player_profiles(site_data, player_profiles)
@@ -473,10 +488,13 @@ def main() -> None:
         "d1_profile_summary": d1_profile_summary,
         "d1_link_reconcile_summary": d1_link_reconcile_summary,
         "grassroots_match_summary": grassroots_summary,
+        "invalid_lower_level_link_summary": invalid_lower_level_link_summary,
         "rim_match_summary": rim_summary,
         "spi_match_summary": spi_summary,
         "barttorvik_aliases_added": barttorvik_alias_count,
     })
+    run_downstream_build("player career year chunks", [sys.executable, str(ROOT / "build_player_career_year_chunks.py")])
+    run_downstream_build("status RealGM index", ["node", str(ROOT / "scripts" / "build-status-realgm-index.mjs")])
 
     print(json.dumps({
         "profiles": len(player_profiles),
@@ -488,6 +506,7 @@ def main() -> None:
         "d1_profile_summary": d1_profile_summary,
         "d1_link_reconcile_summary": d1_link_reconcile_summary,
         "grassroots_match_summary": grassroots_summary,
+        "invalid_lower_level_link_summary": invalid_lower_level_link_summary,
         "rim_match_summary": rim_summary,
         "spi_match_summary": spi_summary,
         "barttorvik_aliases_added": barttorvik_alias_count,
@@ -514,6 +533,10 @@ def load_site_datasets() -> dict[str, dict[str, object]]:
 
 
 def load_site_dataset_rows(dataset_id: str, config: dict[str, object]) -> tuple[list[dict[str, object]], list[str]]:
+    raw_override = RAW_SITE_DATA_OVERRIDES.get(dataset_id)
+    if raw_override and raw_override.is_file():
+        rows = load_plain_csv_rows(raw_override)
+        return rows, collect_csv_columns(rows)
     manifest_path = config.get("multipart_manifest_path")
     parts_dir = config.get("multipart_parts_dir")
     if (
@@ -600,10 +623,10 @@ def annotate_site_row(dataset_id: str, row: dict[str, object], config: dict[str,
     row["_weight_lb_value"] = first_number(row.get("weight_lb"), row.get("weight"), parse_weight_to_lb(row.get("weight_text")))
     row["_draft_pick_value"] = parse_int_value(row.get("draft_pick"))
     row["_rookie_year_value"] = parse_int_value(row.get("rookie_year"))
-    explicit_realgm_player_id = clean_text(row.get("realgm_player_id"))
-    row["_canonical_player_id"] = clean_text(row.get("canonical_player_id")) or (f"rgm_{explicit_realgm_player_id}" if explicit_realgm_player_id else "")
-    row["_realgm_player_id"] = explicit_realgm_player_id
-    row["_match_source"] = "source_realgm_id" if explicit_realgm_player_id else ""
+    # Recompute identity on every run instead of trusting the last rewritten bundle.
+    row["_canonical_player_id"] = ""
+    row["_realgm_player_id"] = ""
+    row["_match_source"] = ""
     row["_identity_group_key"] = build_identity_group_key(dataset_id, row)
 
 
@@ -1870,7 +1893,7 @@ def choose_best_d1_anchor(group_rows: list[dict[str, object]], anchors_by_name: 
     best = ranked[0]
     second = ranked[1] if len(ranked) > 1 else None
     margin = (best["score"] - second["score"]) if second else 999.0
-    if best["best_score"] < 82 or margin < 12:
+    if best["best_score"] < 100 or margin < 12:
         return {"status": "ambiguous"}
     return {"status": "matched", "anchor": best["anchor"]}
 
@@ -1925,7 +1948,7 @@ def anchor_has_hard_identity_signal(row: dict[str, object], anchor: dict[str, ob
 
     weight_gap = abs_numeric_gap(row.get("_weight_lb_value"), anchor.get("weight_lb"))
     if math.isfinite(weight_gap):
-        return weight_gap <= 20
+        return weight_gap <= 12
 
     return False
 
@@ -1955,6 +1978,17 @@ def score_d1_anchor(row: dict[str, object], anchor: dict[str, object]) -> float:
             total += 12.0
         else:
             total += 5.0
+
+    weight_gap = abs_numeric_gap(row.get("_weight_lb_value"), anchor.get("weight_lb"))
+    if math.isfinite(weight_gap):
+        if weight_gap > 35:
+            return 0.0
+        if weight_gap <= 6:
+            total += 8.0
+        elif weight_gap <= 12:
+            total += 5.0
+        elif weight_gap <= 20:
+            total += 2.0
 
     row_year = canonical_end_year(row.get("season"))
     anchor_min_year = parse_int_value(anchor.get("min_year"))
@@ -1988,6 +2022,96 @@ def assign_identity_anchor_to_group(group_rows: list[dict[str, object]], anchor:
 
 def assign_d1_anchor_to_group(group_rows: list[dict[str, object]], anchor: dict[str, object]) -> None:
     assign_identity_anchor_to_group(group_rows, anchor, "d1_link")
+
+
+def reset_identity_group_to_fallback(group_rows: list[dict[str, object]], source: str) -> None:
+    if not group_rows:
+        return
+    representative = sorted(group_rows, key=identity_row_score, reverse=True)[0]
+    fallback_canonical_id = build_fallback_canonical_id(representative)
+    for row in group_rows:
+        row["_canonical_player_id"] = fallback_canonical_id
+        row["_realgm_player_id"] = ""
+        row["_match_source"] = source
+
+
+def build_grassroots_expected_college_year_map(grassroots_rows: list[dict[str, object]] | None) -> dict[str, int]:
+    expected_year_by_player: dict[str, int] = {}
+    if not grassroots_rows:
+        return expected_year_by_player
+    for row in grassroots_rows:
+        canonical_id = clean_text(row.get("_canonical_player_id"))
+        expected_year = expected_college_end_year_from_class_year(row.get("class_year"))
+        if not canonical_id or not expected_year:
+            continue
+        current = expected_year_by_player.get(canonical_id)
+        if not current or expected_year < current:
+            expected_year_by_player[canonical_id] = expected_year
+    return expected_year_by_player
+
+
+def prune_impossible_lower_level_links(
+    site_data: dict[str, dict[str, object]],
+    profiles: dict[str, dict[str, object]],
+    grassroots_rows: list[dict[str, object]] | None = None,
+) -> dict[str, int]:
+    profile_lookup = {profile["canonical_player_id"]: profile for profile in profiles.values()}
+    expected_college_year_by_player = build_grassroots_expected_college_year_map(grassroots_rows)
+    summary = {
+        "groups": 0,
+        "rows": 0,
+        "same_season_conflicts": 0,
+        "class_year_conflicts": 0,
+    }
+
+    for dataset_id in ("d2", "naia", "juco"):
+        for group_rows in group_rows_by_identity(site_data[dataset_id]["rows"]):
+            representative = sorted(group_rows, key=identity_row_score, reverse=True)[0]
+            canonical_id = clean_text(representative.get("_canonical_player_id"))
+            if not canonical_id or canonical_id.startswith("fallback_"):
+                continue
+            profile = profile_lookup.get(canonical_id)
+            if not profile:
+                continue
+
+            same_season_conflict = False
+            for row in group_rows:
+                row_year = canonical_end_year(row.get("season"))
+                if not row_year:
+                    continue
+                row_team_keys = build_row_team_keys(dataset_id, row, None)
+                if not row_team_keys:
+                    continue
+                for season_entry in profile.get("college_seasons") or []:
+                    if canonical_end_year(season_entry.get("season")) != row_year:
+                        continue
+                    season_team = clean_text(season_entry.get("school") or season_entry.get("team"))
+                    if score_team_key_sets(row_team_keys, build_school_keys(season_team)) < 0.66:
+                        same_season_conflict = True
+                        break
+                if same_season_conflict:
+                    break
+
+            expected_college_year = expected_college_year_by_player.get(canonical_id, 0)
+            class_year_conflict = False
+            if expected_college_year:
+                class_year_conflict = any(
+                    row_year and row_year < expected_college_year
+                    for row_year in {canonical_end_year(row.get("season")) for row in group_rows}
+                )
+
+            if not same_season_conflict and not class_year_conflict:
+                continue
+
+            summary["groups"] += 1
+            summary["rows"] += len(group_rows)
+            if same_season_conflict:
+                summary["same_season_conflicts"] += 1
+            if class_year_conflict:
+                summary["class_year_conflicts"] += 1
+            reset_identity_group_to_fallback(group_rows, "link_pruned")
+
+    return summary
 
 
 def reconcile_d1_linked_groups(site_data: dict[str, dict[str, object]]) -> dict[str, int]:
@@ -4256,6 +4380,18 @@ def load_grassroots_rows_from_chunks() -> list[dict[str, object]]:
 
 def load_plain_csv_rows(path: Path) -> list[dict[str, object]]:
     return parse_csv_text(path.read_text(encoding="utf-8", errors="ignore"))
+
+
+def collect_csv_columns(rows: list[dict[str, object]]) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        for column in row.keys():
+            if column in seen:
+                continue
+            seen.add(column)
+            ordered.append(column)
+    return ordered
 
 
 def get_realgm_source_paths() -> list[Path]:

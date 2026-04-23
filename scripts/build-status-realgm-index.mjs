@@ -4,8 +4,21 @@ import path from "node:path";
 const ROOT = process.cwd();
 const OUTPUT_PATH = path.join(ROOT, "data", "vendor", "status_realgm_index.js");
 const D1_YEAR_DIR = path.join(ROOT, "data", "vendor", "d1_year_chunks");
-const NAIA_MANIFEST_PATH = path.join(ROOT, "data", "vendor", "naia_all_seasons_manifest.js");
-const NAIA_PARTS_DIR = path.join(ROOT, "data", "vendor", "naia_all_seasons_parts");
+
+const MULTIPART_DATASETS = {
+  d2: {
+    manifestPath: path.join(ROOT, "data", "vendor", "d2_all_seasons_manifest.js"),
+    partsDir: path.join(ROOT, "data", "vendor", "d2_all_seasons_parts"),
+  },
+  naia: {
+    manifestPath: path.join(ROOT, "data", "vendor", "naia_all_seasons_manifest.js"),
+    partsDir: path.join(ROOT, "data", "vendor", "naia_all_seasons_parts"),
+  },
+  juco: {
+    manifestPath: path.join(ROOT, "data", "vendor", "juco_all_seasons_manifest.js"),
+    partsDir: path.join(ROOT, "data", "vendor", "juco_all_seasons_parts"),
+  },
+};
 
 const DATASET_SOURCES = {
   d1: {
@@ -15,9 +28,9 @@ const DATASET_SOURCES = {
       .map((name) => path.join(D1_YEAR_DIR, name)),
     type: "d1-year",
   },
-  d2: { files: () => [path.join(ROOT, "data", "d2_all_seasons.js")], type: "bundle" },
-  naia: { files: () => [NAIA_MANIFEST_PATH], type: "naia-multipart" },
-  juco: { files: () => [path.join(ROOT, "data", "vendor", "juco_all_seasons.js")], type: "bundle" },
+  d2: { type: "multipart" },
+  naia: { type: "multipart" },
+  juco: { type: "multipart" },
   nba: { files: () => [path.join(ROOT, "data", "nba_all_seasons.js")], type: "bundle" },
 };
 
@@ -96,21 +109,21 @@ function parseD1YearChunk(filePath) {
   return parseCsv(JSON.parse(match[1]));
 }
 
-function parseNaiaPartPayload(filePath) {
+function parseMultipartPartPayload(filePath) {
   const text = fs.readFileSync(filePath, "utf8");
   const match = text.match(/\+\s*(".*")\s*;\s*$/s);
-  if (!match) throw new Error(`Unable to parse NAIA part: ${filePath}`);
+  if (!match) throw new Error(`Unable to parse multipart part: ${filePath}`);
   return JSON.parse(match[1]);
 }
 
-function parseNaiaMultipart() {
-  const manifestText = fs.readFileSync(NAIA_MANIFEST_PATH, "utf8");
+function parseMultipartDataset(manifestPath, partsDir) {
+  const manifestText = fs.readFileSync(manifestPath, "utf8");
   const manifestMatch = manifestText.match(/=\s*(\[[\s\S]*\])\s*;\s*$/);
-  if (!manifestMatch) throw new Error(`Unable to parse NAIA manifest: ${NAIA_MANIFEST_PATH}`);
+  if (!manifestMatch) throw new Error(`Unable to parse multipart manifest: ${manifestPath}`);
   const partNames = JSON.parse(manifestMatch[1]);
   const csvText = partNames
-    .map((partName) => path.join(NAIA_PARTS_DIR, `${String(partName)}.js`))
-    .map((filePath) => parseNaiaPartPayload(filePath))
+    .map((partName) => path.join(partsDir, `${String(partName)}.js`))
+    .map((filePath) => parseMultipartPartPayload(filePath))
     .join("");
   return parseCsv(csvText);
 }
@@ -149,28 +162,28 @@ function main() {
   const players = Object.create(null);
   const candidateProfiles = Object.create(null);
   Object.entries(DATASET_SOURCES).forEach(([datasetId, source]) => {
-    source.files().forEach((filePath) => {
-      let rows = [];
-      if (source.type === "d1-year") rows = parseD1YearChunk(filePath);
-      else if (source.type === "naia-multipart") rows = parseNaiaMultipart();
-      else rows = parseBundlePayload(filePath);
-      rows.forEach((row) => {
-        const realgmId = getStatusIdentityId(row);
-        const season = extractLeadingYear(row?.season);
-        if (!realgmId || !Number.isFinite(season)) return;
-        if (!players[realgmId]) players[realgmId] = Array(10).fill(null);
-        updateMinMax(players[realgmId], datasetId, season);
-        if ((datasetId === "d1" || datasetId === "nba")) {
-          if (!candidateProfiles[realgmId]) {
-            candidateProfiles[realgmId] = {
-              name: "",
-              dob: "",
-              heights: new Set(),
-            };
-          }
-          updateCandidateProfile(candidateProfiles[realgmId], row);
-        }
+    const datasetRows = source.type === "multipart"
+      ? parseMultipartDataset(MULTIPART_DATASETS[datasetId].manifestPath, MULTIPART_DATASETS[datasetId].partsDir)
+      : source.files().flatMap((filePath) => {
+        if (source.type === "d1-year") return parseD1YearChunk(filePath);
+        return parseBundlePayload(filePath);
       });
+    datasetRows.forEach((row) => {
+      const realgmId = getStatusIdentityId(row);
+      const season = extractLeadingYear(row?.season);
+      if (!realgmId || !Number.isFinite(season)) return;
+      if (!players[realgmId]) players[realgmId] = Array(10).fill(null);
+      updateMinMax(players[realgmId], datasetId, season);
+      if ((datasetId === "d1" || datasetId === "nba")) {
+        if (!candidateProfiles[realgmId]) {
+          candidateProfiles[realgmId] = {
+            name: "",
+            dob: "",
+            heights: new Set(),
+          };
+        }
+        updateCandidateProfile(candidateProfiles[realgmId], row);
+      }
     });
   });
 
