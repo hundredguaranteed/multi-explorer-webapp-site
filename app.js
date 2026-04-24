@@ -1225,7 +1225,7 @@ function buildPlayerCareerConfig() {
     yearColumn: "season",
     playerColumn: "player_name",
     teamColumn: "team_name",
-    lockedColumns: ["rank", "season", "player_name", "competition_level"],
+    lockedColumns: ["rank", "season", "player_name", "competition_level", "pos"],
     searchColumns: withUniversalSearchColumns(["player_name", "player_search_text", "team_name", "team_full", "team_search_text"]),
     sortBy: "min",
     sortDir: "desc",
@@ -1645,7 +1645,7 @@ function buildInternationalConfig() {
     yearColumn: "season",
     playerColumn: "player_name",
     teamColumn: "team_name",
-    lockedColumns: ["rank", "season", "player_name", "league_name"],
+    lockedColumns: ["rank", "season", "player_name", "league_name", "pos"],
     searchColumns: withUniversalSearchColumns(["player_name", "player_search_text", "team_name", "team_abbrev", "league_name", "competition_label", "nationality", "nationality_list", "nationality_regions"]),
     sortBy: "min",
     sortDir: "desc",
@@ -2110,7 +2110,7 @@ const DATASETS = {
     yearColumn: "season",
     playerColumn: "player_name",
     teamColumn: "team_name",
-    lockedColumns: ["rank", "season", "player_name", "team_name"],
+    lockedColumns: ["rank", "season", "player_name", "team_name", "pos"],
     searchColumns: withUniversalSearchColumns(["player_name", "player_search_text", "team_name", "conference", "division", "coach", "team_search_text", "coach_search_text"]),
     sortBy: "min",
     sortDir: "desc",
@@ -2502,7 +2502,7 @@ const DATASETS = {
       { id: "status_path", label: "Status", options: STATUS_EVER_FILTER_OPTIONS },
     ]), "color_mode", "competition_position"),
     multiFilters: [
-      { id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C", "G", "F", "F/C"] },
+      { id: "pos", label: "Pos", column: "pos", sort: STANDARD_POSITION_SORT },
       { id: "competition_label", label: "Event", column: "competition_label", renderAsSelect: true },
     ],
     defaultVisible: ["rank", "season", "player_name", "team_name", "competition_label", "pos", "min", "mpg", "eff_pg", "plus_minus_pg", "min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"],
@@ -2749,6 +2749,8 @@ const appState = {
   secondaryFilterDatasetId: "",
   adaptiveTeamTextFrame: 0,
   playerProfileRows: new Map(),
+  playerProfileRequestSeq: 0,
+  playerProfileSort: { column: "season", dir: "desc" },
   grassrootsScopePrefetches: new Set(),
   grassrootsScopeWorkerUrl: "",
 };
@@ -3507,7 +3509,16 @@ async function handleRoute() {
   updateNavActive(datasetId);
 
   if (datasetId === PROFILE_ROUTE_ID) {
-    renderPlayerProfileRoute(routeInfo.params);
+    const scheduleProfileRender = (delayMs) => {
+      window.setTimeout(() => {
+        if (appState.currentId !== PROFILE_ROUTE_ID) return;
+        const existingRows = Array.isArray(elements.homeContent?._playerProfileRows) ? elements.homeContent._playerProfileRows.length : 0;
+        if (delayMs > 0 && existingRows) return;
+        void renderPlayerProfileRoute(routeInfo.params);
+      }, delayMs);
+    };
+    scheduleProfileRender(0);
+    scheduleProfileRender(750);
     return;
   }
 
@@ -5674,12 +5685,29 @@ function getPlayerCareerInternationalOverlayRows(config) {
   return rows;
 }
 
+function normalizeInternationalLeagueAlias(value) {
+  const key = normalizeKey(value);
+  if (!key) return "";
+  if (/\bg bbl\b/.test(key) || /\bgerman bbl\b/.test(key)) return "german bbl";
+  if ((/\bliga aba\b/.test(key) || /\baba\b/.test(key)) && /\badriatic league\b/.test(key)) return "liga aba";
+  if (/^liga aba$/.test(key)) return "liga aba";
+  return key;
+}
+
 function getPlayerCareerInternationalLeagueKeys(row) {
-  return Array.from(new Set([
-    row?.league,
+  const keys = new Set();
+  [
     row?.competition_label,
+    row?.league_name,
+    row?.league,
     row?.competition_key,
-  ].map((value) => normalizeKey(value)).filter(Boolean)));
+  ].forEach((value) => {
+    const raw = normalizeKey(value);
+    const alias = normalizeInternationalLeagueAlias(value);
+    if (alias) keys.add(alias);
+    if (raw) keys.add(raw);
+  });
+  return Array.from(keys);
 }
 
 function getPlayerCareerInternationalTeamKeys(row) {
@@ -5708,6 +5736,26 @@ function isPlayerCareerInternationalRow(row) {
   return source === "realgm international extraction" || level === "international" || path === "international";
 }
 
+function getPlayerCareerInternationalCanonicalLeagueKey(row) {
+  return normalizeInternationalLeagueAlias(row?.competition_label || row?.league_name || row?.league || row?.competition_key || "");
+}
+
+function getPlayerCareerInternationalCanonicalTeamKey(row) {
+  return normalizeKey(
+    row?.team_full
+    || row?.team_alias_all
+    || row?.team_name
+    || row?.team_abbrev
+    || row?.team_alias
+    || row?.team_code
+    || ""
+  );
+}
+
+function getPlayerCareerInternationalCanonicalPlayerKey(row) {
+  return getPlayerCareerInternationalPlayerKeys(row)[0] || "";
+}
+
 function getPlayerCareerInternationalRowKeys(row) {
   if (!row || !isPlayerCareerInternationalRow(row)) return [];
   const season = getStringValue(row.season).trim();
@@ -5727,7 +5775,13 @@ function getPlayerCareerInternationalRowKeys(row) {
 }
 
 function getPlayerCareerInternationalPrimaryKey(row) {
-  return getPlayerCareerInternationalRowKeys(row)[0] || "";
+  if (!row || !isPlayerCareerInternationalRow(row)) return "";
+  const season = getStringValue(row.season).trim();
+  const leagueKey = getPlayerCareerInternationalCanonicalLeagueKey(row);
+  const teamKey = getPlayerCareerInternationalCanonicalTeamKey(row);
+  const playerKey = getPlayerCareerInternationalCanonicalPlayerKey(row);
+  if (!season || !leagueKey || !teamKey || !playerKey) return "";
+  return `${season}|${leagueKey}|${teamKey}|${playerKey}`;
 }
 
 function hasPlayerCareerMergeValue(value) {
@@ -9434,6 +9488,7 @@ function getFilterVisibilityColumn(dataset, filter) {
 
 function renderFilterVisibilityButton(dataset, state, column) {
   if (!column || !(column in (state?.visibleColumns || {}))) return "";
+  if (getLockedColumns(dataset).includes(column)) return "";
   const label = state.visibleColumns[column] ? "Hide" : "Show";
   return `<button class="filter-visibility-toggle" type="button" data-filter-visibility="${escapeAttribute(column)}">${escapeHtml(label)}</button>`;
 }
@@ -10139,7 +10194,11 @@ function renderDemoRangeFilters(dataset, state) {
 }
 
 function getLockedColumns(dataset) {
-  return dataset?.lockedColumns || [];
+  const locked = Array.isArray(dataset?.lockedColumns) ? dataset.lockedColumns : [];
+  const autoLocked = (dataset?.multiFilters || [])
+    .map((filter) => getStringValue(filter?.column).trim())
+    .filter((column) => /^(pos|pos_text)$/i.test(column));
+  return Array.from(new Set([...locked, ...autoLocked]));
 }
 
 function getDemoControlColumns(dataset) {
@@ -10748,9 +10807,9 @@ function getFilterContextRows(dataset, state, options = {}) {
         if (!matchesCircuit) return false;
         continue;
       }
-      if (dataset.id === "grassroots" && filter.id === "pos") {
-        const rowPos = normalizePosLabel(row.pos || row[filter.column]);
-        const matchesPos = Array.from(selected).some((value) => grassrootsPosMatchesSelection(rowPos, value));
+      if (filter.id === "pos" || /^(pos|pos_text)$/i.test(getStringValue(filter.column).trim())) {
+        const rowPos = row.pos || row.pos_text || row[filter.column];
+        const matchesPos = Array.from(selected).some((value) => positionMatchesSelection(rowPos, value));
         if (!matchesPos) return false;
         continue;
       }
@@ -12436,7 +12495,7 @@ function getGrassrootsPosAliases(pos) {
   }
 }
 
-function splitGrassrootsPosValues(value) {
+function splitPositionValues(value) {
   return String(value ?? "")
     .replace(/\band\b/gi, "/")
     .split(/[\/,&|+]/)
@@ -12444,15 +12503,24 @@ function splitGrassrootsPosValues(value) {
     .filter(Boolean);
 }
 
-function grassrootsPosMatchesSelection(rowPos, selectedPos) {
+function positionMatchesSelection(rowPos, selectedPos) {
   const selected = normalizePosLabel(selectedPos);
   if (!selected) return false;
-  const rowValues = splitGrassrootsPosValues(rowPos);
+  const rowValues = splitPositionValues(rowPos);
   if (!rowValues.length) return false;
+  const selectedAliases = getGrassrootsPosAliases(selected);
   return rowValues.some((value) => {
     const aliases = getGrassrootsPosAliases(value);
-    return aliases.includes(selected) || getGrassrootsPosAliases(selected).includes(value);
+    return aliases.includes(selected) || selectedAliases.includes(value);
   });
+}
+
+function splitGrassrootsPosValues(value) {
+  return splitPositionValues(value);
+}
+
+function grassrootsPosMatchesSelection(rowPos, selectedPos) {
+  return positionMatchesSelection(rowPos, selectedPos);
 }
 
 function getGrassrootsPosFamily(rowsOrRow) {
@@ -13781,7 +13849,7 @@ function renderBodyCell(dataset, state, column, row, index, colorScale, relative
     ? ` title="${escapeAttribute(splitDisplay.trim())}"`
     : (rawValue != null && rawValue !== "" ? ` title="${escapeAttribute(display)}"` : "");
   const splitContent = splitStats
-    ? `<span class="split-display"><span class="split-display__counts">${escapeHtml(`${Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0}-${Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0}`)}</span><span class="split-display__pct"${style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
+    ? `<span class="split-display"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">/</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span><span class="split-display__pct"${style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
     : "";
   const content = display && isPlayerDisplayColumn(dataset, column)
     ? `<a class="player-season-link" href="${escapeAttribute(buildPlayerProfileHref(row, dataset.id))}" data-player-profile-key="${escapeAttribute(registerPlayerProfileRow(dataset, row))}">${escapeHtml(display)}</a>`
@@ -13835,13 +13903,20 @@ async function openPlayerProfileForKey(key) {
 async function openPlayerProfile(row, datasetId = "") {
   const modal = getOrCreatePlayerProfileModal();
   const name = getPlayerProfileDisplayName(row);
+  const requestId = String(++appState.playerProfileRequestSeq);
+  modal.dataset.playerProfileRequestId = requestId;
   modal.hidden = false;
   modal.classList.add("is-open");
   modal.querySelector("[data-player-profile-content]").innerHTML = `<div class="player-profile-loading">Loading ${escapeHtml(name || "player")} seasons...</div>`;
   try {
-    const rows = await getPlayerProfileRows(row, datasetId);
-    renderPlayerProfileModal(modal, name, rows);
+    const rows = await loadPlayerProfileRowsProgressively(row, datasetId, (nextRows, meta = {}) => {
+      if (modal.dataset.playerProfileRequestId !== requestId) return;
+      renderPlayerProfileModal(modal, name, nextRows, { loadingMore: Boolean(meta.loadingMore) });
+    });
+    if (modal.dataset.playerProfileRequestId !== requestId) return;
+    renderPlayerProfileModal(modal, name, rows, { loadingMore: false });
   } catch (error) {
+    if (modal.dataset.playerProfileRequestId !== requestId) return;
     modal.querySelector("[data-player-profile-content]").innerHTML = `<div class="player-profile-loading">Unable to load seasons: ${escapeHtml(getStringValue(error?.message || error))}</div>`;
   }
 }
@@ -13874,6 +13949,7 @@ function getOrCreatePlayerProfileModal() {
 function closePlayerProfileModal() {
   const modal = document.getElementById("playerProfileModal");
   if (!modal) return;
+  modal.dataset.playerProfileRequestId = String(++appState.playerProfileRequestSeq);
   modal.classList.remove("is-open");
   modal.hidden = true;
 }
@@ -14133,13 +14209,16 @@ async function getPlayerProfileCandidateYears(dataset, identity) {
   return Array.from(years).sort(compareYears);
 }
 
-async function ensurePlayerCareerProfileSourceLoaded(identity) {
+async function ensurePlayerCareerProfileSourceLoaded(identity, options = {}) {
   const dataset = await ensureDatasetLoaded("player_career");
   if (dataset?._playerCareerChunked) {
-    const years = await getPlayerProfileCandidateYears(dataset, identity);
+    const requestedYears = Array.isArray(options?.requestedYears)
+      ? options.requestedYears.map((season) => getStringValue(season).trim()).filter(Boolean)
+      : [];
+    const years = requestedYears.length ? requestedYears : await getPlayerProfileCandidateYears(dataset, identity);
     const missingYears = years.filter((season) => !getLoadedYearSet(dataset).has(getStringValue(season).trim()));
     if (missingYears.length) {
-      elements.statusPill.textContent = "Loading Player/Career seasons";
+      if (!options?.silent) elements.statusPill.textContent = "Loading Player/Career seasons";
       await loadPlayerCareerRowsForYears(dataset, DATASETS.player_career, missingYears, { background: true });
     }
   }
@@ -14152,7 +14231,7 @@ async function ensurePlayerCareerProfileSourceLoaded(identity) {
   return dataset;
 }
 
-async function getPlayerProfileRows(sourceRow, datasetId = "") {
+async function resolvePlayerProfileSourceContext(sourceRow, datasetId = "") {
   const currentDatasetId = getStringValue(datasetId || sourceRow?.dataset || sourceRow?.source_dataset).trim();
   let currentDataset = currentDatasetId ? (appState.datasetCache[currentDatasetId] || null) : null;
   if (!currentDataset && currentDatasetId && DATASETS[currentDatasetId]) {
@@ -14172,41 +14251,134 @@ async function getPlayerProfileRows(sourceRow, datasetId = "") {
   const identity = getPlayerProfileRealgmIds(seededIdentity).length
     ? seededIdentity
     : await resolvePlayerProfileIdentity(seededIdentity);
-  let rows = [];
+  let bucketRows = [];
   let bucketAttempted = false;
   try {
     bucketAttempted = getPlayerProfileRealgmIds(identity).length > 0;
-    rows = await collectPlayerProfileBucketRows(identity);
+    bucketRows = await collectPlayerProfileBucketRows(identity);
   } catch (error) {
     console.warn("Player profile bucket source failed to load.", error);
   }
-  const shouldAugmentFromPlayerCareer = ["international", "fiba"].includes(normalizeKey(currentDatasetId));
-  if ((!rows.length && !bucketAttempted) || shouldAugmentFromPlayerCareer) {
-    try {
-      const playerCareerDataset = await ensurePlayerCareerProfileSourceLoaded(identity);
-      const playerCareerRows = collectIndexedPlayerProfileRows(playerCareerDataset, identity);
-      if (!rows.length && !bucketAttempted) rows = playerCareerRows;
-      else if (playerCareerRows.length) rows.push(...playerCareerRows);
-    } catch (error) {
-      console.warn("Player/Career profile source failed to load.", error);
-    }
+  return {
+    currentDatasetId,
+    currentDataset,
+    currentDatasetRows,
+    identity,
+    bucketRows,
+    bucketAttempted,
+    shouldAugmentFromPlayerCareer: ["international", "fiba"].includes(normalizeKey(currentDatasetId)),
+  };
+}
+
+function buildPlayerProfileSourceRows(sourceRow, context, playerCareerRows = []) {
+  const rows = [];
+  if (Array.isArray(context?.bucketRows) && context.bucketRows.length) rows.push(...context.bucketRows);
+  if (Array.isArray(playerCareerRows) && playerCareerRows.length) {
+    if (!rows.length && !context?.bucketAttempted) rows.push(...playerCareerRows);
+    else rows.push(...playerCareerRows);
   }
-  if (currentDatasetRows.length) {
-    rows.push(...currentDatasetRows);
-  } else if (currentDataset?.rows?.length) {
-    rows.push(...collectIndexedPlayerProfileRows(currentDataset, identity));
+  if (context?.currentDatasetRows?.length) {
+    rows.push(...context.currentDatasetRows);
+  } else if (context?.currentDataset?.rows?.length) {
+    rows.push(...collectIndexedPlayerProfileRows(context.currentDataset, context.identity));
   }
-  if (sourceRow) {
-    rows.push(sourceRow);
-  }
-  await applyD1ProfileFoulLookup(rows);
-  rows = dedupePlayerProfileRows(rows);
-  const seasonRows = fillPlayerProfileReboundSplitsFromKnownRows(rows
+  if (sourceRow && !(context?.currentDatasetRows?.length)) rows.push(sourceRow);
+  return rows;
+}
+
+function playerProfileRowNeedsAugment(row) {
+  if (!row || row._careerAggregate) return false;
+  const sourceDataset = normalizeKey(row?.source_dataset);
+  const level = normalizeProfileLevel(row);
+  if (!sourceDataset.startsWith("realgm") && !["NBA", "International", "FIBA", "G League"].includes(level)) return false;
+  const populatedAdvancedCount = [
+    "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct",
+    "bpm", "porpag", "dporpag", "adjoe", "adrtg", "off", "def", "tot", "ewins",
+  ].filter((column) => Number.isFinite(firstFinite(row?.[column], Number.NaN))).length;
+  return populatedAdvancedCount < 3;
+}
+
+function getPlayerProfileAugmentYears(baseRows, context) {
+  if (!context?.shouldAugmentFromPlayerCareer) return [];
+  const candidateRows = dedupePlayerProfileRows(baseRows || []);
+  const seasonsWithRichCompetitionRows = new Set();
+  candidateRows.forEach((row) => {
+    if (playerProfileRowNeedsAugment(row) || isPlayerProfileAggregateSeasonRow(row)) return;
+    const season = getStringValue(row?.season).trim();
+    if (season) seasonsWithRichCompetitionRows.add(season);
+  });
+  const years = new Set();
+  candidateRows.forEach((row) => {
+    if (!playerProfileRowNeedsAugment(row)) return;
+    const season = getStringValue(row?.season).trim();
+    if (isPlayerProfileAggregateSeasonRow(row) && seasonsWithRichCompetitionRows.has(season)) return;
+    if (season) years.add(season);
+  });
+  return Array.from(years).sort(compareYears);
+}
+
+function shouldFallbackToPlayerCareerProfileRows(baseRows, context) {
+  if (context?.bucketRows?.length || context?.bucketAttempted) return false;
+  const candidateRows = dedupePlayerProfileRows(baseRows || []);
+  if (!candidateRows.length) return true;
+  const competitionRows = candidateRows.filter((row) => !row?._careerAggregate && !isPlayerProfileAggregateSeasonRow(row));
+  if (!competitionRows.length) return true;
+  return !competitionRows.some((row) => !playerProfileRowNeedsAugment(row));
+}
+
+async function finalizePlayerProfileRows(rows) {
+  const sourceRows = (rows || []).filter(Boolean);
+  await applyD1ProfileFoulLookup(sourceRows);
+  const dedupedRows = dedupePlayerProfileRows(sourceRows);
+  const seasonRows = fillPlayerProfileReboundSplitsFromKnownRows(dedupedRows
     .filter((row) => !row?._careerAggregate)
     .sort(comparePlayerProfileSeasonRows)
     .map((row) => normalizePlayerProfileRowForDisplay(row)));
   const careerRows = buildPlayerProfileCareerRows(seasonRows);
   return seasonRows.concat(careerRows);
+}
+
+async function getPlayerProfileRows(sourceRow, datasetId = "", options = {}) {
+  const context = await resolvePlayerProfileSourceContext(sourceRow, datasetId);
+  const baseRows = buildPlayerProfileSourceRows(sourceRow, context, []);
+  let playerCareerRows = [];
+  const requestedYears = getPlayerProfileAugmentYears(baseRows, context);
+  if (shouldFallbackToPlayerCareerProfileRows(baseRows, context) || requestedYears.length) {
+    try {
+      const playerCareerDataset = await ensurePlayerCareerProfileSourceLoaded(context.identity, { ...options, requestedYears });
+      playerCareerRows = collectIndexedPlayerProfileRows(playerCareerDataset, context.identity);
+    } catch (error) {
+      console.warn("Player/Career profile source failed to load.", error);
+    }
+  }
+  return finalizePlayerProfileRows(buildPlayerProfileSourceRows(sourceRow, context, playerCareerRows));
+}
+
+async function loadPlayerProfileRowsProgressively(sourceRow, datasetId = "", onUpdate) {
+  const context = await resolvePlayerProfileSourceContext(sourceRow, datasetId);
+  const baseRows = buildPlayerProfileSourceRows(sourceRow, context, []);
+  const requestedYears = getPlayerProfileAugmentYears(baseRows, context);
+  const needsPlayerCareer = shouldFallbackToPlayerCareerProfileRows(baseRows, context) || requestedYears.length;
+  let partialRows = [];
+  if (baseRows.length) {
+    partialRows = await finalizePlayerProfileRows(baseRows);
+    if (typeof onUpdate === "function") onUpdate(partialRows, { complete: !needsPlayerCareer, loadingMore: needsPlayerCareer });
+    if (!needsPlayerCareer) return partialRows;
+  }
+  try {
+    const playerCareerDataset = await ensurePlayerCareerProfileSourceLoaded(context.identity, { silent: true, requestedYears });
+    const playerCareerRows = collectIndexedPlayerProfileRows(playerCareerDataset, context.identity);
+    const fullRows = await finalizePlayerProfileRows(buildPlayerProfileSourceRows(sourceRow, context, playerCareerRows));
+    if (typeof onUpdate === "function") onUpdate(fullRows, { complete: true, loadingMore: false });
+    return fullRows;
+  } catch (error) {
+    console.warn("Player/Career profile source failed to load.", error);
+    if (partialRows.length) {
+      if (typeof onUpdate === "function") onUpdate(partialRows, { complete: true, loadingMore: false });
+      return partialRows;
+    }
+    throw error;
+  }
 }
 
 function buildPlayerProfileIdentity(row) {
@@ -14317,9 +14489,10 @@ const PLAYER_PROFILE_TOTAL_ALIASES = {
   fta: ["fta"],
 };
 
-const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumnsV4";
+const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumnsV5";
 const PLAYER_PROFILE_COLOR_STORAGE_KEY = "multiExplorerPlayerProfileColorsV2";
 const PLAYER_PROFILE_ROW_MODE_STORAGE_KEY = "multiExplorerPlayerProfileCareerOnlyV1";
+const PLAYER_PROFILE_SORT_STORAGE_KEY = "multiExplorerPlayerProfileSortV1";
 const PLAYER_PROFILE_LOCKED_COLUMNS = ["season", "competition_level", "league", "team_name"];
 const PLAYER_PROFILE_COLUMN_GROUPS = [
   {
@@ -14357,7 +14530,7 @@ const PLAYER_PROFILE_COLUMN_GROUPS = [
     label: "Advanced",
     columns: [
       "usg_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct",
-      "stocks_pct", "per", "bpm", "obpm", "dbpm", "bpm_diff", "bpm_frac", "net_rating", "porpag", "dporpag", "adjoe", "adrtg", "ortg", "drtg", "fic", "ppr", "rgm_per",
+      "per", "bpm", "obpm", "dbpm", "bpm_diff", "bpm_frac", "net_rating", "porpag", "dporpag", "adjoe", "adrtg", "ortg", "drtg", "fic", "ppr", "rgm_per",
     ],
   },
 ];
@@ -14371,7 +14544,7 @@ const PLAYER_PROFILE_DEFAULT_COLUMNS = [
   "three_pm_pg", "three_pa_pg", "three_p_pct",
   "ftm_pg", "fta_pg", "ft_pct",
   "efg_pct", "ts_pct", "ftr", "three_pr", "ast_to",
-  "per", "bpm", "usg_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct", "stocks_pct",
+  "per", "bpm", "usg_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct",
 ];
 const PLAYER_PROFILE_LABELS = {
   competition_level: "Level",
@@ -14463,28 +14636,37 @@ function dedupePlayerProfileRows(rows) {
 function buildPlayerProfileDuplicateKey(row) {
   const season = getStringValue(row?.season).trim();
   const playerKey = normalizeNameKey(getPlayerProfileDisplayName(row)) || getDuplicatePlayerKey(row, "player_career");
-  const teamKey = normalizePlayerProfileTeamKey(row);
-  const statKey = buildPlayerProfileCoreStatSignature(row);
   const level = normalizeProfileLevel(row);
-  const competitionKey = normalizeKey(row?.competition_key || row?.competition_label || row?.league_name || row?.league || "");
   if (season && playerKey && level === "NBA") return `profile|nba|${season}|${playerKey}`;
-  if (season && playerKey && statKey && (level === "FIBA" || normalizeKey(row?.source_dataset) === "other")) {
-    return `profile|same-stats|${season}|${playerKey}|${competitionKey}|${statKey}`;
-  }
-  if (season && playerKey && teamKey && statKey) return `profile|${season}|${playerKey}|${teamKey}|${statKey}`;
+  const canonicalKey = buildPlayerProfileCanonicalDuplicateKey(row, "profile");
+  if (canonicalKey) return canonicalKey;
   return [
     "profile-fallback",
     season,
     playerKey,
     normalizeProfileLevel(row),
-    normalizeKey(row?.league_name || row?.league || row?.competition_label),
-    teamKey,
+    normalizePlayerProfileCompetitionKey(row),
+    normalizePlayerProfileTeamKey(row),
     buildDuplicateStatSignature(row) || duplicateRowScore(row),
   ].join("|");
 }
 
+function normalizePlayerProfileCompetitionKey(row) {
+  const level = normalizeProfileLevel(row);
+  if (level === "International" || isPlayerCareerInternationalRow(row)) {
+    return getPlayerCareerInternationalCanonicalLeagueKey(row)
+      || normalizeKey(row?.competition_key || row?.competition_label || row?.league_name || row?.league || "");
+  }
+  return normalizeKey(row?.competition_key || row?.competition_label || row?.league_name || row?.league || "");
+}
+
 function normalizePlayerProfileTeamKey(row) {
-  const raw = normalizeKey(row?.team_name || row?.team_abbrev || row?.team_full || row?.team || "");
+  const level = normalizeProfileLevel(row);
+  if (level === "International" || level === "FIBA" || level === "G League" || isPlayerCareerInternationalRow(row)) {
+    return getPlayerCareerInternationalCanonicalTeamKey(row)
+      || normalizeKey(row?.team_full || row?.team_name || row?.team_abbrev || row?.team || "");
+  }
+  const raw = normalizeKey(row?.team_full || row?.team_alias_all || row?.team_name || row?.team_abbrev || row?.team || "");
   const nbaAliases = {
     phl: "phi",
     phoenix: "phx",
@@ -14506,6 +14688,20 @@ function normalizePlayerProfileTeamKey(row) {
   return nbaAliases[raw] || raw;
 }
 
+function buildPlayerProfileCanonicalDuplicateKey(row, prefix = "profile") {
+  if (!row) return "";
+  const season = getStringValue(row?.season).trim();
+  const playerKey = normalizeNameKey(getPlayerProfileDisplayName(row)) || getDuplicatePlayerKey(row, "player_career");
+  const level = normalizeProfileLevel(row);
+  if (season && playerKey && level === "NBA") return `${prefix}|nba|${season}|${playerKey}`;
+  const competitionKey = normalizePlayerProfileCompetitionKey(row);
+  const teamKey = normalizePlayerProfileTeamKey(row);
+  if (season && playerKey && competitionKey && teamKey) {
+    return [prefix, season, playerKey, normalizeKey(level || row?.competition_level || row?.source_dataset || ""), competitionKey, teamKey].join("|");
+  }
+  return "";
+}
+
 function collapsePlayerProfileDisplayDuplicates(rows) {
   const grouped = new Map();
   (rows || []).forEach((row, index) => {
@@ -14520,22 +14716,18 @@ function collapsePlayerProfileDisplayDuplicates(rows) {
 
 function buildPlayerProfileDisplayDuplicateKey(row) {
   if (!row) return "";
+  const canonicalKey = buildPlayerProfileCanonicalDuplicateKey(row, "profile-display");
+  if (canonicalKey) return canonicalKey;
   const season = getStringValue(row?.season).trim();
   const playerKey = normalizeNameKey(getPlayerProfileDisplayName(row)) || getDuplicatePlayerKey(row, "player_career");
   const level = normalizeKey(row?.competition_level || row?._normalizedProfileLevel || row?.source_dataset || "");
-  const leagueKey = normalizeKey(row?.league || row?.competition_label || row?.competition_key || row?.league_name || "");
-  const teamKey = normalizePlayerProfileTeamKey(row);
-  const statKey = buildPlayerProfileCoreStatSignature(row);
-  if (season && playerKey && statKey) {
-    return ["profile-display", season, playerKey, level, leagueKey, teamKey, statKey].join("|");
-  }
   return [
     "profile-display-fallback",
     season,
     playerKey,
     level,
-    leagueKey,
-    teamKey,
+    normalizePlayerProfileCompetitionKey(row),
+    normalizePlayerProfileTeamKey(row),
     buildDuplicateStatSignature(row) || duplicateRowScore(row),
   ].join("|");
 }
@@ -14550,6 +14742,32 @@ function buildPlayerProfileCoreStatSignature(row) {
   return parts.length >= 5 ? parts.join("|") : "";
 }
 
+function inferPlayerProfileRowDatasetId(row) {
+  const explicitDataset = normalizeKey(row?._datasetId || row?.dataset);
+  if (explicitDataset && DATASETS[explicitDataset]) return explicitDataset;
+  const sourceDataset = normalizeKey(row?.source_dataset);
+  if (sourceDataset && DATASETS[sourceDataset]) return sourceDataset;
+  const level = normalizeProfileLevel(row);
+  if (level === "NBA") return "nba";
+  if (level === "International") return "international";
+  if (level === "FIBA") return "fiba";
+  if (level === "D1") return "d1";
+  if (level === "D2") return "d2";
+  if (level === "JUCO") return "juco";
+  if (level === "NAIA") return "naia";
+  if (level === "Grassroots") return "grassroots";
+  if (sourceDataset.startsWith("realgm nba")) return "nba";
+  if (sourceDataset.startsWith("realgm international")) return "international";
+  return "player_career";
+}
+
+function isPlayerProfileAggregateSeasonRow(row) {
+  if (!row || row._careerAggregate) return false;
+  const teamKey = normalizeKey(row?.team_name || row?.team_full || row?.team || "");
+  const leagueKey = normalizeKey(row?.league || row?.competition_label || row?.competition_key || row?.league_name || "");
+  return teamKey === "allteams" || leagueKey === "allleagues";
+}
+
 function mergePlayerProfileDuplicateRows(rows) {
   const sorted = (rows || []).slice().sort((left, right) => playerProfileRowScore(right) - playerProfileRowScore(left));
   const merged = { ...(sorted[0] || {}) };
@@ -14560,9 +14778,12 @@ function mergePlayerProfileDuplicateRows(rows) {
 function playerProfileRowScore(row) {
   let score = duplicateRowScore(row);
   const level = normalizeProfileLevel(row);
+  const sourceDataset = normalizeKey(row?.source_dataset);
   if (level === "NBA") score += 5000;
   else if (level && level !== "Other") score += 1000;
-  if (normalizeKey(row?.competition_level) === "other" || normalizeKey(row?.source_dataset) === "other") score -= 500;
+  if (level === "Other") score -= 500;
+  if (sourceDataset && sourceDataset !== "other" && !sourceDataset.startsWith("realgm")) score += 120;
+  if (sourceDataset.startsWith("realgm")) score -= 40;
   [
     "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
     "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "usg_pct", "ast_pct", "stl_pct", "blk_pct",
@@ -14608,7 +14829,7 @@ function normalizePlayerProfileRowForDisplay(row) {
   if (!getStringValue(out.team_name).trim()) out.team_name = getStringValue(out.team_abbrev || out.team_full || out.team).trim();
   normalizePlayerProfileShootingTotals(out);
   populateAstStlDerived(out, { overwrite: false });
-  normalizePercentLikeColumns(out, "player_career");
+  normalizePercentLikeColumns(out, inferPlayerProfileRowDatasetId(out));
   return out;
 }
 
@@ -14720,7 +14941,15 @@ function getPlayerProfileTotalValue(row, column) {
 
 function normalizeProfileLevel(row) {
   if (getStringValue(row?._normalizedProfileLevel).trim()) return getStringValue(row._normalizedProfileLevel).trim();
-  const text = normalizeKey(row?.competition_level || row?.source_dataset || row?.career_path || row?.league_name || row?.league);
+  const text = normalizeKey([
+    row?.competition_level,
+    row?.source_dataset,
+    row?.career_path,
+    row?.competition_label,
+    row?.competition_key,
+    row?.league_name,
+    row?.league,
+  ].map((value) => getStringValue(value).trim()).filter(Boolean).join(" "));
   if (/nba/.test(text)) return "NBA";
   if (/g league|gleague/.test(text)) return "G League";
   if (/fiba/.test(text)) return "FIBA";
@@ -14857,26 +15086,128 @@ function weightedAveragePlayerProfileValue(rows, column) {
   return totalWeight > 0 ? total / totalWeight : Number.NaN;
 }
 
-function renderPlayerProfileModal(modal, name, rows) {
-  modal.querySelector("[data-player-profile-content]").innerHTML = buildPlayerProfileContentHtml(name, rows);
-  bindPlayerProfileColumnControls(modal);
-  applyPlayerProfileRowVisibility(modal, getPlayerProfileCareerOnlyEnabled());
+function getPlayerProfileRenderTarget(root) {
+  return root?.querySelector?.("[data-player-profile-content]") || root;
+}
+
+function hasPlayerProfileColumnValue(rows, column) {
+  return (rows || []).some((row) => {
+    const splitStats = isSplitDisplayColumn(column) ? getSplitDisplayStats(row, column) : null;
+    if (splitStats) {
+      return Number.isFinite(splitStats.made) || Number.isFinite(splitStats.att) || Number.isFinite(splitStats.ratio);
+    }
+    const rawValue = getRowColumnValue(DATASETS.player_career, row, column);
+    if (typeof rawValue === "number") return Number.isFinite(rawValue);
+    return getStringValue(rawValue).trim() !== "";
+  });
+}
+
+function getAvailablePlayerProfileColumns(rows) {
+  return PLAYER_PROFILE_ALL_COLUMNS.filter((column) => PLAYER_PROFILE_LOCKED_COLUMNS.includes(column) || hasPlayerProfileColumnValue(rows, column));
+}
+
+function normalizePlayerProfileSortState(sortState, availableColumns = PLAYER_PROFILE_ALL_COLUMNS) {
+  const available = new Set(availableColumns);
+  const fallbackColumn = available.has("season") ? "season" : (availableColumns[0] || PLAYER_PROFILE_LOCKED_COLUMNS[0] || "season");
+  const column = available.has(sortState?.column) ? sortState.column : fallbackColumn;
+  const dir = sortState?.dir === "asc" ? "asc" : "desc";
+  return { column, dir };
+}
+
+function getPlayerProfileSortState(availableColumns = PLAYER_PROFILE_ALL_COLUMNS) {
+  let stored = appState.playerProfileSort;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PLAYER_PROFILE_SORT_STORAGE_KEY) || "null");
+    if (parsed && typeof parsed === "object") stored = parsed;
+  } catch (_error) {
+    stored = appState.playerProfileSort;
+  }
+  const normalized = normalizePlayerProfileSortState(stored, availableColumns);
+  appState.playerProfileSort = normalized;
+  return normalized;
+}
+
+function savePlayerProfileSortState(sortState, availableColumns = PLAYER_PROFILE_ALL_COLUMNS) {
+  const normalized = normalizePlayerProfileSortState(sortState, availableColumns);
+  appState.playerProfileSort = normalized;
+  try {
+    localStorage.setItem(PLAYER_PROFILE_SORT_STORAGE_KEY, JSON.stringify(normalized));
+  } catch (_error) {
+    // Ignore storage failures; in-memory state still updates.
+  }
+}
+
+function getPlayerProfileSortValue(row, column) {
+  if (column === "season") {
+    const year = extractLeadingYear(row?.season);
+    return Number.isFinite(year) ? year : sanitizeCellDisplayValue(row?.season);
+  }
+  const totalValue = getPlayerProfileTotalValue(row, column);
+  if (Number.isFinite(totalValue)) return totalValue;
+  const rawValue = getRowColumnValue(DATASETS.player_career, row, column);
+  if (typeof rawValue === "number" && Number.isFinite(rawValue)) return rawValue;
+  return sanitizeCellDisplayValue(rawValue);
+}
+
+function comparePlayerProfileSortValues(left, right, column, dir = "desc") {
+  const leftValue = getPlayerProfileSortValue(left, column);
+  const rightValue = getPlayerProfileSortValue(right, column);
+  const leftBlank = leftValue == null || leftValue === "";
+  const rightBlank = rightValue == null || rightValue === "";
+  if (leftBlank && rightBlank) return comparePlayerProfileSeasonRows(left, right);
+  if (leftBlank) return 1;
+  if (rightBlank) return -1;
+  let compareResult = 0;
+  if (typeof leftValue === "number" && typeof rightValue === "number") {
+    compareResult = leftValue !== rightValue ? leftValue - rightValue : comparePlayerProfileSeasonRows(left, right);
+  } else {
+    compareResult = String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" }) || comparePlayerProfileSeasonRows(left, right);
+  }
+  return dir === "asc" ? compareResult : -compareResult;
+}
+
+function sortPlayerProfileRows(rows, sortState) {
+  const seasonRows = (rows || []).filter((row) => !row?._careerAggregate);
+  const careerRows = (rows || []).filter((row) => row?._careerAggregate);
+  const activeSort = normalizePlayerProfileSortState(sortState, getAvailablePlayerProfileColumns(rows));
+  const comparator = activeSort.column ? (left, right) => comparePlayerProfileSortValues(left, right, activeSort.column, activeSort.dir) : comparePlayerProfileSeasonRows;
+  const sortedSeasonRows = seasonRows.slice().sort(comparator);
+  return sortedSeasonRows.concat(careerRows);
+}
+
+function renderPlayerProfileModal(root, name, rows, options = {}) {
+  const mergedOptions = { ...(root?._playerProfileOptions || {}), ...options };
+  root._playerProfileName = name;
+  root._playerProfileRows = Array.isArray(rows) ? rows.slice() : [];
+  root._playerProfileOptions = mergedOptions;
+  root._playerProfileAvailableColumns = new Set(getAvailablePlayerProfileColumns(rows));
+  const target = getPlayerProfileRenderTarget(root);
+  target.innerHTML = buildPlayerProfileContentHtml(name, rows, mergedOptions);
+  bindPlayerProfileColumnControls(root);
+  bindPlayerProfileSortControls(root);
+  applyPlayerProfileRowVisibility(root, getPlayerProfileCareerOnlyEnabled());
 }
 
 function buildPlayerProfileContentHtml(name, rows, options = {}) {
-  const columns = PLAYER_PROFILE_ALL_COLUMNS;
-  const visibleColumns = getPlayerProfileVisibleColumns();
+  const columns = getAvailablePlayerProfileColumns(rows);
+  const visibleColumns = getPlayerProfileVisibleColumns(columns);
   const colorsEnabled = getPlayerProfileColorsEnabled();
   const dataset = getPlayerProfileRenderDataset(rows);
   const profileColorState = { extraSelects: { view_mode: "player", color_mode: "competition" } };
   const profileReferenceRows = getPlayerProfileColorReferenceRows(rows);
   const colorScale = dataset.meta ? buildColumnScales(dataset, profileColorState, columns, profileReferenceRows) : {};
+  const sortState = getPlayerProfileSortState(columns);
+  const sortedRows = sortPlayerProfileRows(rows, sortState);
   const header = columns.map((column) => {
     const hidden = visibleColumns.has(column) ? "" : " hidden";
-    return `<th data-profile-column="${escapeAttribute(column)}"${hidden}>${escapeHtml(getPlayerProfileColumnLabel(dataset, column))}</th>`;
+    const isActive = sortState.column === column;
+    const nextDir = isActive && sortState.dir === "desc" ? "asc" : "desc";
+    const direction = isActive ? (sortState.dir === "desc" ? "descending" : "ascending") : "none";
+    const indicator = isActive ? (sortState.dir === "desc" ? "▼" : "▲") : "";
+    return `<th data-profile-column="${escapeAttribute(column)}"${hidden}><button class="player-profile-sort-button${isActive ? " is-active" : ""}" type="button" data-profile-sort="${escapeAttribute(column)}" data-profile-sort-dir="${escapeAttribute(nextDir)}" aria-sort="${escapeAttribute(direction)}">${escapeHtml(getPlayerProfileColumnLabel(dataset, column))}${indicator ? `<span class="player-profile-sort-indicator">${escapeHtml(indicator)}</span>` : ""}</button></th>`;
   }).join("");
-  const body = rows.length
-    ? rows.map((row) => `<tr class="${row._careerAggregate ? "player-profile-career-row" : ""}" data-profile-row-kind="${row._careerAggregate ? "career" : "season"}">${columns.map((column) => {
+  const body = sortedRows.length
+    ? sortedRows.map((row) => `<tr class="${row._careerAggregate ? "player-profile-career-row" : ""}" data-profile-row-kind="${row._careerAggregate ? "career" : "season"}">${columns.map((column) => {
       const hidden = visibleColumns.has(column) ? "" : " hidden";
       const rawValue = getRowColumnValue(dataset, row, column);
       const style = getCellStyle(dataset, profileColorState, column, rawValue, colorScale, row);
@@ -14884,17 +15215,19 @@ function buildPlayerProfileContentHtml(name, rows, options = {}) {
       const styleAttribute = splitStats ? "" : (colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : "");
       const storedStyleAttribute = style ? ` data-profile-color-style="${escapeAttribute(style)}"` : "";
       const splitHtml = splitStats
-        ? `<span class="split-display"><span class="split-display__counts">${escapeHtml(`${Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0}-${Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0}`)}</span><span class="split-display__pct"${colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
+        ? `<span class="split-display"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">/</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span><span class="split-display__pct"${colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
         : "";
       return `<td data-profile-column="${escapeAttribute(column)}"${hidden}${styleAttribute}${storedStyleAttribute}>${splitHtml || escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, rawValue, row)))}</td>`;
     }).join("")}</tr>`).join("")
-    : `<tr><td colspan="${Math.max(visibleColumns.size, 1)}">No logged seasons found.</td></tr>`;
+    : `<tr><td colspan="${Math.max(columns.length, 1)}">No logged seasons found.</td></tr>`;
   const backLink = options.standalone ? `<div><a href="#player_career">Player/Career</a></div>` : "";
-  const controls = buildPlayerProfileColumnControlsHtml(visibleColumns);
+  const loadingNote = options.loadingMore ? `<div class="player-profile-loading-note">Loading additional merged seasons and advanced stats...</div>` : "";
+  const controls = buildPlayerProfileColumnControlsHtml(visibleColumns, columns);
   return `
     <div class="player-profile-header">
       <h2>${escapeHtml(name || "Player")}</h2>
-      <div>${rows.length.toLocaleString()} rows including career totals</div>
+      <div>${sortedRows.length.toLocaleString()} rows including career totals</div>
+      ${loadingNote}
       ${backLink}
     </div>
     <div class="player-profile-layout">
@@ -14928,7 +15261,8 @@ function getPlayerProfileColumnLabel(dataset, column) {
   return PLAYER_PROFILE_LABELS[column] || displayLabel(dataset, column);
 }
 
-function getPlayerProfileVisibleColumns() {
+function getPlayerProfileVisibleColumns(availableColumns = PLAYER_PROFILE_ALL_COLUMNS) {
+  const available = new Set(availableColumns);
   let stored = [];
   try {
     const parsed = JSON.parse(localStorage.getItem(PLAYER_PROFILE_STORAGE_KEY) || "[]");
@@ -14938,8 +15272,8 @@ function getPlayerProfileVisibleColumns() {
   }
   const selected = stored.length ? stored : PLAYER_PROFILE_DEFAULT_COLUMNS;
   return new Set([
-    ...PLAYER_PROFILE_LOCKED_COLUMNS,
-    ...selected.filter((column) => PLAYER_PROFILE_ALL_COLUMNS.includes(column)),
+    ...PLAYER_PROFILE_LOCKED_COLUMNS.filter((column) => available.has(column)),
+    ...selected.filter((column) => available.has(column) && PLAYER_PROFILE_ALL_COLUMNS.includes(column)),
   ]);
 }
 
@@ -14984,19 +15318,22 @@ function savePlayerProfileCareerOnlyEnabled(enabled) {
   }
 }
 
-function buildPlayerProfileColumnControlsHtml(visibleColumns) {
+function buildPlayerProfileColumnControlsHtml(visibleColumns, availableColumns = PLAYER_PROFILE_ALL_COLUMNS) {
+  const available = new Set(availableColumns);
   const colorChecked = getPlayerProfileColorsEnabled() ? " checked" : "";
   const careerOnlyChecked = getPlayerProfileCareerOnlyEnabled() ? " checked" : "";
   const groups = PLAYER_PROFILE_COLUMN_GROUPS.map((group) => {
-    const options = group.columns.map((column) => {
+    const groupColumns = group.columns.filter((column) => available.has(column));
+    if (!groupColumns.length) return "";
+    const options = groupColumns.map((column) => {
       const locked = PLAYER_PROFILE_LOCKED_COLUMNS.includes(column);
       const checked = visibleColumns.has(column) ? " checked" : "";
       const disabled = locked ? " disabled" : "";
       return `<label class="player-profile-column-option"><input type="checkbox" data-profile-column-toggle="${escapeAttribute(column)}"${checked}${disabled}> <span>${escapeHtml(getPlayerProfileColumnLabel(DATASETS.player_career, column))}</span></label>`;
     }).join("");
-    const selectedCount = group.columns.filter((column) => visibleColumns.has(column)).length;
-    return `<details class="player-profile-column-group"><summary><span class="player-profile-column-summary-text">${escapeHtml(group.label)}</span><span class="player-profile-column-summary-count" data-profile-column-count="${escapeAttribute(group.id)}">${selectedCount}/${group.columns.length}</span><span class="player-profile-column-summary-actions"><button type="button" data-profile-column-group="${escapeAttribute(group.id)}" data-profile-column-group-mode="show">Show</button><button type="button" data-profile-column-group="${escapeAttribute(group.id)}" data-profile-column-group-mode="hide">Hide</button></span></summary><div class="player-profile-column-options">${options}</div></details>`;
-  }).join("");
+    const selectedCount = groupColumns.filter((column) => visibleColumns.has(column)).length;
+    return `<details class="player-profile-column-group"><summary><span class="player-profile-column-summary-text">${escapeHtml(group.label)}</span><span class="player-profile-column-summary-count" data-profile-column-count="${escapeAttribute(group.id)}">${selectedCount}/${groupColumns.length}</span><span class="player-profile-column-summary-actions"><button type="button" data-profile-column-group="${escapeAttribute(group.id)}" data-profile-column-group-mode="show">Show</button><button type="button" data-profile-column-group="${escapeAttribute(group.id)}" data-profile-column-group-mode="hide">Hide</button></span></summary><div class="player-profile-column-options">${options}</div></details>`;
+  }).filter(Boolean).join("");
   return `
     <div class="player-profile-column-controls" data-player-profile-columns>
       <div class="player-profile-column-actions">
@@ -15017,6 +15354,7 @@ function bindPlayerProfileColumnControls(root) {
   container.dataset.bound = "true";
   container.addEventListener("change", (event) => {
     const input = event.target instanceof HTMLInputElement ? event.target : null;
+    const available = root?._playerProfileAvailableColumns instanceof Set ? root._playerProfileAvailableColumns : new Set(PLAYER_PROFILE_ALL_COLUMNS);
     if (input?.matches("[data-profile-career-only-toggle]")) {
       savePlayerProfileCareerOnlyEnabled(input.checked);
       applyPlayerProfileRowVisibility(root, input.checked);
@@ -15028,7 +15366,7 @@ function bindPlayerProfileColumnControls(root) {
       return;
     }
     if (!input?.matches("[data-profile-column-toggle]")) return;
-    const selected = new Set(PLAYER_PROFILE_LOCKED_COLUMNS);
+    const selected = new Set(PLAYER_PROFILE_LOCKED_COLUMNS.filter((column) => available.has(column)));
     container.querySelectorAll("[data-profile-column-toggle]").forEach((item) => {
       if (item instanceof HTMLInputElement && item.checked) selected.add(item.dataset.profileColumnToggle);
     });
@@ -15038,10 +15376,13 @@ function bindPlayerProfileColumnControls(root) {
   container.querySelectorAll("[data-profile-column-mode]").forEach((button) => {
     button.addEventListener("click", () => {
       const mode = button.dataset.profileColumnMode;
-      const selected = new Set(PLAYER_PROFILE_LOCKED_COLUMNS);
+      const available = root?._playerProfileAvailableColumns instanceof Set ? root._playerProfileAvailableColumns : new Set(PLAYER_PROFILE_ALL_COLUMNS);
+      const selected = new Set(PLAYER_PROFILE_LOCKED_COLUMNS.filter((column) => available.has(column)));
       const source = mode === "all"
-        ? PLAYER_PROFILE_ALL_COLUMNS
-        : (mode === "none" ? PLAYER_PROFILE_LOCKED_COLUMNS : PLAYER_PROFILE_DEFAULT_COLUMNS);
+        ? PLAYER_PROFILE_ALL_COLUMNS.filter((column) => available.has(column))
+        : (mode === "none"
+          ? PLAYER_PROFILE_LOCKED_COLUMNS.filter((column) => available.has(column))
+          : PLAYER_PROFILE_DEFAULT_COLUMNS.filter((column) => available.has(column)));
       source.forEach((column) => selected.add(column));
       container.querySelectorAll("[data-profile-column-toggle]").forEach((item) => {
         if (item instanceof HTMLInputElement) item.checked = selected.has(item.dataset.profileColumnToggle);
@@ -15057,12 +15398,14 @@ function bindPlayerProfileColumnControls(root) {
       const groupId = button.dataset.profileColumnGroup;
       const group = PLAYER_PROFILE_COLUMN_GROUPS.find((item) => item.id === groupId);
       if (!group) return;
-      const selected = new Set(PLAYER_PROFILE_LOCKED_COLUMNS);
+      const available = root?._playerProfileAvailableColumns instanceof Set ? root._playerProfileAvailableColumns : new Set(PLAYER_PROFILE_ALL_COLUMNS);
+      const groupColumns = group.columns.filter((column) => available.has(column));
+      const selected = new Set(PLAYER_PROFILE_LOCKED_COLUMNS.filter((column) => available.has(column)));
       container.querySelectorAll("[data-profile-column-toggle]").forEach((item) => {
         if (item instanceof HTMLInputElement && item.checked) selected.add(item.dataset.profileColumnToggle);
       });
       const show = button.dataset.profileColumnGroupMode === "show";
-      group.columns.forEach((column) => {
+      groupColumns.forEach((column) => {
         if (show || PLAYER_PROFILE_LOCKED_COLUMNS.includes(column)) selected.add(column);
         else selected.delete(column);
       });
@@ -15091,16 +15434,31 @@ function applyPlayerProfileRowVisibility(root, careerOnly) {
   });
 }
 
+function bindPlayerProfileSortControls(root) {
+  const target = getPlayerProfileRenderTarget(root);
+  target?.querySelectorAll?.("[data-profile-sort]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const column = getStringValue(button.getAttribute("data-profile-sort")).trim();
+      const dir = getStringValue(button.getAttribute("data-profile-sort-dir")).trim() || "desc";
+      if (!column) return;
+      savePlayerProfileSortState({ column, dir }, Array.from(root?._playerProfileAvailableColumns || []));
+      renderPlayerProfileModal(root, root?._playerProfileName || "", root?._playerProfileRows || [], root?._playerProfileOptions || {});
+    });
+  });
+}
+
 function applyPlayerProfileColumnVisibility(root, selected) {
   root?.querySelectorAll?.("[data-profile-column]").forEach((cell) => {
     const column = cell.dataset.profileColumn;
     cell.hidden = !selected.has(column);
   });
+  const available = root?._playerProfileAvailableColumns instanceof Set ? root._playerProfileAvailableColumns : new Set(PLAYER_PROFILE_ALL_COLUMNS);
   PLAYER_PROFILE_COLUMN_GROUPS.forEach((group) => {
     const counter = root?.querySelector?.(`[data-profile-column-count="${CSS.escape(group.id)}"]`);
     if (!counter) return;
-    const selectedCount = group.columns.filter((column) => selected.has(column)).length;
-    counter.textContent = `${selectedCount}/${group.columns.length}`;
+    const groupColumns = group.columns.filter((column) => available.has(column));
+    const selectedCount = groupColumns.filter((column) => selected.has(column)).length;
+    counter.textContent = `${selectedCount}/${groupColumns.length}`;
   });
 }
 
@@ -15122,11 +15480,16 @@ async function renderPlayerProfileRoute(params) {
   elements.resultsSubtitle.textContent = "";
   elements.homeContent.innerHTML = `<div class="player-profile-loading">Loading ${escapeHtml(name)} seasons...</div>`;
   try {
-    const rows = await getPlayerProfileRows(sourceRow, getStringValue(params?.get("dataset")).trim());
+    const rows = await loadPlayerProfileRowsProgressively(
+      sourceRow,
+      getStringValue(params?.get("dataset")).trim(),
+      (nextRows, meta = {}) => {
+        if (appState.currentId !== PROFILE_ROUTE_ID) return;
+        renderPlayerProfileModal(elements.homeContent, name, nextRows, { standalone: true, loadingMore: Boolean(meta.loadingMore) });
+      },
+    );
     if (appState.currentId !== PROFILE_ROUTE_ID) return;
-    elements.homeContent.innerHTML = buildPlayerProfileContentHtml(name, rows, { standalone: true });
-    bindPlayerProfileColumnControls(elements.homeContent);
-    applyPlayerProfileRowVisibility(elements.homeContent, getPlayerProfileCareerOnlyEnabled());
+    renderPlayerProfileModal(elements.homeContent, name, rows, { standalone: true, loadingMore: false });
     elements.statusPill.textContent = `${name} ready`;
   } catch (error) {
     if (appState.currentId !== PROFILE_ROUTE_ID) return;
@@ -15526,10 +15889,15 @@ function percentileFromSorted(arr, value) {
 
 function colorFromPercentile(pct) {
   const clamped = Math.min(1, Math.max(0, pct));
-  if (clamped <= 0.5) {
-    return mixColors("#efd9d2", "#fffdf9", subtlePercentileGradient(clamped / 0.5));
+  if (clamped >= 0.45 && clamped <= 0.55) {
+    return { bg: "#ffffff", color: "#111111" };
   }
-  return mixColors("#fffdf9", "#dbe7ef", subtlePercentileGradient((clamped - 0.5) / 0.5));
+  if (clamped < 0.45) {
+    const t = Math.pow((0.45 - clamped) / 0.45, 0.72);
+    return mixColors("#ffffff", "#d54a35", t);
+  }
+  const t = Math.pow((clamped - 0.55) / 0.45, 0.72);
+  return mixColors("#ffffff", "#1f9c63", t);
 }
 
 function subtlePercentileGradient(value) {
@@ -16860,8 +17228,25 @@ function scalePercentRatioColumns(row) {
   }
 }
 
+function resolvePercentNormalizationDatasetId(row, datasetId = "") {
+  if (datasetId !== "player_career") return datasetId;
+  const explicitDataset = normalizeKey(row?._datasetId || row?.dataset);
+  if (explicitDataset && DATASETS[explicitDataset]) return explicitDataset;
+  const sourceDataset = normalizeKey(row?.source_dataset);
+  if (sourceDataset.startsWith("realgm nba")) return "nba";
+  if (sourceDataset.startsWith("realgm international") || sourceDataset.includes("international")) return "international";
+  if (sourceDataset.includes("fiba")) return "fiba";
+  if (sourceDataset.includes("gleague") || sourceDataset.includes("g league")) return "international";
+  const level = normalizeProfileLevel(row);
+  if (level === "NBA") return "nba";
+  if (level === "International" || level === "G League") return "international";
+  if (level === "FIBA") return "fiba";
+  return datasetId;
+}
+
 function normalizePercentLikeColumns(row, datasetId = "") {
-  const scaleStandardPercentColumns = datasetPercentColumnsStoredAsRatios(datasetId);
+  const effectiveDatasetId = resolvePercentNormalizationDatasetId(row, datasetId);
+  const scaleStandardPercentColumns = datasetPercentColumnsStoredAsRatios(effectiveDatasetId);
   let scaledStandardPercentColumn = false;
   Object.keys(row || {}).forEach((column) => {
     if (typeof row[column] !== "number" || !Number.isFinite(row[column])) return;
@@ -16869,13 +17254,14 @@ function normalizePercentLikeColumns(row, datasetId = "") {
       if (row._percentRatiosScaled) return;
       if (scaleStandardPercentColumns) {
         if (Math.abs(row[column]) <= 1.5) row[column] = row[column] * 100;
-      } else if (datasetId !== "grassroots" && Math.abs(row[column]) <= 1.5) {
+      } else if (effectiveDatasetId !== "grassroots" && Math.abs(row[column]) <= 1.5) {
         row[column] = row[column] * 100;
       }
       return;
     }
     if (!(looksPercentColumn(column) || /^min_per$/i.test(column))) return;
     if (row._standardPercentColumnsScaled) return;
+    if (!scaleStandardPercentColumns) return;
     if (Math.abs(row[column]) <= 1) {
       row[column] = row[column] * 100;
       scaledStandardPercentColumn = true;
@@ -16968,6 +17354,9 @@ function normalizeDisplayName(value) {
       const onlyLetters = part.replace(/[^A-Za-z]/g, "");
       if (!onlyLetters) return part;
       if (onlyLetters.length === 1) return part.toUpperCase();
+      if (onlyLetters.length === 2 && onlyLetters === onlyLetters.toUpperCase() && /[BCDFGHJKLMNPQRSTVWXYZ]$/.test(onlyLetters)) {
+        return onlyLetters;
+      }
       const lower = part.toLowerCase();
       return lower.charAt(0).toUpperCase() + lower.slice(1);
     })
@@ -17602,9 +17991,9 @@ function populateDefensiveRateStats(row) {
   if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isFinite(teamMinutes) || teamMinutes <= 0) return;
 
   const stealPct = firstFinite(row.stl_pct, row.stlpct, Number.NaN);
-  if (!Number.isFinite(stealPct) && Number.isFinite(row.stl) && Number.isFinite(row.opp_poss) && row.opp_poss > 0) {
+  if (!Number.isFinite(stealPct) && Number.isFinite(row.stl) && defensiveRateInputsLookLikeTotals(row, row.opp_poss, 40)) {
     const computed = roundNumber((row.stl * ((teamMinutes / 5) / minutes) / row.opp_poss) * 100, 1);
-    if (Number.isFinite(computed)) {
+    if (Number.isFinite(computed) && computed <= 8) {
       row.stl_pct = computed;
       if (!Number.isFinite(row.stlpct)) row.stlpct = computed;
     }
@@ -17612,13 +18001,22 @@ function populateDefensiveRateStats(row) {
 
   const blockPct = firstFinite(row.blk_pct, row.blkpct, Number.NaN);
   const defendedTwos = subtractIfFinite(row.opp_fga, row.opp_3pa);
-  if (!Number.isFinite(blockPct) && Number.isFinite(row.blk) && Number.isFinite(defendedTwos) && defendedTwos > 0) {
+  if (!Number.isFinite(blockPct) && Number.isFinite(row.blk) && defensiveRateInputsLookLikeTotals(row, defendedTwos, 18)) {
     const computed = roundNumber((row.blk * ((teamMinutes / 5) / minutes) / defendedTwos) * 100, 1);
-    if (Number.isFinite(computed)) {
+    if (Number.isFinite(computed) && computed <= 15) {
       row.blk_pct = computed;
       if (!Number.isFinite(row.blkpct)) row.blkpct = computed;
     }
   }
+}
+
+function defensiveRateInputsLookLikeTotals(row, denominator, perGameFloor) {
+  if (!Number.isFinite(denominator) || denominator <= 0) return false;
+  const explicitTeamMinutes = firstFinite(row?.team_minutes, Number.NaN);
+  if (Number.isFinite(explicitTeamMinutes) && explicitTeamMinutes > 0) return true;
+  const gp = getGamesValue(row);
+  if (!Number.isFinite(gp) || gp <= 1) return denominator >= perGameFloor;
+  return denominator >= (gp * perGameFloor);
 }
 
 function getTeamMinutesBasis(row) {

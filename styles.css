@@ -882,15 +882,54 @@ a,
 }
 
 .split-display {
-  display: inline-flex;
+  display: inline-grid;
   align-items: center;
+  grid-template-columns: minmax(2ch, auto) auto minmax(2ch, auto) minmax(42px, auto);
   gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.split-display__made,
+.split-display__att,
+.split-display__pct {
+  display: inline-block;
+  text-align: right;
+}
+
+.split-display__sep {
+  color: var(--text-muted);
 }
 
 .split-display__pct {
-  display: inline-block;
-  min-width: 28px;
+  min-width: 42px;
   padding: 1px 3px;
+}
+
+.player-profile-sort-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.player-profile-sort-button.is-active {
+  font-weight: 700;
+}
+
+.player-profile-sort-indicator {
+  font-size: 8px;
+}
+
+.player-profile-loading-note {
+  color: var(--text-muted);
+  font-size: 10px;
 }
 
 .player-profile-table th:nth-child(2),

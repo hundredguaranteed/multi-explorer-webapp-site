@@ -1080,12 +1080,12 @@ def merge_realgm_reference_rows(existing: dict[str, object] | None, candidate: d
 def realgm_reference_row_priority(row: dict[str, object]) -> float:
     score = float(count_non_blank_fields(row))
     source_table = normalize_key(row.get("source_table") or row.get("table_kind"))
-    if source_table == "totals":
-        score += 300.0
-    elif source_table == "advanced":
-        score += 180.0
+    if source_table == "advanced":
+        score += 340.0
+    elif source_table == "totals":
+        score += 220.0
     if is_realgm_reference_counting_totals_row(row):
-        score -= 60.0
+        score -= 80.0
     else:
         score += 40.0
     return score
@@ -4884,6 +4884,18 @@ def get_team_minutes_basis(row: dict[str, object]) -> float | None:
     return None
 
 
+def defensive_rate_inputs_look_like_totals(row: dict[str, object], denominator: float | None, per_game_floor: float) -> bool:
+    if denominator is None or not math.isfinite(denominator) or denominator <= 0:
+        return False
+    team_minutes = first_number(row.get("team_minutes"))
+    if team_minutes is not None and math.isfinite(team_minutes) and team_minutes > 0:
+        return True
+    gp_value = first_number(row.get("gp"), row.get("g"))
+    if gp_value is None or not math.isfinite(gp_value) or gp_value <= 1:
+        return denominator >= per_game_floor
+    return denominator >= (gp_value * per_game_floor)
+
+
 def apply_player_career_defensive_rate_derivations(row: dict[str, object]) -> None:
     minutes_value = first_number(row.get("min"), row.get("mp"))
     team_minutes = get_team_minutes_basis(row)
@@ -4893,15 +4905,20 @@ def apply_player_career_defensive_rate_derivations(row: dict[str, object]) -> No
     steal_pct = first_number(row.get("stl_pct"))
     stl_value = first_number(row.get("stl"))
     opp_poss = first_number(row.get("opp_poss"))
-    if steal_pct is None and stl_value is not None and opp_poss is not None and opp_poss > 0:
-        row["stl_pct"] = round_number((stl_value * ((team_minutes / 5.0) / minutes_value) / opp_poss) * 100.0, 3)
+    if steal_pct is None and stl_value is not None and defensive_rate_inputs_look_like_totals(row, opp_poss, 40.0):
+        computed_stl_pct = (stl_value * ((team_minutes / 5.0) / minutes_value) / opp_poss) * 100.0
+        if math.isfinite(computed_stl_pct) and computed_stl_pct <= 8.0:
+            row["stl_pct"] = round_number(computed_stl_pct, 3)
 
     block_pct = first_number(row.get("blk_pct"))
     blk_value = first_number(row.get("blk"))
     opp_fga = first_number(row.get("opp_fga"))
     opp_3pa = first_number(row.get("opp_3pa"))
-    if block_pct is None and blk_value is not None and opp_fga is not None and opp_3pa is not None and (opp_fga - opp_3pa) > 0:
-        row["blk_pct"] = round_number((blk_value * ((team_minutes / 5.0) / minutes_value) / (opp_fga - opp_3pa)) * 100.0, 3)
+    defended_twos = (opp_fga - opp_3pa) if opp_fga is not None and opp_3pa is not None else None
+    if block_pct is None and blk_value is not None and defensive_rate_inputs_look_like_totals(row, defended_twos, 18.0):
+        computed_blk_pct = (blk_value * ((team_minutes / 5.0) / minutes_value) / defended_twos) * 100.0
+        if math.isfinite(computed_blk_pct) and computed_blk_pct <= 15.0:
+            row["blk_pct"] = round_number(computed_blk_pct, 3)
 
 
 def apply_player_career_shooting_derivations(row: dict[str, object]) -> None:
