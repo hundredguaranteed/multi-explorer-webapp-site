@@ -556,7 +556,7 @@ const D1_SHOT_PROFILE_COLUMNS = [
   { key: "dunk_pct", label: "Dunk%", defaultVisible: true, mode: "always" },
   { key: "dunk_ast_pct", label: "Dunk Ast%", defaultVisible: false, mode: "always" },
   { key: "rim_made", label: "Rim Made", defaultVisible: false, mode: "totals" },
-  { key: "rim_att", label: "Rim Att", defaultVisible: true, mode: "totals" },
+  { key: "rim_att", label: "Rim Att", defaultVisible: false, mode: "totals" },
   { key: "rim_unast_made", label: "Rim Unast", defaultVisible: false, mode: "totals" },
   { key: "rim_made_pg", label: "Rim Made/G", defaultVisible: false, mode: "per_game" },
   { key: "rim_att_pg", label: "Rim Att/G", defaultVisible: false, mode: "per_game" },
@@ -681,14 +681,14 @@ const D1_ADVANCED_COLUMNS = [
 const D1_ADVANCED_GROUPS = [
   {
     id: "advanced_bart",
-    label: "Bart",
+    label: "Bart Core",
     groupClass: "advanced",
     columns: ["min_per", "porpag", "dporpag", "obpm", "dbpm", "bpm"],
     defaultColumns: ["min_per", "porpag", "dporpag", "bpm"],
   },
   {
     id: "advanced_custom",
-    label: "Custom",
+    label: "Bart Extras",
     groupClass: "advanced",
     columns: ["per", "net_rating", "fic", "ppr", "bpm_diff", "bpm_frac"],
     defaultColumns: ["net_rating"],
@@ -698,14 +698,14 @@ const D1_ADVANCED_GROUPS = [
 const D1_ANCILLARY_GROUPS = [
   {
     id: "ancillaries_main",
-    label: "Main",
+    label: "Bart Rates",
     groupClass: "ancillaries",
     columns: ["orb_pct", "drb_pct", "usg_pct", "ast_pct", "tov_pct_adv", "ast_to", "stl_pct", "blk_pct"],
     defaultColumns: ["orb_pct", "drb_pct", "usg_pct", "ast_pct", "tov_pct_adv", "ast_to", "stl_pct", "blk_pct"],
   },
   {
     id: "ancillaries_custom",
-    label: "Custom",
+    label: "Bart Combos",
     groupClass: "ancillaries",
     columns: ["ast_pct_usg_pct", "ast_pct_tov_pct", "trb_pct", "stocks_pct"],
     defaultColumns: ["ast_pct_usg_pct", "ast_pct_tov_pct"],
@@ -6216,6 +6216,7 @@ async function ensureDatasetYearsLoaded(dataset, years, options = {}) {
 }
 
 function enrichDatasetRows(rows, datasetId) {
+  tagDatasetRows(rows, datasetId);
   if (datasetId === "d1") enrichD1Rows(rows);
   if (datasetId === "naia") enrichNaiaRows(rows);
   if (datasetId === "d1") backfillTeamSeasonFields(rows, ["conference", "coach"]);
@@ -6223,6 +6224,21 @@ function enrichDatasetRows(rows, datasetId) {
   if (datasetId === "naia") backfillNaiaDivisionFromConference(rows);
   if (datasetId === "juco") backfillTeamSeasonFields(rows, ["conference", "region"]);
   finalizeCategoricalFields(rows, datasetId);
+}
+
+function tagDatasetRows(rows, datasetId) {
+  (rows || []).forEach((row) => tagDatasetRow(row, datasetId));
+}
+
+function tagDatasetRow(row, datasetId) {
+  if (!row || typeof row !== "object" || !datasetId) return row;
+  Object.defineProperty(row, "_datasetId", {
+    value: datasetId,
+    configurable: true,
+    enumerable: true,
+    writable: true,
+  });
+  return row;
 }
 
 async function ensureStatusAnnotations(datasetId) {
@@ -10296,10 +10312,47 @@ function findEquivalentGroupUnitColumn(group, column, targetUnitMode) {
   return group.columns.find((item) => candidates.includes(stripCompanionPrefix(item))) || "";
 }
 
+function getEquivalentShotProfileUnitColumns(group, column, targetUnitMode) {
+  if (!group?.columns?.length || !column || !["totals", "per_game", "per40"].includes(targetUnitMode)) return [];
+  if (getColumnUnitMode(column, group) === targetUnitMode && group.columns.includes(column)) return [column];
+  const baseColumn = stripCompanionPrefix(column);
+  const suffix = targetUnitMode === "per40" ? "_per40" : targetUnitMode === "per_game" ? "_pg" : "";
+  const mappedBases = {
+    dunk_pct: ["dunk_made", "dunk_att"],
+    rim_pct: ["rim_made", "rim_att"],
+    fgpct_rim: ["rim_made", "rim_att"],
+    mid_pct: ["mid_made", "mid_att"],
+    fgpct_mid: ["mid_made", "mid_att"],
+    two_p_pct: ["two_p_made", "two_p_att"],
+    "2p_pct": ["two_p_made", "two_p_att"],
+    fg2pct: ["two_p_made", "two_p_att"],
+    three_p_pct: ["three_p_made", "three_p_att"],
+    "3p_pct": ["three_p_made", "three_p_att"],
+    tp_pct: ["three_p_made", "three_p_att"],
+    fg3pct: ["three_p_made", "three_p_att"],
+    ft_pct: ["ftm", "fta"],
+    ftpct: ["ftm", "fta"],
+  }[baseColumn] || [];
+  return mappedBases
+    .map((item) => `${item}${suffix}`)
+    .filter((item) => group.columns.includes(item));
+}
+
 function mapGroupColumnsToUnitMode(group, columns, targetUnitMode) {
   const mapped = [];
   const seen = new Set();
   (columns || []).forEach((column) => {
+    const shotProfileColumns = group?.unitModeKind === "shot_profile"
+      ? getEquivalentShotProfileUnitColumns(group, column, targetUnitMode)
+      : [];
+    if (shotProfileColumns.length) {
+      shotProfileColumns.forEach((item) => {
+        if (seen.has(item)) return;
+        seen.add(item);
+        mapped.push(item);
+      });
+      return;
+    }
     const nextColumn = findEquivalentGroupUnitColumn(group, column, targetUnitMode);
     if (!nextColumn || seen.has(nextColumn)) return;
     seen.add(nextColumn);
@@ -13528,9 +13581,9 @@ function getRelativeDisplayCellStyle(cellData) {
 function getColumnWidth(column, dataset) {
   const baseColumn = stripCompanionPrefix(column);
   if (isRelativeDisplayColumn(column)) return 38;
-  if (column === "rank") return 34;
+  if (column === "rank") return 26;
   if (isSplitDisplayColumn(column)) return 58;
-  if (baseColumn === dataset.yearColumn || baseColumn === "season") return 48;
+  if (baseColumn === dataset.yearColumn || baseColumn === "season") return 40;
   if (baseColumn === "age_range") return 52;
   if (isPlayerDisplayColumn(dataset, column)) {
     if (dataset.id === "nba") return 124;
@@ -13649,7 +13702,7 @@ function getColumnGroupEdgeClasses(dataset, columnIndex, visibleColumns) {
   const previousFamily = columnIndex > 0 ? getStringValue(dataset?.meta?.columnGroupFamily?.[visibleColumns[columnIndex - 1]]).trim() : "";
   const nextFamily = columnIndex < visibleColumns.length - 1 ? getStringValue(dataset?.meta?.columnGroupFamily?.[visibleColumns[columnIndex + 1]]).trim() : "";
   const classes = [];
-  if (currentFamily && currentFamily !== previousFamily) classes.push("cell-group-start");
+  if (columnIndex > 0 && currentFamily && currentFamily !== previousFamily) classes.push("cell-group-start");
   if (currentFamily && currentFamily !== nextFamily) classes.push("cell-group-end");
   return classes;
 }
@@ -13690,13 +13743,13 @@ function getSplitDisplayConfig(column) {
     fgpct_rim: { madeKeys: ["rim_made", "fgm_rim"], attKeys: ["rim_att", "fga_rim"] },
     mid_pct: { madeKeys: ["mid_made", "fgm_mid", "long2_made"], attKeys: ["mid_att", "fga_mid", "long2_att"] },
     fgpct_mid: { madeKeys: ["mid_made", "fgm_mid", "long2_made"], attKeys: ["mid_att", "fga_mid", "long2_att"] },
-    two_p_pct: { madeKeys: ["two_pm", "2pm"], attKeys: ["two_pa", "2pa"] },
-    "2p_pct": { madeKeys: ["2pm", "two_pm"], attKeys: ["2pa", "two_pa"] },
-    fg2pct: { madeKeys: ["2pm", "two_pm"], attKeys: ["2pa", "two_pa"] },
-    three_p_pct: { madeKeys: ["three_pm", "3pm", "tpm"], attKeys: ["three_pa", "3pa", "tpa"] },
-    "3p_pct": { madeKeys: ["3pm", "three_pm", "tpm"], attKeys: ["3pa", "three_pa", "tpa"] },
-    tp_pct: { madeKeys: ["tpm", "3pm", "three_pm"], attKeys: ["tpa", "3pa", "three_pa"] },
-    fg3pct: { madeKeys: ["tpm", "3pm", "three_pm"], attKeys: ["tpa", "3pa", "three_pa"] },
+    two_p_pct: { madeKeys: ["two_p_made", "two_pm", "2pm"], attKeys: ["two_p_att", "two_pa", "2pa"] },
+    "2p_pct": { madeKeys: ["two_p_made", "2pm", "two_pm"], attKeys: ["two_p_att", "2pa", "two_pa"] },
+    fg2pct: { madeKeys: ["two_p_made", "2pm", "two_pm"], attKeys: ["two_p_att", "2pa", "two_pa"] },
+    three_p_pct: { madeKeys: ["three_p_made", "three_pm", "3pm", "tpm"], attKeys: ["three_p_att", "three_pa", "3pa", "tpa"] },
+    "3p_pct": { madeKeys: ["three_p_made", "3pm", "three_pm", "tpm"], attKeys: ["three_p_att", "3pa", "three_pa", "tpa"] },
+    tp_pct: { madeKeys: ["three_p_made", "tpm", "3pm", "three_pm"], attKeys: ["three_p_att", "tpa", "3pa", "three_pa"] },
+    fg3pct: { madeKeys: ["three_p_made", "tpm", "3pm", "three_pm"], attKeys: ["three_p_att", "tpa", "3pa", "three_pa"] },
     ft_pct: { madeKeys: ["ftm"], attKeys: ["fta"] },
     ftpct: { madeKeys: ["ftm"], attKeys: ["fta"] },
   }[baseColumn] || null;
@@ -13731,10 +13784,10 @@ function getSplitDisplayStats(row, column) {
   if (!config || !row) return null;
   const made = firstFinite(...config.madeKeys.map((key) => row?.[key]), Number.NaN);
   const att = firstFinite(...config.attKeys.map((key) => row?.[key]), Number.NaN);
-  let pctValue = firstFinite(row?.[column], Number.NaN);
-  if (!Number.isFinite(pctValue) && Number.isFinite(made) && Number.isFinite(att) && att > 0) {
-    pctValue = percentIfPossible(made, att);
-  }
+  let pctValue = Number.isFinite(made) && Number.isFinite(att) && att > 0
+    ? percentIfPossible(made, att)
+    : Number.NaN;
+  if (!Number.isFinite(pctValue)) pctValue = firstFinite(row?.[column], Number.NaN);
   const normalizedPct = Number.isFinite(pctValue)
     ? (Math.abs(pctValue) <= 1.5 ? pctValue * 100 : pctValue)
     : Number.NaN;
@@ -13849,7 +13902,7 @@ function renderBodyCell(dataset, state, column, row, index, colorScale, relative
     ? ` title="${escapeAttribute(splitDisplay.trim())}"`
     : (rawValue != null && rawValue !== "" ? ` title="${escapeAttribute(display)}"` : "");
   const splitContent = splitStats
-    ? `<span class="split-display"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">/</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span><span class="split-display__pct"${style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
+    ? `<span class="split-display"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">-</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span><span class="split-display__pct"${style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
     : "";
   const content = display && isPlayerDisplayColumn(dataset, column)
     ? `<a class="player-season-link" href="${escapeAttribute(buildPlayerProfileHref(row, dataset.id))}" data-player-profile-key="${escapeAttribute(registerPlayerProfileRow(dataset, row))}">${escapeHtml(display)}</a>`
@@ -14851,14 +14904,24 @@ function normalizePlayerProfileShootingTotals(row) {
     const inferred = addIfFinite(twoPa, threePa);
     if (Number.isFinite(inferred)) row.fga = inferred;
   }
-  if (!Number.isFinite(row.two_p_pct)) row.two_p_pct = percentIfPossible(row.two_pm, row.two_pa);
-  if (!Number.isFinite(row.three_p_pct)) row.three_p_pct = percentIfPossible(row.three_pm, row.three_pa);
-  if (!Number.isFinite(row.ft_pct)) row.ft_pct = percentIfPossible(row.ftm, row.fta);
-  if (!Number.isFinite(row.fg_pct)) row.fg_pct = percentIfPossible(row.fgm, row.fga);
-  if (!Number.isFinite(row.efg_pct)) row.efg_pct = zeroSafeEfgPct(row.fgm, row.three_pm, row.fga);
-  if (!Number.isFinite(row.ts_pct)) row.ts_pct = zeroSafeTsPct(row.pts, row.fga, row.fta);
-  if (!Number.isFinite(row.ftr)) row.ftr = ratioIfPossible(row.fta, row.fga);
-  if (!Number.isFinite(row.three_pr)) row.three_pr = ratioIfPossible(row.three_pa, row.fga);
+  const inferredPoints = weightedPointTotal(row.two_pm, row.three_pm, row.ftm);
+  if (!Number.isFinite(row.pts) && Number.isFinite(inferredPoints)) row.pts = inferredPoints;
+  const twoPct = percentIfPossible(row.two_pm, row.two_pa);
+  const threePct = percentIfPossible(row.three_pm, row.three_pa);
+  const ftPct = percentIfPossible(row.ftm, row.fta);
+  const fgPct = percentIfPossible(row.fgm, row.fga);
+  const efgPct = zeroSafeEfgPct(row.fgm, row.three_pm, row.fga);
+  const tsPct = zeroSafeTsPct(firstFinite(row.pts, inferredPoints, Number.NaN), row.fga, row.fta);
+  const ftr = ratioIfPossible(row.fta, row.fga);
+  const threePr = ratioIfPossible(row.three_pa, row.fga);
+  if (twoPct !== "") row.two_p_pct = twoPct;
+  if (threePct !== "") row.three_p_pct = threePct;
+  if (ftPct !== "") row.ft_pct = ftPct;
+  if (fgPct !== "") row.fg_pct = fgPct;
+  if (efgPct !== "") row.efg_pct = efgPct;
+  if (tsPct !== "") row.ts_pct = tsPct;
+  if (ftr !== "") row.ftr = ftr;
+  if (threePr !== "") row.three_pr = threePr;
   const gp = firstFinite(row.gp, row.g, Number.NaN);
   const minutes = firstFinite(row.min, row.mp, Number.NaN);
   inferPlayerProfileReboundSplits(row);
@@ -14941,6 +15004,15 @@ function getPlayerProfileTotalValue(row, column) {
 
 function normalizeProfileLevel(row) {
   if (getStringValue(row?._normalizedProfileLevel).trim()) return getStringValue(row._normalizedProfileLevel).trim();
+  const explicitDataset = normalizeKey(row?._datasetId || row?.dataset);
+  if (explicitDataset === "nba") return "NBA";
+  if (explicitDataset === "fiba") return "FIBA";
+  if (explicitDataset === "international") return "International";
+  if (explicitDataset === "grassroots") return "Grassroots";
+  if (explicitDataset === "d1") return "D1";
+  if (explicitDataset === "d2") return "D2";
+  if (explicitDataset === "naia") return "NAIA";
+  if (explicitDataset === "juco") return "JUCO";
   const text = normalizeKey([
     row?.competition_level,
     row?.source_dataset,
@@ -15142,6 +15214,10 @@ function getPlayerProfileSortValue(row, column) {
     const year = extractLeadingYear(row?.season);
     return Number.isFinite(year) ? year : sanitizeCellDisplayValue(row?.season);
   }
+  if (isSplitDisplayColumn(column)) {
+    const splitStats = getSplitDisplayStats(row, column);
+    if (Number.isFinite(splitStats?.pctValue)) return splitStats.pctValue;
+  }
   const totalValue = getPlayerProfileTotalValue(row, column);
   if (Number.isFinite(totalValue)) return totalValue;
   const rawValue = getRowColumnValue(DATASETS.player_career, row, column);
@@ -15215,7 +15291,7 @@ function buildPlayerProfileContentHtml(name, rows, options = {}) {
       const styleAttribute = splitStats ? "" : (colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : "");
       const storedStyleAttribute = style ? ` data-profile-color-style="${escapeAttribute(style)}"` : "";
       const splitHtml = splitStats
-        ? `<span class="split-display"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">/</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span><span class="split-display__pct"${colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
+        ? `<span class="split-display"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">-</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span><span class="split-display__pct"${colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
         : "";
       return `<td data-profile-column="${escapeAttribute(column)}"${hidden}${styleAttribute}${storedStyleAttribute}>${splitHtml || escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, rawValue, row)))}</td>`;
     }).join("")}</tr>`).join("")
@@ -15893,11 +15969,11 @@ function colorFromPercentile(pct) {
     return { bg: "#ffffff", color: "#111111" };
   }
   if (clamped < 0.45) {
-    const t = Math.pow((0.45 - clamped) / 0.45, 0.72);
-    return mixColors("#ffffff", "#d54a35", t);
+    const t = smoothstep(Math.pow((0.45 - clamped) / 0.45, 0.82));
+    return interpolateColorStops(["#fff4ef", "#f3b18f", "#df6c48", "#a61e14"], t);
   }
-  const t = Math.pow((clamped - 0.55) / 0.45, 0.72);
-  return mixColors("#ffffff", "#1f9c63", t);
+  const t = smoothstep(Math.pow((clamped - 0.55) / 0.45, 0.82));
+  return interpolateColorStops(["#eefaf2", "#b5e3c3", "#42a36c", "#0d6673"], t);
 }
 
 function subtlePercentileGradient(value) {
@@ -15917,6 +15993,16 @@ function mixColors(startHex, endHex, t) {
   const g = Math.round(start.g + (end.g - start.g) * clamp);
   const b = Math.round(start.b + (end.b - start.b) * clamp);
   return { bg: `rgb(${r}, ${g}, ${b})`, color: "#111111" };
+}
+
+function interpolateColorStops(stops, t) {
+  const normalized = Math.min(1, Math.max(0, t));
+  if (!Array.isArray(stops) || stops.length < 2) return mixColors("#ffffff", "#ffffff", 0);
+  const scaled = normalized * (stops.length - 1);
+  const lowerIndex = Math.floor(scaled);
+  const upperIndex = Math.min(stops.length - 1, lowerIndex + 1);
+  const localT = scaled - lowerIndex;
+  return mixColors(stops[lowerIndex], stops[upperIndex], localT);
 }
 
 function hexToRgb(hex) {
@@ -16314,6 +16400,7 @@ function annotateTrustedD1Rows(rows) {
 
 function enhanceRowForDataset(row, datasetId) {
   const out = { ...row };
+  tagDatasetRow(out, datasetId);
   enhanceCommonRow(out, datasetId);
   if (datasetId === "d1") enhanceD1Row(out);
   if (datasetId === "team_coach") enhanceTeamCoachRow(out);
@@ -17182,14 +17269,38 @@ function cleanupTeamEdgeWords(value) {
     .trim();
 }
 
+const D1_UNSCALED_STANDARD_PERCENT_COLUMNS = new Set([
+  "orb_pct",
+  "drb_pct",
+  "trb_pct",
+  "usg_pct",
+  "ast_pct",
+  "tov_pct",
+  "tov_pct_adv",
+  "stl_pct",
+  "blk_pct",
+  "stocks_pct",
+  "ast_pct_usg_pct",
+  "ast_pct_tov_pct",
+]);
+
 function datasetPercentColumnsStoredAsRatios(datasetId = "") {
-  return datasetId === "d1" || datasetId === "d2" || datasetId === "nba" || datasetId === "player_career" || datasetId === "team_coach";
+  return datasetId === "d1" || datasetId === "d2" || datasetId === "nba" || datasetId === "team_coach";
+}
+
+function shouldScaleStandardPercentColumn(datasetId = "", column = "") {
+  const normalizedDatasetId = normalizeKey(datasetId);
+  if (!datasetPercentColumnsStoredAsRatios(normalizedDatasetId)) return false;
+  const baseColumn = stripCompanionPrefix(column);
+  if (!baseColumn) return false;
+  if (normalizedDatasetId === "d1" && D1_UNSCALED_STANDARD_PERCENT_COLUMNS.has(baseColumn)) return false;
+  return true;
 }
 
 function scaleRateColumns(row, columns, datasetId = "") {
-  if (!datasetPercentColumnsStoredAsRatios(datasetId)) return;
   let scaledStandardPercentColumn = false;
   columns.forEach((column) => {
+    if (!shouldScaleStandardPercentColumn(datasetId, column)) return;
     if (typeof row[column] === "number" && Number.isFinite(row[column]) && Math.abs(row[column]) <= 1) {
       row[column] = row[column] * 100;
       scaledStandardPercentColumn = true;
@@ -17246,13 +17357,12 @@ function resolvePercentNormalizationDatasetId(row, datasetId = "") {
 
 function normalizePercentLikeColumns(row, datasetId = "") {
   const effectiveDatasetId = resolvePercentNormalizationDatasetId(row, datasetId);
-  const scaleStandardPercentColumns = datasetPercentColumnsStoredAsRatios(effectiveDatasetId);
   let scaledStandardPercentColumn = false;
   Object.keys(row || {}).forEach((column) => {
     if (typeof row[column] !== "number" || !Number.isFinite(row[column])) return;
     if (isPercentRatioColumn(column)) {
       if (row._percentRatiosScaled) return;
-      if (scaleStandardPercentColumns) {
+      if (datasetPercentColumnsStoredAsRatios(effectiveDatasetId)) {
         if (Math.abs(row[column]) <= 1.5) row[column] = row[column] * 100;
       } else if (effectiveDatasetId !== "grassroots" && Math.abs(row[column]) <= 1.5) {
         row[column] = row[column] * 100;
@@ -17261,7 +17371,7 @@ function normalizePercentLikeColumns(row, datasetId = "") {
     }
     if (!(looksPercentColumn(column) || /^min_per$/i.test(column))) return;
     if (row._standardPercentColumnsScaled) return;
-    if (!scaleStandardPercentColumns) return;
+    if (!shouldScaleStandardPercentColumn(effectiveDatasetId, column)) return;
     if (Math.abs(row[column]) <= 1) {
       row[column] = row[column] * 100;
       scaledStandardPercentColumn = true;
@@ -17912,7 +18022,8 @@ function populateDerivedShooting(row, config) {
   }
 
   let points = firstFinite(row.pts, Number.NaN);
-  if (!Number.isFinite(row.ftm) && Number.isFinite(points) && Number.isFinite(twoPm) && Number.isFinite(threePm)) {
+  const canInferFreeThrowsFromPoints = Number.isFinite(row.fta) || Number.isFinite(ftPctRatio);
+  if (!Number.isFinite(row.ftm) && canInferFreeThrowsFromPoints && Number.isFinite(points) && Number.isFinite(twoPm) && Number.isFinite(threePm)) {
     row.ftm = roundNumber(Math.max(0, points - (2 * twoPm) - (3 * threePm)), 3);
   }
   if (!Number.isFinite(row.fta) && blankAttemptsMeanZero && Number.isFinite(row.ftm) && row.ftm <= 0 && !Number.isFinite(ftPctRatio)) {
