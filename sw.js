@@ -1,5 +1,5 @@
-const CACHE_VERSION = "20260424-popup-v85";
-const DATA_CACHE_VERSION = "20260424-popup-v85";
+const CACHE_VERSION = "20260424-popup-v86";
+const DATA_CACHE_VERSION = "20260424-popup-v86";
 const APP_CACHE = `multi-explorer-app-${CACHE_VERSION}`;
 const DATA_CACHE = `multi-explorer-data-${DATA_CACHE_VERSION}`;
 const KNOWN_CACHES = new Set([APP_CACHE, DATA_CACHE]);
@@ -7,8 +7,8 @@ const KNOWN_CACHES = new Set([APP_CACHE, DATA_CACHE]);
 const APP_ASSETS = [
   "./",
   "./index.html",
-  "./app.js?v=20260424-popup-v85",
-  "./styles.css?v=20260424-popup-v85",
+  "./app.js?v=20260424-popup-v86",
+  "./styles.css?v=20260424-popup-v86",
 ];
 
 self.addEventListener("install", (event) => {

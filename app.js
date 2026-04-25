@@ -622,12 +622,61 @@ const D1_SHOT_PROFILE_COLUMNS = [
 ];
 
 const LOWER_TIER_SHOT_PROFILE_COLUMNS = [
+  { key: "dunk_made", label: "Dunk Made", defaultVisible: false },
+  { key: "dunk_att", label: "Dunk FGA", defaultVisible: false },
+  { key: "dunk_unast_made", label: "Dunk Unast", defaultVisible: false },
+  { key: "dunk_made_pg", label: "Dunk Made/G", defaultVisible: false },
+  { key: "dunk_att_pg", label: "Dunk FGA/G", defaultVisible: false },
+  { key: "dunk_unast_made_pg", label: "Dunk Unast/G", defaultVisible: false },
+  { key: "dunk_made_per40", label: "Dunk Made/40", defaultVisible: false },
+  { key: "dunk_att_per40", label: "Dunk FGA/40", defaultVisible: false },
+  { key: "dunk_unast_made_per40", label: "Dunk Unast/40", defaultVisible: false },
+  { key: "dunk_pct", label: "Dunk%", defaultVisible: false },
+  { key: "dunk_ast_pct", label: "Dunk Ast%", defaultVisible: false },
   { key: "rim_made", label: "Rim Made", defaultVisible: false },
-  { key: "rim_att", label: "Rim Att", defaultVisible: false },
+  { key: "rim_att", label: "Rim FGA", defaultVisible: false },
+  { key: "rim_unast_made", label: "Rim Unast", defaultVisible: false },
+  { key: "rim_made_pg", label: "Rim Made/G", defaultVisible: false },
+  { key: "rim_att_pg", label: "Rim FGA/G", defaultVisible: false },
+  { key: "rim_unast_made_pg", label: "Rim Unast/G", defaultVisible: false },
+  { key: "rim_made_per40", label: "Rim Made/40", defaultVisible: false },
+  { key: "rim_att_per40", label: "Rim FGA/40", defaultVisible: false },
+  { key: "rim_unast_made_per40", label: "Rim Unast/40", defaultVisible: false },
   { key: "rim_pct", label: "Rim%", defaultVisible: true },
+  { key: "rim_ast_pct", label: "Rim Ast%", defaultVisible: false },
   { key: "mid_made", label: "Mid Made", defaultVisible: false },
-  { key: "mid_att", label: "Mid Att", defaultVisible: false },
+  { key: "mid_att", label: "Mid FGA", defaultVisible: false },
+  { key: "mid_unast_made", label: "Mid Unast", defaultVisible: false },
+  { key: "mid_made_pg", label: "Mid Made/G", defaultVisible: false },
+  { key: "mid_att_pg", label: "Mid FGA/G", defaultVisible: false },
+  { key: "mid_unast_made_pg", label: "Mid Unast/G", defaultVisible: false },
+  { key: "mid_made_per40", label: "Mid Made/40", defaultVisible: false },
+  { key: "mid_att_per40", label: "Mid FGA/40", defaultVisible: false },
+  { key: "mid_unast_made_per40", label: "Mid Unast/40", defaultVisible: false },
   { key: "mid_pct", label: "Mid%", defaultVisible: true },
+  { key: "mid_ast_pct", label: "Mid Ast%", defaultVisible: false },
+  { key: "two_p_made", label: "2P Made", defaultVisible: false },
+  { key: "two_p_att", label: "2P Att", defaultVisible: false },
+  { key: "two_p_unast_made", label: "2P Unast", defaultVisible: false },
+  { key: "two_p_made_pg", label: "2P Made/G", defaultVisible: false },
+  { key: "two_p_att_pg", label: "2P Att/G", defaultVisible: false },
+  { key: "two_p_unast_made_pg", label: "2P Unast/G", defaultVisible: false },
+  { key: "two_p_made_per40", label: "2P Made/40", defaultVisible: false },
+  { key: "two_p_att_per40", label: "2P Att/40", defaultVisible: false },
+  { key: "two_p_unast_made_per40", label: "2P Unast/40", defaultVisible: false },
+  { key: "two_p_pct", label: "2P%", defaultVisible: false },
+  { key: "two_p_ast_pct", label: "2P Ast%", defaultVisible: false },
+  { key: "three_p_made", label: "3P Made", defaultVisible: false },
+  { key: "three_p_att", label: "3P Att", defaultVisible: false },
+  { key: "three_p_unast_made", label: "3P Unast", defaultVisible: false },
+  { key: "three_p_made_pg", label: "3P Made/G", defaultVisible: false },
+  { key: "three_p_att_pg", label: "3P Att/G", defaultVisible: false },
+  { key: "three_p_unast_made_pg", label: "3P Unast/G", defaultVisible: false },
+  { key: "three_p_made_per40", label: "3P Made/40", defaultVisible: false },
+  { key: "three_p_att_per40", label: "3P Att/40", defaultVisible: false },
+  { key: "three_p_unast_made_per40", label: "3P Unast/40", defaultVisible: false },
+  { key: "three_p_pct", label: "3P%", defaultVisible: false },
+  { key: "three_p_ast_pct", label: "3P Ast%", defaultVisible: false },
 ];
 const LOWER_TIER_SHOT_PROFILE_LABELS = LOWER_TIER_SHOT_PROFILE_COLUMNS.reduce((labels, item) => {
   labels[item.key] = item.label;
@@ -1938,6 +1987,14 @@ function buildTeamCoachConfig() {
   const playtypeGroups = [];
   const playtypeSummaryColumns = [];
   const playtypeSummaryDefaultColumns = [];
+  const getTeamCoachDefaultPlaytypeColumns = (id) => {
+    const shootSuffix = getTeamCoachDefaultPlaytypeShootSuffix(id);
+    const columns = [`${id}_freq`, `${id}_ppp`, `${id}_${shootSuffix}`];
+    if (shootSuffix === "efg_pct") {
+      columns.push(`${id}_two_p_pct`, `${id}_three_p_pct`);
+    }
+    return columns.filter((column) => !omittedPlaytypeColumns.has(column));
+  };
   playtypes.forEach(([id, label]) => {
     const columns = [];
     const defaultColumns = [];
@@ -1954,17 +2011,21 @@ function buildTeamCoachConfig() {
       }
       if (["freq", "ppp", "to_pct", "ft_rate", shootSuffix].includes(suffix)) defaultColumns.push(column);
     });
+    if (shootSuffix === "efg_pct") {
+      ["two_p_pct", "three_p_pct"].forEach((suffix) => {
+        const column = `${id}_${suffix}`;
+        if (!omittedPlaytypeColumns.has(column)) defaultColumns.push(column);
+      });
+    }
     playtypeGroups.push({
       id,
       label,
       columns,
-      defaultColumns,
+      defaultColumns: Array.from(new Set(defaultColumns)),
       unitModeKind: "playtype",
     });
   });
-  const defaultPlaytypeColumns = playtypes
-    .flatMap(([id]) => [`${id}_freq`, `${id}_ppp`, `${id}_${getTeamCoachDefaultPlaytypeShootSuffix(id)}`])
-    .filter((column) => !omittedPlaytypeColumns.has(column));
+  const defaultPlaytypeColumns = playtypes.flatMap(([id]) => getTeamCoachDefaultPlaytypeColumns(id));
   return {
     id: "team_coach",
     navLabel: "Team/Coach",
@@ -14384,6 +14445,7 @@ function playerProfileRowNeedsAugment(row) {
 
 function getPlayerProfileAugmentYears(baseRows, context) {
   if (!context?.shouldAugmentFromPlayerCareer) return [];
+  if (Array.isArray(context?.bucketRows) && context.bucketRows.length) return [];
   const candidateRows = dedupePlayerProfileRows(baseRows || []);
   const seasonsWithRichCompetitionRows = new Set();
   candidateRows.forEach((row) => {
@@ -14849,7 +14911,7 @@ function inferPlayerProfileRowDatasetId(row) {
 
 function isPlayerProfileAggregateSeasonRow(row) {
   if (!row || row._careerAggregate) return false;
-  if (row._seasonAggregate || row._internationalSingleSeasonAggregate) return true;
+  if (row._seasonAggregate || row._internationalSingleSeasonAggregate || row._grassrootsSingleYearAggregate) return true;
   const teamKey = normalizeKey(row?.team_name || row?.team_full || row?.team || "");
   const leagueKey = normalizeKey(row?.league || row?.competition_label || row?.competition_key || row?.league_name || "");
   const level = normalizeProfileLevel(row);
@@ -15232,15 +15294,101 @@ function hasEveryPlayerProfileColumnValue(rows, column) {
   });
 }
 
+function getPlayerProfileSeasonDisplayGroupKey(row) {
+  if (!row || row._careerAggregate) return "";
+  const season = getStringValue(row?.season).trim();
+  const level = normalizeKey(normalizeProfileLevel(row) || row?.competition_level || row?.source_dataset || "");
+  if (!season && !level) return "";
+  return `${season}|${level}`;
+}
+
+function aggregatePlayerProfileSingleSeasonRows(rows) {
+  const seasonRows = (rows || []).filter((row) => row && !row._careerAggregate);
+  if (!seasonRows.length) return null;
+  const sample = seasonRows[0];
+  const level = normalizeProfileLevel(sample);
+  const displayLevel = getPlayerProfileDisplayLevel(level, sample?.competition_level) || level || getStringValue(sample?.competition_level).trim() || "Other";
+  const aggregate = aggregatePlayerProfileRows(seasonRows, displayLevel, level || displayLevel);
+  const season = getStringValue(sample?.season).trim();
+  const leagues = sortGrassrootsDisplayValues(new Set(seasonRows.map((row) => row.league_name || row.competition_label || row.league).filter(Boolean)), []);
+  const teams = sortGrassrootsDisplayValues(new Set(seasonRows.map((row) => row.team_abbrev || row.team_name || row.team_full || row.team).filter(Boolean)), []);
+  const countries = splitInternationalCountries(seasonRows.map((row) => row.nationality_list || row.nationality).join(" / "));
+  if (season) aggregate.season = season;
+  if (displayLevel) aggregate.competition_level = displayLevel;
+  if (leagues.length) {
+    const combinedLeague = leagues.join(" / ");
+    aggregate.league = combinedLeague;
+    aggregate.league_name = combinedLeague;
+    aggregate.competition_label = combinedLeague;
+  } else if (level) {
+    aggregate.league = level;
+  }
+  if (teams.length) {
+    const combinedTeam = teams.join(" / ");
+    aggregate.team_name = combinedTeam;
+    aggregate.team_full = combinedTeam;
+    aggregate.team_abbrev = combinedTeam;
+    aggregate.team_search_text = combinedTeam;
+  }
+  if (countries.length) {
+    const combinedCountries = countries.join(" / ");
+    aggregate.nationality = combinedCountries;
+    aggregate.nationality_list = combinedCountries;
+    aggregate.nationality_regions = Array.from(new Set(countries.map(getInternationalCountryRegion).filter(Boolean))).join(" / ");
+  }
+  aggregate._careerAggregate = false;
+  aggregate._seasonAggregate = true;
+  aggregate.rank = null;
+  aggregate._searchCacheKey = "";
+  aggregate._searchHaystack = "";
+  aggregate._colorBucketCacheKey = "";
+  aggregate._colorBucketValue = "";
+  return normalizePlayerProfileRowForDisplay(aggregate);
+}
+
 function getPlayerProfileDisplayRows(rows, options = {}) {
   const careerOnly = Boolean(options.careerOnly);
   const includeSeasonCombined = Boolean(options.includeSeasonCombined);
-  return (rows || []).filter((row) => {
-    if (row?._careerAggregate) return true;
-    if (careerOnly) return false;
-    if (!includeSeasonCombined && isPlayerProfileAggregateSeasonRow(row)) return false;
-    return true;
+  const careerRows = (rows || []).filter((row) => row?._careerAggregate);
+  if (careerOnly) return careerRows;
+  const groupedSeasonRows = new Map();
+  (rows || []).forEach((row, index) => {
+    if (!row || row._careerAggregate) return;
+    const key = getPlayerProfileSeasonDisplayGroupKey(row) || `row_${index}`;
+    if (!groupedSeasonRows.has(key)) groupedSeasonRows.set(key, []);
+    groupedSeasonRows.get(key).push(row);
   });
+  const displaySeasonRows = [];
+  groupedSeasonRows.forEach((groupRows) => {
+    const aggregateRows = groupRows.filter((row) => isPlayerProfileAggregateSeasonRow(row));
+    const specificRows = groupRows.filter((row) => !isPlayerProfileAggregateSeasonRow(row));
+    if (includeSeasonCombined) {
+      if (aggregateRows.length === 1) {
+        displaySeasonRows.push(aggregateRows[0]);
+        return;
+      }
+      if (aggregateRows.length > 1) {
+        displaySeasonRows.push(mergePlayerProfileDuplicateRows(aggregateRows));
+        return;
+      }
+      const combined = aggregatePlayerProfileSingleSeasonRows(specificRows);
+      if (combined) displaySeasonRows.push(combined);
+      else displaySeasonRows.push(...specificRows);
+      return;
+    }
+    if (specificRows.length) {
+      displaySeasonRows.push(...specificRows);
+      return;
+    }
+    if (aggregateRows.length === 1) {
+      displaySeasonRows.push(aggregateRows[0]);
+      return;
+    }
+    if (aggregateRows.length > 1) {
+      displaySeasonRows.push(mergePlayerProfileDuplicateRows(aggregateRows));
+    }
+  });
+  return displaySeasonRows.concat(careerRows);
 }
 
 function getAvailablePlayerProfileColumns(rows, options = {}) {
@@ -16884,6 +17032,7 @@ function enhanceD2Row(row) {
     blankAttemptsMeanZero: true,
   });
   populateComplementaryRimMidProfile(row);
+  populateShotProfileDisplayModes(row);
   row.three_pa_per40 = per40Value(row["3pa"], row.min);
   row.two_pa_per40 = per40Value(row.two_pa, row.min);
   row.stocks_per40 = per40Value(row.stocks, row.min);
@@ -16988,6 +17137,7 @@ function enhancePlayerCareerRow(row) {
     blankAttemptsMeanZero: !/^realgm_/i.test(getStringValue(row.source_dataset)),
   });
   populateComplementaryRimMidProfile(row);
+  populateShotProfileDisplayModes(row);
 
   const twoPm = firstFinite(row["2pm"], row.two_pm, Number.NaN);
   const threePm = firstFinite(row["3pm"], row.three_pm, row.tpm, Number.NaN);
@@ -17117,6 +17267,7 @@ function enhanceCollegeRow(row, datasetId) {
     blankAttemptsMeanZero: datasetId !== "grassroots",
   });
   populateComplementaryRimMidProfile(row);
+  populateShotProfileDisplayModes(row);
   ["pts", "trb", "ast", "tov", "stl", "blk", "stocks"].forEach((column) => {
     const perGame = perGameValue(row[column], row.gp);
     if (datasetId === "grassroots") row[`${column}_pg`] = perGame !== "" ? perGame : 0;
@@ -17931,7 +18082,43 @@ function populateD1FoulDerived(row) {
   if (pf40 !== "" && !Number.isFinite(row.pf_per40)) row.pf_per40 = pf40;
 }
 
-function populateD1ShotProfileDisplayModes(row) {
+function getShotProfileTotalValue(row, column) {
+  if (!row || !column) return Number.NaN;
+  const aliases = {
+    dunk_made: ["dunk_made"],
+    dunk_att: ["dunk_att"],
+    dunk_unast_made: ["dunk_unast_made"],
+    rim_made: ["rim_made", "fgm_rim"],
+    rim_att: ["rim_att", "fga_rim"],
+    rim_unast_made: ["rim_unast_made"],
+    mid_made: ["mid_made", "fgm_mid", "long2_made"],
+    mid_att: ["mid_att", "fga_mid", "long2_att"],
+    mid_unast_made: ["mid_unast_made"],
+    two_p_made: ["two_p_made", "two_pm", "2pm"],
+    two_p_att: ["two_p_att", "two_pa", "2pa", "2pa_total"],
+    two_p_unast_made: ["two_p_unast_made"],
+    three_p_made: ["three_p_made", "three_pm", "3pm", "tpm"],
+    three_p_att: ["three_p_att", "three_pa", "3pa", "tpa"],
+    three_p_unast_made: ["three_p_unast_made"],
+    ftm: ["ftm"],
+    fta: ["fta"],
+  }[column] || [column];
+  return firstFinite(...aliases.map((key) => row[key]), Number.NaN);
+}
+
+function getShotProfileAstPctValue(row, column) {
+  if (!row || !column) return Number.NaN;
+  const aliases = {
+    dunk_ast_pct: ["dunk_ast_pct"],
+    rim_ast_pct: ["rim_ast_pct"],
+    mid_ast_pct: ["mid_ast_pct"],
+    two_p_ast_pct: ["two_p_ast_pct", "two_ast_pct"],
+    three_p_ast_pct: ["three_p_ast_pct", "three_ast_pct"],
+  }[column] || [column];
+  return firstFinite(...aliases.map((key) => row[key]), Number.NaN);
+}
+
+function populateShotProfileDisplayModes(row) {
   const gp = firstFinite(row.gp, Number.NaN);
   const minutes = firstFinite(row.min, Number.isFinite(gp) && Number.isFinite(row.mpg) ? row.gp * row.mpg : Number.NaN, Number.NaN);
   const assistedRatio = (value) => {
@@ -17940,14 +18127,32 @@ function populateD1ShotProfileDisplayModes(row) {
   };
 
   [
+    "dunk_made",
+    "dunk_att",
+    "rim_made",
+    "rim_att",
+    "mid_made",
+    "mid_att",
+    "two_p_made",
+    "two_p_att",
+    "three_p_made",
+    "three_p_att",
+    "ftm",
+    "fta",
+  ].forEach((column) => {
+    const value = getShotProfileTotalValue(row, column);
+    if (Number.isFinite(value) && !Number.isFinite(row[column])) row[column] = roundNumber(value, 3);
+  });
+
+  [
     ["dunk_unast_made", "dunk_made", "dunk_ast_pct"],
     ["rim_unast_made", "rim_made", "rim_ast_pct"],
     ["mid_unast_made", "mid_made", "mid_ast_pct"],
     ["two_p_unast_made", "two_p_made", "two_p_ast_pct"],
     ["three_p_unast_made", "three_p_made", "three_p_ast_pct"],
   ].forEach(([target, madeColumn, astPctColumn]) => {
-    const made = firstFinite(row[madeColumn], Number.NaN);
-    const astRatio = assistedRatio(row[astPctColumn]);
+    const made = getShotProfileTotalValue(row, madeColumn);
+    const astRatio = assistedRatio(getShotProfileAstPctValue(row, astPctColumn));
     if (!Number.isFinite(row[target]) && Number.isFinite(made) && Number.isFinite(astRatio)) {
       row[target] = roundNumber(made * (1 - astRatio), 3);
     }
@@ -17961,12 +18166,16 @@ function populateD1ShotProfileDisplayModes(row) {
     "three_p_made", "three_p_att", "three_p_unast_made",
     "ftm", "fta",
   ].forEach((column) => {
-    const total = firstFinite(row[column], Number.NaN);
+    const total = getShotProfileTotalValue(row, column);
     const perGame = perGameValue(total, gp);
     const per40 = per40Value(total, minutes);
     if (perGame !== "") row[`${column}_pg`] = perGame;
     if (per40 !== "") row[`${column}_per40`] = per40;
   });
+}
+
+function populateD1ShotProfileDisplayModes(row) {
+  populateShotProfileDisplayModes(row);
 }
 
 function normalizeD1TruePlaytypeFrequencies(row) {
