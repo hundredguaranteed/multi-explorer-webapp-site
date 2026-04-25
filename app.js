@@ -418,7 +418,7 @@ const GRASSROOTS_SETTING_OPTIONS = [
 ];
 const INTERNATIONAL_SEASON_SCOPE_OPTIONS = [
   { value: "all", label: "League Rows" },
-  { value: "single_season", label: "Single Season" },
+  { value: "single_season_combined", label: "Season Combined" },
 ];
 
 let naiaDivisionLookup = null;
@@ -445,6 +445,7 @@ const D1_PLAYTYPE_METRICS = [
   { source: "", suffix: "fg_att_pg", label: "FGA/G", defaultVisible: false },
   { source: "", suffix: "fg_att_per40", label: "FGA/40", defaultVisible: false },
   { source: "eFG%", suffix: "efg_pct", label: "eFG%", defaultVisible: false },
+  { source: "", suffix: "ts_pct", label: "TS%", defaultVisible: false },
   { source: "TO%", suffix: "tov_pct", label: "TO%", defaultVisible: true },
   { source: "FTA/FGA", suffix: "ftr", label: "FTr", defaultVisible: true },
   { source: "", suffix: "fta", label: "FTA", defaultVisible: false },
@@ -469,15 +470,15 @@ const D1_SUMMARY_COLUMNS = [
   { key: "halfcourt_ppp", label: "HC PPP", defaultVisible: true },
   { key: "halfcourt_two_pa", label: "HC 2PA", defaultVisible: false },
   { key: "halfcourt_two_p_pct", label: "HC 2P%", defaultVisible: false },
-  { key: "transition_ppp", label: "Transition PPP", defaultVisible: true },
-  { key: "transition_two_fg_att", label: "Transition 2PA", defaultVisible: false },
-  { key: "transition_two_fg_pct", label: "Transition 2P%", defaultVisible: false },
+    { key: "transition_ppp", label: "Trans PPP", defaultVisible: true },
+    { key: "transition_two_fg_att", label: "Trans 2PA", defaultVisible: false },
+    { key: "transition_two_fg_pct", label: "Trans 2P%", defaultVisible: false },
 ];
 const D1_PLAYTYPE_FREQ_POSS_COLUMNS = [
   { key: "halfcourt_poss", label: "HC Poss", defaultVisible: false },
   { key: "halfcourt_freq", label: "HC Freq", defaultVisible: false },
-  { key: "transition_poss", label: "Transition Poss", defaultVisible: false },
-  { key: "transition_freq", label: "Transition Freq", defaultVisible: false },
+    { key: "transition_poss", label: "Trans Poss", defaultVisible: false },
+    { key: "transition_freq", label: "Trans Freq", defaultVisible: false },
 ];
 
 const D1_DRIVE_COLUMNS = [
@@ -495,10 +496,11 @@ const D1_DRIVE_COLUMNS = [
   { key: "drive_fta_pg", label: "Drive FTA/G", defaultVisible: false },
   { key: "drive_fta_per40", label: "Drive FTA/40", defaultVisible: false },
   { key: "drive_fg_pct", label: "Drive FG%", defaultVisible: false },
+  { key: "drive_ts_pct", label: "Drive TS%", defaultVisible: false },
   { key: "drive_two_pa", label: "Drive 2PA", defaultVisible: false },
   { key: "drive_two_pa_pg", label: "Drive 2PA/G", defaultVisible: false },
   { key: "drive_two_pa_per40", label: "Drive 2PA/40", defaultVisible: false },
-  { key: "drive_two_p_pct", label: "Drive 2P%", defaultVisible: false },
+  { key: "drive_two_p_pct", label: "Drive 2P%", defaultVisible: true },
   { key: "drive_plus1_pct", label: "Drive +1%", defaultVisible: false },
 ];
 
@@ -513,10 +515,11 @@ const D1_RUNNER_COLUMNS = [
   { key: "runner_fta_pg", label: "Runner FTA/G", defaultVisible: false },
   { key: "runner_fta_per40", label: "Runner FTA/40", defaultVisible: false },
   { key: "runner_fg_pct", label: "Runner FG%", defaultVisible: false },
+  { key: "runner_ts_pct", label: "Runner TS%", defaultVisible: false },
   { key: "runner_two_fg_att", label: "Runner 2PA", defaultVisible: false },
   { key: "runner_two_fg_att_pg", label: "Runner 2PA/G", defaultVisible: false },
   { key: "runner_two_fg_att_per40", label: "Runner 2PA/40", defaultVisible: false },
-  { key: "runner_two_fg_pct", label: "Runner 2P%", defaultVisible: false },
+  { key: "runner_two_fg_pct", label: "Runner 2P%", defaultVisible: true },
   { key: "runner_plus1_pct", label: "Runner +1%", defaultVisible: false },
   { key: "runner_ssq", label: "Runner SSQ", defaultVisible: false },
   { key: "runner_ssm", label: "Runner SSM", defaultVisible: false },
@@ -529,7 +532,8 @@ const D1_HALFCOURT_COLUMNS = [
   { key: "halfcourt_fg_att", label: "HC FGA", defaultVisible: false },
   { key: "halfcourt_fg_att_pg", label: "HC FGA/G", defaultVisible: false },
   { key: "halfcourt_fg_att_per40", label: "HC FGA/40", defaultVisible: false },
-  { key: "halfcourt_efg_pct", label: "HC eFG%", defaultVisible: false },
+  { key: "halfcourt_efg_pct", label: "HC eFG%", defaultVisible: true },
+  { key: "halfcourt_ts_pct", label: "HC TS%", defaultVisible: false },
   { key: "halfcourt_tov_pct", label: "HC TO%", defaultVisible: true },
   { key: "halfcourt_ftr", label: "HC FTr", defaultVisible: true },
   { key: "halfcourt_fta", label: "HC FTA", defaultVisible: false },
@@ -548,32 +552,35 @@ const D1_HALFCOURT_COLUMNS = [
 
 const D1_SHOT_PROFILE_COLUMNS = [
   { key: "dunk_made", label: "Dunk Made", defaultVisible: false, mode: "totals" },
-  { key: "dunk_att", label: "Dunk Att", defaultVisible: false, mode: "totals" },
+  { key: "dunk_att", label: "Dunk FGA", defaultVisible: false, mode: "totals" },
+  { key: "dunk_unast_made", label: "Dunk Unast", defaultVisible: false, mode: "totals" },
   { key: "dunk_made_pg", label: "Dunk Made/G", defaultVisible: false, mode: "per_game" },
-  { key: "dunk_att_pg", label: "Dunk Att/G", defaultVisible: false, mode: "per_game" },
+  { key: "dunk_att_pg", label: "Dunk FGA/G", defaultVisible: false, mode: "per_game" },
+  { key: "dunk_unast_made_pg", label: "Dunk Unast/G", defaultVisible: false, mode: "per_game" },
   { key: "dunk_made_per40", label: "Dunk Made/40", defaultVisible: false, mode: "per40" },
-  { key: "dunk_att_per40", label: "Dunk Att/40", defaultVisible: false, mode: "per40" },
+  { key: "dunk_att_per40", label: "Dunk FGA/40", defaultVisible: false, mode: "per40" },
+  { key: "dunk_unast_made_per40", label: "Dunk Unast/40", defaultVisible: false, mode: "per40" },
   { key: "dunk_pct", label: "Dunk%", defaultVisible: true, mode: "always" },
   { key: "dunk_ast_pct", label: "Dunk Ast%", defaultVisible: false, mode: "always" },
   { key: "rim_made", label: "Rim Made", defaultVisible: false, mode: "totals" },
-  { key: "rim_att", label: "Rim Att", defaultVisible: false, mode: "totals" },
+  { key: "rim_att", label: "Rim FGA", defaultVisible: false, mode: "totals" },
   { key: "rim_unast_made", label: "Rim Unast", defaultVisible: false, mode: "totals" },
   { key: "rim_made_pg", label: "Rim Made/G", defaultVisible: false, mode: "per_game" },
-  { key: "rim_att_pg", label: "Rim Att/G", defaultVisible: false, mode: "per_game" },
+  { key: "rim_att_pg", label: "Rim FGA/G", defaultVisible: false, mode: "per_game" },
   { key: "rim_unast_made_pg", label: "Rim Unast/G", defaultVisible: false, mode: "per_game" },
   { key: "rim_made_per40", label: "Rim Made/40", defaultVisible: false, mode: "per40" },
-  { key: "rim_att_per40", label: "Rim Att/40", defaultVisible: false, mode: "per40" },
+  { key: "rim_att_per40", label: "Rim FGA/40", defaultVisible: false, mode: "per40" },
   { key: "rim_unast_made_per40", label: "Rim Unast/40", defaultVisible: false, mode: "per40" },
   { key: "rim_pct", label: "Rim%", defaultVisible: true, mode: "always" },
   { key: "rim_ast_pct", label: "Rim Ast%", defaultVisible: true, mode: "always" },
   { key: "mid_made", label: "Mid Made", defaultVisible: false, mode: "totals" },
-  { key: "mid_att", label: "Mid Att", defaultVisible: false, mode: "totals" },
+  { key: "mid_att", label: "Mid FGA", defaultVisible: false, mode: "totals" },
   { key: "mid_unast_made", label: "Mid Unast", defaultVisible: false, mode: "totals" },
   { key: "mid_made_pg", label: "Mid Made/G", defaultVisible: false, mode: "per_game" },
-  { key: "mid_att_pg", label: "Mid Att/G", defaultVisible: false, mode: "per_game" },
+  { key: "mid_att_pg", label: "Mid FGA/G", defaultVisible: false, mode: "per_game" },
   { key: "mid_unast_made_pg", label: "Mid Unast/G", defaultVisible: false, mode: "per_game" },
   { key: "mid_made_per40", label: "Mid Made/40", defaultVisible: false, mode: "per40" },
-  { key: "mid_att_per40", label: "Mid Att/40", defaultVisible: false, mode: "per40" },
+  { key: "mid_att_per40", label: "Mid FGA/40", defaultVisible: false, mode: "per40" },
   { key: "mid_unast_made_per40", label: "Mid Unast/40", defaultVisible: false, mode: "per40" },
   { key: "mid_pct", label: "Mid%", defaultVisible: true, mode: "always" },
   { key: "mid_ast_pct", label: "Mid Ast%", defaultVisible: true, mode: "always" },
@@ -721,29 +728,36 @@ function getD1PlaytypeMetrics(playtypeId) {
   return D1_PLAYTYPE_METRICS.filter((metric) => !omitted.has(metric.suffix));
 }
 
+function getD1DefaultPlaytypeShootSuffix(playtypeId) {
+  if (["spot_up", "off_screen"].includes(playtypeId)) return "three_fg_pct";
+  if (["post_up", "pnr_roll", "cut", "off_reb"].includes(playtypeId)) return "two_fg_pct";
+  return "efg_pct";
+}
+
 function getD1TransitionGroup() {
   const metricColumns = [
-    { key: "transition_poss", label: "Transition Poss", defaultVisible: false },
-    { key: "transition_freq", label: "Transition Freq", defaultVisible: true },
-    { key: "transition_ppp", label: "Transition PPP", defaultVisible: true },
-    { key: "transition_fg_att", label: "Transition FGA", defaultVisible: false },
-    { key: "transition_fg_att_pg", label: "Transition FGA/G", defaultVisible: false },
-    { key: "transition_fg_att_per40", label: "Transition FGA/40", defaultVisible: false },
-    { key: "transition_efg_pct", label: "Transition eFG%", defaultVisible: false },
-    { key: "transition_tov_pct", label: "Transition TO%", defaultVisible: true },
-    { key: "transition_ftr", label: "Transition FTr", defaultVisible: true },
-    { key: "transition_fta", label: "Transition FTA", defaultVisible: false },
-    { key: "transition_fta_pg", label: "Transition FTA/G", defaultVisible: false },
-    { key: "transition_fta_per40", label: "Transition FTA/40", defaultVisible: false },
-    { key: "transition_two_fg_att", label: "Transition 2PA", defaultVisible: false },
-    { key: "transition_two_fg_att_pg", label: "Transition 2PA/G", defaultVisible: false },
-    { key: "transition_two_fg_att_per40", label: "Transition 2PA/40", defaultVisible: false },
-    { key: "transition_two_fg_pct", label: "Transition 2P%", defaultVisible: false },
-    { key: "transition_three_fg_att", label: "Transition 3PA", defaultVisible: false },
-    { key: "transition_three_fg_att_pg", label: "Transition 3PA/G", defaultVisible: false },
-    { key: "transition_three_fg_att_per40", label: "Transition 3PA/40", defaultVisible: false },
-    { key: "transition_three_fg_pct", label: "Transition 3P%", defaultVisible: false },
-    { key: "transition_three_pr", label: "Transition 3Pr", defaultVisible: false },
+    { key: "transition_poss", label: "Trans Poss", defaultVisible: false },
+    { key: "transition_freq", label: "Trans Freq", defaultVisible: true },
+    { key: "transition_ppp", label: "Trans PPP", defaultVisible: true },
+    { key: "transition_fg_att", label: "Trans FGA", defaultVisible: false },
+    { key: "transition_fg_att_pg", label: "Trans FGA/G", defaultVisible: false },
+    { key: "transition_fg_att_per40", label: "Trans FGA/40", defaultVisible: false },
+    { key: "transition_efg_pct", label: "Trans eFG%", defaultVisible: true },
+    { key: "transition_ts_pct", label: "Trans TS%", defaultVisible: false },
+    { key: "transition_tov_pct", label: "Trans TO%", defaultVisible: true },
+    { key: "transition_ftr", label: "Trans FTr", defaultVisible: true },
+    { key: "transition_fta", label: "Trans FTA", defaultVisible: false },
+    { key: "transition_fta_pg", label: "Trans FTA/G", defaultVisible: false },
+    { key: "transition_fta_per40", label: "Trans FTA/40", defaultVisible: false },
+    { key: "transition_two_fg_att", label: "Trans 2PA", defaultVisible: false },
+    { key: "transition_two_fg_att_pg", label: "Trans 2PA/G", defaultVisible: false },
+    { key: "transition_two_fg_att_per40", label: "Trans 2PA/40", defaultVisible: false },
+    { key: "transition_two_fg_pct", label: "Trans 2P%", defaultVisible: false },
+    { key: "transition_three_fg_att", label: "Trans 3PA", defaultVisible: false },
+    { key: "transition_three_fg_att_pg", label: "Trans 3PA/G", defaultVisible: false },
+    { key: "transition_three_fg_att_per40", label: "Trans 3PA/40", defaultVisible: false },
+    { key: "transition_three_fg_pct", label: "Trans 3P%", defaultVisible: false },
+    { key: "transition_three_pr", label: "Trans 3Pr", defaultVisible: false },
   ];
   return {
     group: {
@@ -853,7 +867,10 @@ function buildD1Config() {
   D1_PLAYTYPE_DEFS.forEach((playtype) => {
     const metrics = getD1PlaytypeMetrics(playtype.id);
     const columns = metrics.map((metric) => `${playtype.id}_${metric.suffix}`);
-    const defaultColumns = metrics.filter((metric) => metric.defaultVisible).map((metric) => `${playtype.id}_${metric.suffix}`);
+    const shootSuffix = getD1DefaultPlaytypeShootSuffix(playtype.id);
+    const defaultColumns = metrics
+      .filter((metric) => metric.defaultVisible || metric.suffix === shootSuffix)
+      .map((metric) => `${playtype.id}_${metric.suffix}`);
     playtypeGroups.push({
       id: playtype.id,
       label: playtype.label,
@@ -1645,13 +1662,14 @@ function buildInternationalConfig() {
     yearColumn: "season",
     playerColumn: "player_name",
     teamColumn: "team_name",
-    lockedColumns: ["rank", "season", "player_name", "league_name", "pos"],
+    lockedColumns: ["rank", "season", "player_name", "league_name", "team_abbrev", "pos"],
     searchColumns: withUniversalSearchColumns(["player_name", "player_search_text", "team_name", "team_abbrev", "league_name", "competition_label", "nationality", "nationality_list", "nationality_regions"]),
     sortBy: "min",
     sortDir: "desc",
     defaultAllYears: false,
     minYear: 2001,
-    minuteFilterDefault: "",
+    minuteDefault: 200,
+    minuteFilterDefault: 200,
     demoColumns,
     demoFilterColumns: ["height_in", "weight_lb", "age", "dob", "draft_year", "draft_pick", "gp", "min", "mpg"],
     groups: [
@@ -1701,7 +1719,7 @@ function buildInternationalConfig() {
     singleFilters: withSingleFilterDefault(withSingleFilterDefault(withSharedSingleFilters([
       { id: "season_scope", label: "Season", options: INTERNATIONAL_SEASON_SCOPE_OPTIONS },
       { id: "league_name", label: "League", column: "league_name" },
-    ]), "color_mode", "competition_position"), "season_scope", "single_season"),
+    ]), "color_mode", "competition_position"), "season_scope", "all"),
     multiFilters: [
       { id: "pos", label: "Pos", column: "pos", sort: STANDARD_POSITION_SORT },
       { id: "competition_label", label: "Event", column: "competition_label", renderAsSelect: true },
@@ -1870,7 +1888,7 @@ function buildTeamCoachConfig() {
     playtype_total_poss: "Poss",
   };
   const playtypes = [
-    ["transition", "Transition"],
+    ["transition", "Trans"],
     ["spot_up", "Spot Up"],
     ["pnr_ball_handler", "PnR BH"],
     ["pnr_roll_man", "PnR Roll"],
@@ -1881,6 +1899,11 @@ function buildTeamCoachConfig() {
     ["isolation", "Iso"],
     ["offensive_rebounds", "OREB"],
   ];
+  const getTeamCoachDefaultPlaytypeShootSuffix = (id) => {
+    if (["spot_up", "off_screen"].includes(id)) return "three_p_pct";
+    if (["post_up", "pnr_roll_man", "cut", "offensive_rebounds"].includes(id)) return "two_p_pct";
+    return "efg_pct";
+  };
   const omittedPlaytypeColumns = new Set([
     "post_up_three_pa",
     "post_up_three_pa_pg",
@@ -1908,6 +1931,7 @@ function buildTeamCoachConfig() {
     ["fta_pg", "FTA/G"],
     ["ft_rate", "FTr"],
     ["efg_pct", "eFG%"],
+    ["ts_pct", "TS%"],
     ["to_pct", "TO%"],
   ];
   const playtypeColumns = [];
@@ -1917,6 +1941,7 @@ function buildTeamCoachConfig() {
   playtypes.forEach(([id, label]) => {
     const columns = [];
     const defaultColumns = [];
+    const shootSuffix = getTeamCoachDefaultPlaytypeShootSuffix(id);
     playtypeMetrics.forEach(([suffix, suffixLabel]) => {
       const column = `${id}_${suffix}`;
       if (omittedPlaytypeColumns.has(column)) return;
@@ -1927,7 +1952,7 @@ function buildTeamCoachConfig() {
         playtypeSummaryColumns.push(column);
         playtypeSummaryDefaultColumns.push(column);
       }
-      if (["freq", "ppp", "to_pct", "ftr"].includes(suffix)) defaultColumns.push(column);
+      if (["freq", "ppp", "to_pct", "ft_rate", shootSuffix].includes(suffix)) defaultColumns.push(column);
     });
     playtypeGroups.push({
       id,
@@ -1937,7 +1962,9 @@ function buildTeamCoachConfig() {
       unitModeKind: "playtype",
     });
   });
-  const defaultPlaytypeColumns = playtypes.flatMap(([id]) => [`${id}_freq`, `${id}_ppp`]).filter((column) => !omittedPlaytypeColumns.has(column));
+  const defaultPlaytypeColumns = playtypes
+    .flatMap(([id]) => [`${id}_freq`, `${id}_ppp`, `${id}_${getTeamCoachDefaultPlaytypeShootSuffix(id)}`])
+    .filter((column) => !omittedPlaytypeColumns.has(column));
   return {
     id: "team_coach",
     navLabel: "Team/Coach",
@@ -2493,7 +2520,7 @@ const DATASETS = {
     groups: [
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "eff_pg", "plus_minus_pg"], defaultColumns: ["min", "mpg", "eff_pg", "plus_minus_pg"] },
       { id: "advanced", label: "Advanced", columns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "rgm_per", "fic", "ppr", "nba_career_epm", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
-      { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "3pm", "3pa", "tp_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"] },
+      { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "3pm", "3pa", "tp_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ftr", "three_pr"] },
       buildLowerTierShotProfileGroup(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "ast_stl_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"] },
       { id: "per_game", label: "Per Game", columns: ["pts_pg", "trb_pg", "ast_pg", "ast_stl_pg", "tov_pg", "stl_pg", "blk_pg", "stocks_pg", "two_pa_pg", "three_pa_pg"], defaultColumns: ["pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg"] },
@@ -2505,7 +2532,7 @@ const DATASETS = {
       { id: "pos", label: "Pos", column: "pos", sort: STANDARD_POSITION_SORT },
       { id: "competition_label", label: "Event", column: "competition_label", renderAsSelect: true },
     ],
-    defaultVisible: ["rank", "season", "player_name", "team_name", "competition_label", "pos", "min", "mpg", "eff_pg", "plus_minus_pg", "min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"],
+    defaultVisible: ["rank", "season", "player_name", "team_name", "competition_label", "pos", "min", "mpg", "eff_pg", "plus_minus_pg", "min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"],
     labels: {
       rank: "",
       season: "Year",
@@ -3509,16 +3536,7 @@ async function handleRoute() {
   updateNavActive(datasetId);
 
   if (datasetId === PROFILE_ROUTE_ID) {
-    const scheduleProfileRender = (delayMs) => {
-      window.setTimeout(() => {
-        if (appState.currentId !== PROFILE_ROUTE_ID) return;
-        const existingRows = Array.isArray(elements.homeContent?._playerProfileRows) ? elements.homeContent._playerProfileRows.length : 0;
-        if (delayMs > 0 && existingRows) return;
-        void renderPlayerProfileRoute(routeInfo.params);
-      }, delayMs);
-    };
-    scheduleProfileRender(0);
-    scheduleProfileRender(750);
+    void renderPlayerProfileRoute(routeInfo.params);
     return;
   }
 
@@ -9505,8 +9523,16 @@ function getFilterVisibilityColumn(dataset, filter) {
 function renderFilterVisibilityButton(dataset, state, column) {
   if (!column || !(column in (state?.visibleColumns || {}))) return "";
   if (getLockedColumns(dataset).includes(column)) return "";
+  if (hasDedicatedColumnToggleControl(dataset, column)) return "";
   const label = state.visibleColumns[column] ? "Hide" : "Show";
   return `<button class="filter-visibility-toggle" type="button" data-filter-visibility="${escapeAttribute(column)}">${escapeHtml(label)}</button>`;
+}
+
+function hasDedicatedColumnToggleControl(dataset, column) {
+  if (!dataset || !column) return false;
+  const controlColumns = new Set(getDemoControlColumns(dataset));
+  if (controlColumns.has(column)) return true;
+  return (dataset?.meta?.groups || []).some((group) => !group.hiddenInFilters && (group.columns || []).includes(column));
 }
 
 function renderYearPills(dataset, state) {
@@ -10565,21 +10591,15 @@ async function cycleGroupUnitMode(dataset, state, group) {
 
 function getPlaytypeLegendMetricActions(dataset) {
   if (!["d1", "team_coach"].includes(dataset?.id)) return [];
-  const actions = dataset?.id === "team_coach"
-    ? [
-      { id: "freq", label: "Freq" },
-      { id: "ppp", label: "PPP" },
-      { id: "efg", label: "eFG%" },
-      { id: "to", label: "TO%" },
-      { id: "two_p", label: "2P%" },
-    ]
-    : [
-      { id: "freq", label: "Freq" },
-      { id: "ppp", label: "PPP" },
-      { id: "efg", label: "eFG%" },
-      { id: "to", label: "TO%" },
-      { id: "two_p", label: "2P%" },
-    ];
+  const actions = [
+    { id: "freq", label: "Freq" },
+    { id: "ppp", label: "PPP" },
+    { id: "efg", label: "eFG%" },
+    { id: "ts", label: "TS%" },
+    { id: "to", label: "TO%" },
+    { id: "two_p", label: "2P%" },
+    { id: "three_p", label: "3P%" },
+  ];
   return actions.filter((item) => getPlaytypeLegendMetricColumns(dataset, item.id).length);
 }
 
@@ -10588,8 +10608,10 @@ function getPlaytypeLegendMetricColumns(dataset, metricId) {
     freq: [/_freq$/i],
     ppp: [/_ppp$/i],
     efg: [/_efg_pct$/i],
+    ts: [/_ts_pct$/i],
     to: [/_to_pct$/i, /_tov_pct$/i],
     two_p: [/_two_p_pct$/i, /_two_fg_pct$/i],
+    three_p: [/_three_p_pct$/i, /_three_fg_pct$/i],
   }[metricId] || [];
   if (!suffixTests.length) return [];
   const columns = new Set((dataset?.meta?.groups || []).flatMap((group) => group.columns || []));
@@ -11342,7 +11364,9 @@ function isGrassrootsSingleYearSetting(dataset, state) {
 }
 
 function isInternationalSingleSeasonSetting(dataset, state) {
-  return dataset?.id === "international" && normalizeKey(state?.extraSelects?.season_scope) === "single season";
+  if (dataset?.id !== "international") return false;
+  const selected = normalizeKey(state?.extraSelects?.season_scope);
+  return ["single season", "single season combined", "single_season", "single_season_combined"].includes(selected);
 }
 
 function getActiveDemoFilters(dataset, state) {
@@ -12738,6 +12762,7 @@ function aggregateTeamCoachCareerRows(dataset, rows) {
       if (Number.isFinite(threePa)) aggregate[`${id}_three_pa_rate`] = roundNumber(threePa / fga, 4);
       if (Number.isFinite(fta)) aggregate[`${id}_ft_rate`] = roundNumber(fta / fga, 4);
     }
+    populatePrefixedTsPct(aggregate, id, { fgaSuffix: "fga" });
   });
 
   aggregate[dataset.yearColumn] = "Career";
@@ -12856,6 +12881,7 @@ function recomputeCareerAggregateDerivedMetrics(aggregate, rows) {
 
   const dunkMade = getCareerAggregateTotalValue(aggregate, rows, ["dunk_made"]);
   const dunkAtt = getCareerAggregateTotalValue(aggregate, rows, ["dunk_att"]);
+  const dunkUnastMade = getCareerAggregateTotalValue(aggregate, rows, ["dunk_unast_made"]);
   const rimMade = getCareerAggregateTotalValue(aggregate, rows, ["rim_made"]);
   const rimAtt = getCareerAggregateTotalValue(aggregate, rows, ["rim_att"]);
   const rimUnastMade = getCareerAggregateTotalValue(aggregate, rows, ["rim_unast_made"]);
@@ -12866,6 +12892,7 @@ function recomputeCareerAggregateDerivedMetrics(aggregate, rows) {
   const threePUnastMade = getCareerAggregateTotalValue(aggregate, rows, ["three_p_unast_made"]);
 
   setCareerDerivedColumns(aggregate, rows, ["dunk_pct"], zeroSafePercent(dunkMade, dunkAtt), ["dunk_made", "dunk_att"]);
+  setCareerDerivedColumns(aggregate, rows, ["dunk_ast_pct"], getAssistedMadePct(dunkMade, dunkUnastMade), ["dunk_made", "dunk_unast_made"]);
   setCareerDerivedColumns(aggregate, rows, ["rim_pct", "fgpct_rim"], zeroSafePercent(rimMade, rimAtt), ["rim_made", "rim_att"]);
   setCareerDerivedColumns(aggregate, rows, ["mid_pct", "fgpct_mid"], zeroSafePercent(midMade, midAtt), ["mid_made", "mid_att", "long2_made", "long2_att"]);
   setCareerDerivedColumns(aggregate, rows, ["rim_ast_pct"], getAssistedMadePct(rimMade, rimUnastMade), ["rim_made", "rim_unast_made"]);
@@ -13581,35 +13608,35 @@ function getRelativeDisplayCellStyle(cellData) {
 function getColumnWidth(column, dataset) {
   const baseColumn = stripCompanionPrefix(column);
   if (isRelativeDisplayColumn(column)) return 38;
-  if (column === "rank") return 26;
-  if (isSplitDisplayColumn(column)) return 58;
-  if (baseColumn === dataset.yearColumn || baseColumn === "season") return 40;
-  if (baseColumn === "age_range") return 52;
+  if (column === "rank") return 24;
+  if (isSplitDisplayColumn(column)) return 56;
+  if (baseColumn === dataset.yearColumn || baseColumn === "season") return 36;
+  if (baseColumn === "age_range") return 48;
   if (isPlayerDisplayColumn(dataset, column)) {
-    if (dataset.id === "nba") return 124;
-    if (dataset.id === "player_career") return 122;
-    if (dataset.id === "grassroots") return 120;
-    return 118;
+    if (dataset.id === "nba") return 118;
+    if (dataset.id === "player_career") return 112;
+    if (dataset.id === "grassroots") return 114;
+    return 110;
   }
   if (isTeamDisplayColumn(dataset, column)) {
-    if (baseColumn === "team_full" || baseColumn === "current_team" || baseColumn === "pre_draft_team") return 118;
+    if (baseColumn === "team_full" || baseColumn === "current_team" || baseColumn === "pre_draft_team") return 108;
     if (dataset.id === "nba" && baseColumn === "team_name") return 58;
-    if (dataset.id === "grassroots") return 90;
-    if (dataset.id === "player_career") return 96;
-    if (dataset.id === "international") return 104;
-    return 88;
+    if (dataset.id === "grassroots") return 84;
+    if (dataset.id === "player_career") return 88;
+    if (dataset.id === "international") return 92;
+    return 82;
   }
-  if (dataset.id === "player_career" && baseColumn === "profile_levels") return 108;
-  if (dataset.id === "player_career" && baseColumn === "career_path") return 188;
-  if (dataset.id === "player_career" && baseColumn === "league") return 92;
-  if (dataset.id === "international" && baseColumn === "league_name") return 112;
-  if (dataset.id === "international" && baseColumn === "team_abbrev") return 44;
-  if (dataset.id === "grassroots" && baseColumn === "event_name") return 96;
-  if (baseColumn === "event_group") return 220;
-  if (baseColumn === "event_raw_name") return 260;
-  if (baseColumn === "setting") return 62;
+  if (dataset.id === "player_career" && baseColumn === "profile_levels") return 96;
+  if (dataset.id === "player_career" && baseColumn === "career_path") return 156;
+  if (dataset.id === "player_career" && baseColumn === "league") return 84;
+  if (dataset.id === "international" && baseColumn === "league_name") return 96;
+  if (dataset.id === "international" && baseColumn === "team_abbrev") return 42;
+  if (dataset.id === "grassroots" && baseColumn === "event_name") return 88;
+  if (baseColumn === "event_group") return 188;
+  if (baseColumn === "event_raw_name") return 220;
+  if (baseColumn === "setting") return 56;
   if (baseColumn === "state") return 44;
-  if (dataset.id === "grassroots" && baseColumn === "circuit") return 84;
+  if (dataset.id === "grassroots" && baseColumn === "circuit") return 74;
   if (baseColumn === "ftm_fga") return 50;
   if (baseColumn === "ast_stl_pg" || baseColumn === "ast_stl_per40") return 56;
   if (baseColumn === "blk_pf" || baseColumn === "stl_pf" || baseColumn === "stocks_pf") return 54;
@@ -13617,10 +13644,10 @@ function getColumnWidth(column, dataset) {
   if (dataset.id === "team_coach" && isTeamCoachPlaytypeColumn(baseColumn)) return 62;
   if (dataset.id === "d1" && isD1PlaytypeColumn(baseColumn)) return 62;
   if (/player/i.test(baseColumn)) return 116;
-  if (baseColumn === "competition_label") return 90;
+  if (baseColumn === "competition_label") return 78;
   if (/^nationality$|^team_code$/.test(baseColumn)) return 52;
-  if (baseColumn === "coach") return 88;
-  if (/^conference$|^region$/.test(baseColumn)) return 60;
+  if (baseColumn === "coach") return 76;
+  if (/^conference$|^region$/.test(baseColumn)) return 48;
   if (/^division$|^level$/.test(baseColumn)) return 44;
   if (/^pos$|^pos_text$|class/.test(baseColumn)) return 32;
   if (/^(height_in|inches|age)$/.test(baseColumn)) return 36;
@@ -13902,7 +13929,7 @@ function renderBodyCell(dataset, state, column, row, index, colorScale, relative
     ? ` title="${escapeAttribute(splitDisplay.trim())}"`
     : (rawValue != null && rawValue !== "" ? ` title="${escapeAttribute(display)}"` : "");
   const splitContent = splitStats
-    ? `<span class="split-display"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">-</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span><span class="split-display__pct"${style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
+    ? `<span class="split-display"><span class="split-display__pair"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">-</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span></span><span class="split-display__pct"${style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
     : "";
   const content = display && isPlayerDisplayColumn(dataset, column)
     ? `<a class="player-season-link" href="${escapeAttribute(buildPlayerProfileHref(row, dataset.id))}" data-player-profile-key="${escapeAttribute(registerPlayerProfileRow(dataset, row))}">${escapeHtml(display)}</a>`
@@ -13929,7 +13956,11 @@ function buildPlayerProfileHref(row, datasetId = "") {
   const pick = Number.isFinite(row?.draft_pick) && !row?._draftPickBlank ? Math.round(row.draft_pick) : Number.NaN;
   if (Number.isFinite(pick) && pick > 0 && pick <= 60) params.set("pick", String(pick));
   if (datasetId) params.set("dataset", datasetId);
-  return `#${PROFILE_ROUTE_ID}?${params.toString()}`;
+  const hash = `#${PROFILE_ROUTE_ID}?${params.toString()}`;
+  if (typeof window !== "undefined" && window.location) {
+    return `${window.location.pathname}${window.location.search}${hash}`;
+  }
+  return hash;
 }
 
 function registerPlayerProfileRow(dataset, row) {
@@ -14546,6 +14577,8 @@ const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumnsV5";
 const PLAYER_PROFILE_COLOR_STORAGE_KEY = "multiExplorerPlayerProfileColorsV2";
 const PLAYER_PROFILE_ROW_MODE_STORAGE_KEY = "multiExplorerPlayerProfileCareerOnlyV1";
 const PLAYER_PROFILE_SORT_STORAGE_KEY = "multiExplorerPlayerProfileSortV1";
+const PLAYER_PROFILE_COMMON_COLUMNS_STORAGE_KEY = "multiExplorerPlayerProfileCommonColumnsV1";
+const PLAYER_PROFILE_SEASON_COMBINED_STORAGE_KEY = "multiExplorerPlayerProfileSeasonCombinedV1";
 const PLAYER_PROFILE_LOCKED_COLUMNS = ["season", "competition_level", "league", "team_name"];
 const PLAYER_PROFILE_COLUMN_GROUPS = [
   {
@@ -14816,9 +14849,20 @@ function inferPlayerProfileRowDatasetId(row) {
 
 function isPlayerProfileAggregateSeasonRow(row) {
   if (!row || row._careerAggregate) return false;
+  if (row._seasonAggregate || row._internationalSingleSeasonAggregate) return true;
   const teamKey = normalizeKey(row?.team_name || row?.team_full || row?.team || "");
   const leagueKey = normalizeKey(row?.league || row?.competition_label || row?.competition_key || row?.league_name || "");
-  return teamKey === "allteams" || leagueKey === "allleagues";
+  const level = normalizeProfileLevel(row);
+  const aggregateCompetitionText = [
+    row?.league,
+    row?.competition_label,
+    row?.competition_key,
+    row?.league_name,
+  ].some((value) => /(?:\s\/\s|,\s|;\s)/.test(getStringValue(value).trim()));
+  const aggregateTeamText = [row?.team_name, row?.team_full, row?.team].some((value) => /(?:\s\/\s|,\s|;\s)/.test(getStringValue(value).trim()));
+  return ["all teams", "allteams"].includes(teamKey.replace(/\s+/g, ""))
+    || ["all leagues", "allleagues"].includes(leagueKey.replace(/\s+/g, ""))
+    || (["International", "FIBA", "G League", "Professional"].includes(level) && (aggregateCompetitionText || aggregateTeamText));
 }
 
 function mergePlayerProfileDuplicateRows(rows) {
@@ -15174,8 +15218,37 @@ function hasPlayerProfileColumnValue(rows, column) {
   });
 }
 
-function getAvailablePlayerProfileColumns(rows) {
-  return PLAYER_PROFILE_ALL_COLUMNS.filter((column) => PLAYER_PROFILE_LOCKED_COLUMNS.includes(column) || hasPlayerProfileColumnValue(rows, column));
+function hasEveryPlayerProfileColumnValue(rows, column) {
+  const candidates = (rows || []).filter(Boolean);
+  if (!candidates.length) return false;
+  return candidates.every((row) => {
+    const splitStats = isSplitDisplayColumn(column) ? getSplitDisplayStats(row, column) : null;
+    if (splitStats) {
+      return Number.isFinite(splitStats.made) || Number.isFinite(splitStats.att) || Number.isFinite(splitStats.ratio);
+    }
+    const rawValue = getRowColumnValue(DATASETS.player_career, row, column);
+    if (typeof rawValue === "number") return Number.isFinite(rawValue);
+    return getStringValue(rawValue).trim() !== "";
+  });
+}
+
+function getPlayerProfileDisplayRows(rows, options = {}) {
+  const careerOnly = Boolean(options.careerOnly);
+  const includeSeasonCombined = Boolean(options.includeSeasonCombined);
+  return (rows || []).filter((row) => {
+    if (row?._careerAggregate) return true;
+    if (careerOnly) return false;
+    if (!includeSeasonCombined && isPlayerProfileAggregateSeasonRow(row)) return false;
+    return true;
+  });
+}
+
+function getAvailablePlayerProfileColumns(rows, options = {}) {
+  const commonOnly = Boolean(options.commonOnly);
+  return PLAYER_PROFILE_ALL_COLUMNS.filter((column) => (
+    PLAYER_PROFILE_LOCKED_COLUMNS.includes(column)
+      || (commonOnly ? hasEveryPlayerProfileColumnValue(rows, column) : hasPlayerProfileColumnValue(rows, column))
+  ));
 }
 
 function normalizePlayerProfileSortState(sortState, availableColumns = PLAYER_PROFILE_ALL_COLUMNS) {
@@ -15242,10 +15315,10 @@ function comparePlayerProfileSortValues(left, right, column, dir = "desc") {
   return dir === "asc" ? compareResult : -compareResult;
 }
 
-function sortPlayerProfileRows(rows, sortState) {
+function sortPlayerProfileRows(rows, sortState, availableColumns = getAvailablePlayerProfileColumns(rows)) {
   const seasonRows = (rows || []).filter((row) => !row?._careerAggregate);
   const careerRows = (rows || []).filter((row) => row?._careerAggregate);
-  const activeSort = normalizePlayerProfileSortState(sortState, getAvailablePlayerProfileColumns(rows));
+  const activeSort = normalizePlayerProfileSortState(sortState, availableColumns);
   const comparator = activeSort.column ? (left, right) => comparePlayerProfileSortValues(left, right, activeSort.column, activeSort.dir) : comparePlayerProfileSeasonRows;
   const sortedSeasonRows = seasonRows.slice().sort(comparator);
   return sortedSeasonRows.concat(careerRows);
@@ -15253,27 +15326,35 @@ function sortPlayerProfileRows(rows, sortState) {
 
 function renderPlayerProfileModal(root, name, rows, options = {}) {
   const mergedOptions = { ...(root?._playerProfileOptions || {}), ...options };
+  const displayRows = getPlayerProfileDisplayRows(rows, {
+    careerOnly: getPlayerProfileCareerOnlyEnabled(),
+    includeSeasonCombined: getPlayerProfileSeasonCombinedEnabled(),
+  });
+  const availableColumns = getAvailablePlayerProfileColumns(displayRows, { commonOnly: getPlayerProfileCommonColumnsOnlyEnabled() });
   root._playerProfileName = name;
   root._playerProfileRows = Array.isArray(rows) ? rows.slice() : [];
   root._playerProfileOptions = mergedOptions;
-  root._playerProfileAvailableColumns = new Set(getAvailablePlayerProfileColumns(rows));
+  root._playerProfileAvailableColumns = new Set(availableColumns);
   const target = getPlayerProfileRenderTarget(root);
   target.innerHTML = buildPlayerProfileContentHtml(name, rows, mergedOptions);
   bindPlayerProfileColumnControls(root);
   bindPlayerProfileSortControls(root);
-  applyPlayerProfileRowVisibility(root, getPlayerProfileCareerOnlyEnabled());
 }
 
 function buildPlayerProfileContentHtml(name, rows, options = {}) {
-  const columns = getAvailablePlayerProfileColumns(rows);
+  const careerOnly = getPlayerProfileCareerOnlyEnabled();
+  const commonOnly = getPlayerProfileCommonColumnsOnlyEnabled();
+  const includeSeasonCombined = getPlayerProfileSeasonCombinedEnabled();
+  const displayRows = getPlayerProfileDisplayRows(rows, { careerOnly, includeSeasonCombined });
+  const columns = getAvailablePlayerProfileColumns(displayRows, { commonOnly });
   const visibleColumns = getPlayerProfileVisibleColumns(columns);
   const colorsEnabled = getPlayerProfileColorsEnabled();
   const dataset = getPlayerProfileRenderDataset(rows);
   const profileColorState = { extraSelects: { view_mode: "player", color_mode: "competition" } };
   const profileReferenceRows = getPlayerProfileColorReferenceRows(rows);
-  const colorScale = dataset.meta ? buildColumnScales(dataset, profileColorState, columns, profileReferenceRows) : {};
+  const colorScale = getPlayerProfileColorScale(dataset, profileColorState, columns, profileReferenceRows, colorsEnabled);
   const sortState = getPlayerProfileSortState(columns);
-  const sortedRows = sortPlayerProfileRows(rows, sortState);
+  const sortedRows = sortPlayerProfileRows(displayRows, sortState, columns);
   const header = columns.map((column) => {
     const hidden = visibleColumns.has(column) ? "" : " hidden";
     const isActive = sortState.column === column;
@@ -15286,12 +15367,12 @@ function buildPlayerProfileContentHtml(name, rows, options = {}) {
     ? sortedRows.map((row) => `<tr class="${row._careerAggregate ? "player-profile-career-row" : ""}" data-profile-row-kind="${row._careerAggregate ? "career" : "season"}">${columns.map((column) => {
       const hidden = visibleColumns.has(column) ? "" : " hidden";
       const rawValue = getRowColumnValue(dataset, row, column);
-      const style = getCellStyle(dataset, profileColorState, column, rawValue, colorScale, row);
+      const style = colorsEnabled ? getCellStyle(dataset, profileColorState, column, rawValue, colorScale, row) : "";
       const splitStats = isSplitDisplayColumn(column) ? getSplitDisplayStats(row, column) : null;
       const styleAttribute = splitStats ? "" : (colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : "");
       const storedStyleAttribute = style ? ` data-profile-color-style="${escapeAttribute(style)}"` : "";
       const splitHtml = splitStats
-        ? `<span class="split-display"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">-</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span><span class="split-display__pct"${colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
+        ? `<span class="split-display"><span class="split-display__pair"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">-</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span></span><span class="split-display__pct"${colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
         : "";
       return `<td data-profile-column="${escapeAttribute(column)}"${hidden}${styleAttribute}${storedStyleAttribute}>${splitHtml || escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, rawValue, row)))}</td>`;
     }).join("")}</tr>`).join("")
@@ -15299,10 +15380,14 @@ function buildPlayerProfileContentHtml(name, rows, options = {}) {
   const backLink = options.standalone ? `<div><a href="#player_career">Player/Career</a></div>` : "";
   const loadingNote = options.loadingMore ? `<div class="player-profile-loading-note">Loading additional merged seasons and advanced stats...</div>` : "";
   const controls = buildPlayerProfileColumnControlsHtml(visibleColumns, columns);
+  const totalRowCount = Array.isArray(rows) ? rows.length : 0;
+  const countLabel = totalRowCount !== sortedRows.length
+    ? `${sortedRows.length.toLocaleString()} displayed rows (${totalRowCount.toLocaleString()} total including career totals)`
+    : `${sortedRows.length.toLocaleString()} rows including career totals`;
   return `
     <div class="player-profile-header">
       <h2>${escapeHtml(name || "Player")}</h2>
-      <div>${sortedRows.length.toLocaleString()} rows including career totals</div>
+      <div>${escapeHtml(countLabel)}</div>
       ${loadingNote}
       ${backLink}
     </div>
@@ -15331,6 +15416,22 @@ function getPlayerProfileRenderDataset(rows) {
 function getPlayerProfileColorReferenceRows(rows) {
   const loadedRows = appState.datasetCache?.player_career?.rows;
   return Array.isArray(loadedRows) && loadedRows.length ? loadedRows : (rows || []);
+}
+
+function getPlayerProfileColorScale(dataset, profileColorState, columns, referenceRows, enabled) {
+  if (!enabled || !dataset?.meta || !columns.length) return {};
+  const loadedRows = appState.datasetCache?.player_career?.rows;
+  if (Array.isArray(loadedRows) && loadedRows.length && loadedRows === referenceRows) {
+    const cacheKey = `${Number(dataset?._rowVersion) || 0}|${columns.join("|")}`;
+    if (dataset._playerProfileColorScaleKey === cacheKey && dataset._playerProfileColorScale) {
+      return dataset._playerProfileColorScale;
+    }
+    const colorScale = buildColumnScales(dataset, profileColorState, columns, referenceRows);
+    dataset._playerProfileColorScaleKey = cacheKey;
+    dataset._playerProfileColorScale = colorScale;
+    return colorScale;
+  }
+  return buildColumnScales(dataset, profileColorState, columns, referenceRows);
 }
 
 function getPlayerProfileColumnLabel(dataset, column) {
@@ -15394,10 +15495,44 @@ function savePlayerProfileCareerOnlyEnabled(enabled) {
   }
 }
 
+function getPlayerProfileCommonColumnsOnlyEnabled() {
+  try {
+    return localStorage.getItem(PLAYER_PROFILE_COMMON_COLUMNS_STORAGE_KEY) === "on";
+  } catch (_error) {
+    return false;
+  }
+}
+
+function savePlayerProfileCommonColumnsOnlyEnabled(enabled) {
+  try {
+    localStorage.setItem(PLAYER_PROFILE_COMMON_COLUMNS_STORAGE_KEY, enabled ? "on" : "off");
+  } catch (_error) {
+    // Ignore storage failures; the current profile view still updates.
+  }
+}
+
+function getPlayerProfileSeasonCombinedEnabled() {
+  try {
+    return localStorage.getItem(PLAYER_PROFILE_SEASON_COMBINED_STORAGE_KEY) === "on";
+  } catch (_error) {
+    return false;
+  }
+}
+
+function savePlayerProfileSeasonCombinedEnabled(enabled) {
+  try {
+    localStorage.setItem(PLAYER_PROFILE_SEASON_COMBINED_STORAGE_KEY, enabled ? "on" : "off");
+  } catch (_error) {
+    // Ignore storage failures; the current profile view still updates.
+  }
+}
+
 function buildPlayerProfileColumnControlsHtml(visibleColumns, availableColumns = PLAYER_PROFILE_ALL_COLUMNS) {
   const available = new Set(availableColumns);
   const colorChecked = getPlayerProfileColorsEnabled() ? " checked" : "";
   const careerOnlyChecked = getPlayerProfileCareerOnlyEnabled() ? " checked" : "";
+  const commonOnlyChecked = getPlayerProfileCommonColumnsOnlyEnabled() ? " checked" : "";
+  const seasonCombinedChecked = getPlayerProfileSeasonCombinedEnabled() ? " checked" : "";
   const groups = PLAYER_PROFILE_COLUMN_GROUPS.map((group) => {
     const groupColumns = group.columns.filter((column) => available.has(column));
     if (!groupColumns.length) return "";
@@ -15417,6 +15552,8 @@ function buildPlayerProfileColumnControlsHtml(visibleColumns, availableColumns =
         <button type="button" data-profile-column-mode="all">Show All</button>
         <button type="button" data-profile-column-mode="none">Hide All</button>
         <label class="player-profile-color-toggle"><input type="checkbox" data-profile-career-only-toggle${careerOnlyChecked}> Career Only</label>
+        <label class="player-profile-color-toggle"><input type="checkbox" data-profile-common-columns-toggle${commonOnlyChecked}> Common Stats</label>
+        <label class="player-profile-color-toggle"><input type="checkbox" data-profile-season-combined-toggle${seasonCombinedChecked}> Season Combined</label>
         <label class="player-profile-color-toggle"><input type="checkbox" data-profile-color-toggle${colorChecked}> Colors</label>
       </div>
       <div class="player-profile-column-groups">${groups}</div>
@@ -15433,12 +15570,22 @@ function bindPlayerProfileColumnControls(root) {
     const available = root?._playerProfileAvailableColumns instanceof Set ? root._playerProfileAvailableColumns : new Set(PLAYER_PROFILE_ALL_COLUMNS);
     if (input?.matches("[data-profile-career-only-toggle]")) {
       savePlayerProfileCareerOnlyEnabled(input.checked);
-      applyPlayerProfileRowVisibility(root, input.checked);
+      renderPlayerProfileModal(root, root?._playerProfileName || "", root?._playerProfileRows || [], root?._playerProfileOptions || {});
+      return;
+    }
+    if (input?.matches("[data-profile-common-columns-toggle]")) {
+      savePlayerProfileCommonColumnsOnlyEnabled(input.checked);
+      renderPlayerProfileModal(root, root?._playerProfileName || "", root?._playerProfileRows || [], root?._playerProfileOptions || {});
+      return;
+    }
+    if (input?.matches("[data-profile-season-combined-toggle]")) {
+      savePlayerProfileSeasonCombinedEnabled(input.checked);
+      renderPlayerProfileModal(root, root?._playerProfileName || "", root?._playerProfileRows || [], root?._playerProfileOptions || {});
       return;
     }
     if (input?.matches("[data-profile-color-toggle]")) {
       savePlayerProfileColorsEnabled(input.checked);
-      applyPlayerProfileColorVisibility(root, input.checked);
+      renderPlayerProfileModal(root, root?._playerProfileName || "", root?._playerProfileRows || [], root?._playerProfileOptions || {});
       return;
     }
     if (!input?.matches("[data-profile-column-toggle]")) return;
@@ -15969,11 +16116,11 @@ function colorFromPercentile(pct) {
     return { bg: "#ffffff", color: "#111111" };
   }
   if (clamped < 0.45) {
-    const t = smoothstep(Math.pow((0.45 - clamped) / 0.45, 0.82));
-    return interpolateColorStops(["#fff4ef", "#f3b18f", "#df6c48", "#a61e14"], t);
+    const t = smoothstep(Math.pow((0.45 - clamped) / 0.45, 1.15));
+    return interpolateColorStops(["#fff7f3", "#f5d6ca", "#e89b81", "#cd593d", "#911f14"], t);
   }
-  const t = smoothstep(Math.pow((clamped - 0.55) / 0.45, 0.82));
-  return interpolateColorStops(["#eefaf2", "#b5e3c3", "#42a36c", "#0d6673"], t);
+  const t = smoothstep(Math.pow((clamped - 0.55) / 0.45, 1.15));
+  return interpolateColorStops(["#f3fbf5", "#d7eedb", "#a8d9b2", "#58ab73", "#155f40"], t);
 }
 
 function subtlePercentileGradient(value) {
@@ -15992,7 +16139,7 @@ function mixColors(startHex, endHex, t) {
   const r = Math.round(start.r + (end.r - start.r) * clamp);
   const g = Math.round(start.g + (end.g - start.g) * clamp);
   const b = Math.round(start.b + (end.b - start.b) * clamp);
-  return { bg: `rgb(${r}, ${g}, ${b})`, color: "#111111" };
+  return { bg: `rgb(${r}, ${g}, ${b})`, color: getReadableTextColor(r, g, b) };
 }
 
 function interpolateColorStops(stops, t) {
@@ -16012,6 +16159,11 @@ function hexToRgb(hex) {
     g: parseInt(value.slice(2, 4), 16),
     b: parseInt(value.slice(4, 6), 16),
   };
+}
+
+function getReadableTextColor(r, g, b) {
+  const luminance = ((0.299 * r) + (0.587 * g) + (0.114 * b)) / 255;
+  return luminance >= 0.6 ? "#111111" : "#ffffff";
 }
 
 function updateSummary(dataset, state, filtered) {
@@ -16658,6 +16810,10 @@ function enhanceD1Row(row) {
   }
   normalizeD1DriveMetrics(row);
   normalizeD1RunnerMetrics(row);
+  D1_TRUE_PLAYTYPE_IDS.forEach((id) => populatePrefixedTsPct(row, id));
+  populatePrefixedTsPct(row, "halfcourt");
+  populatePrefixedTsPct(row, "runner");
+  populatePrefixedTsPct(row, "drive", { fgaSuffix: "fga" });
   if (row.mid_made == null && Number.isFinite(row.long2_made)) row.mid_made = row.long2_made;
   if (row.mid_att == null && Number.isFinite(row.long2_att)) row.mid_att = row.long2_att;
   if (row.mid_pct == null && Number.isFinite(row.long2_pct)) row.mid_pct = row.long2_pct;
@@ -16711,6 +16867,7 @@ function enhanceTeamCoachRow(row) {
   if (!Number.isFinite(row.ppp_net) && Number.isFinite(row.ppp_off) && Number.isFinite(row.ppp_def)) {
     row.ppp_net = roundNumber(row.ppp_off - row.ppp_def, 3);
   }
+  TEAM_COACH_PLAYTYPE_IDS.forEach((id) => populatePrefixedTsPct(row, id, { fgaSuffix: "fga" }));
 }
 
 function enhanceD2Row(row) {
@@ -17783,6 +17940,7 @@ function populateD1ShotProfileDisplayModes(row) {
   };
 
   [
+    ["dunk_unast_made", "dunk_made", "dunk_ast_pct"],
     ["rim_unast_made", "rim_made", "rim_ast_pct"],
     ["mid_unast_made", "mid_made", "mid_ast_pct"],
     ["two_p_unast_made", "two_p_made", "two_p_ast_pct"],
@@ -17796,7 +17954,7 @@ function populateD1ShotProfileDisplayModes(row) {
   });
 
   [
-    "dunk_made", "dunk_att",
+    "dunk_made", "dunk_att", "dunk_unast_made",
     "rim_made", "rim_att", "rim_unast_made",
     "mid_made", "mid_att", "mid_unast_made",
     "two_p_made", "two_p_att", "two_p_unast_made",
@@ -18181,6 +18339,19 @@ function weightedPointTotal(twoPm, threePm, ftm) {
   return (Number.isFinite(twoPm) ? (twoPm * 2) : 0)
     + (Number.isFinite(threePm) ? (threePm * 3) : 0)
     + (Number.isFinite(ftm) ? ftm : 0);
+}
+
+function populatePrefixedTsPct(row, prefix, config = {}) {
+  if (!row || !prefix) return;
+  const tsColumn = `${prefix}_${config.tsSuffix || "ts_pct"}`;
+  if (Number.isFinite(row[tsColumn])) return;
+  const poss = firstFinite(row?.[`${prefix}_${config.possSuffix || "poss"}`], Number.NaN);
+  const ppp = firstFinite(row?.[`${prefix}_${config.pppSuffix || "ppp"}`], Number.NaN);
+  const fga = firstFinite(row?.[`${prefix}_${config.fgaSuffix || "fg_att"}`], Number.NaN);
+  const fta = firstFinite(row?.[`${prefix}_${config.ftaSuffix || "fta"}`], Number.NaN);
+  if (![poss, ppp, fga, fta].every((value) => Number.isFinite(value))) return;
+  const tsPct = zeroSafeTsPct(ppp * poss, fga, fta);
+  if (tsPct !== "") row[tsColumn] = tsPct;
 }
 
 function percentOfPossessions(value, poss) {
