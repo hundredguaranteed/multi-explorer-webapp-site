@@ -553,12 +553,12 @@ a,
 
 #statsTable th.cell-group-start,
 #statsTable td.cell-group-start {
-  border-left: 1px solid #8a8a8a;
+  border-left: 1px solid rgba(8, 35, 63, 0.18);
 }
 
 #statsTable th.cell-group-end,
 #statsTable td.cell-group-end {
-  border-right: 1px solid #8a8a8a;
+  border-right: 0;
 }
 
 #statsTable *,
@@ -656,10 +656,11 @@ a,
   border-bottom: 1px solid #8a8a8a;
   font-weight: 700;
   cursor: pointer;
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
+  overflow-wrap: anywhere;
   text-overflow: clip;
-  line-height: 1;
+  line-height: 1.02;
   font-size: 7.4px;
 }
 
@@ -675,7 +676,7 @@ a,
 #statsTable th.cell-text-overflow-sm,
 #statsTable th.cell-text-overflow-xs {
   font-size: 7.4px;
-  line-height: 1;
+  line-height: 1.02;
 }
 
 #statsTable tr.empty-state td {
@@ -871,7 +872,7 @@ a,
 .player-profile-table th,
 .player-profile-table td {
   min-width: 42px;
-  max-width: 120px;
+  max-width: 150px;
   padding: 3px 4px;
   border-bottom: 1px solid var(--line-soft);
   font-size: 9px;
@@ -884,25 +885,32 @@ a,
 .split-display {
   display: inline-grid;
   align-items: center;
-  grid-template-columns: max-content 4.3ch;
-  gap: 2px;
+  justify-content: center;
+  grid-template-columns: 9ch 5.6ch;
+  gap: 1px;
+  width: 100%;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .split-display__pair {
   display: inline-grid;
-  grid-template-columns: max-content 1ch max-content;
+  grid-template-columns: 4ch 1ch 4ch;
   align-items: center;
   column-gap: 0;
   min-width: 0;
 }
 
-.split-display__made,
-.split-display__att {
+.split-display__made {
   display: inline-block;
   min-width: 0;
   text-align: right;
+}
+
+.split-display__att {
+  display: inline-block;
+  min-width: 0;
+  text-align: left;
 }
 
 .split-display__sep {
@@ -913,9 +921,9 @@ a,
 
 .split-display__pct {
   display: inline-block;
-  min-width: 4.3ch;
-  padding: 1px 2px;
-  text-align: center;
+  min-width: 5.4ch;
+  padding: 1px 1px;
+  text-align: right;
 }
 
 .player-profile-sort-button {
