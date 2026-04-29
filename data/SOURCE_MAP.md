@@ -15,6 +15,7 @@ This site build treats the generated static chunks as the served source of truth
 - D1 drives: `C:\Users\anu5c\Projects\multi-explorer-site-data\tab_sources\D1\drives\Completed * Drives*.csv`, including `Completed 2025-26 Drives_D1.csv`.
 - D1 rim scoring: `C:\Users\anu5c\Projects\multi-explorer-site-data\tab_sources\D1\rim_drive_data\rim_iso_all.csv`, `rim_pnr_all.csv`, and `rim_su_all.csv`.
 - Roster/weight backfill: `C:\Users\anu5c\Projects\multi-explorer-site-data\tab_sources\D1\roster_cache` and `data/vendor/d1_rosters.js`; the deeper hoopR/ncaahoopR box-score cache is under `C:\Users\anu5c\Projects\ncaahoopR_data`.
+- NBA-player wingspan backfill: `C:\Users\anu5c\Projects\wingspan_all_2026-03-10.csv`, served as `data/vendor/wingspan_lookup.js`.
 
 ## Notes
 

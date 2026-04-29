@@ -39,10 +39,11 @@ const STATUS_ANNOTATIONS_SCRIPT = "data/vendor/status_annotations.js";
 const GRASSROOTS_PLAYER_YEAR_INDEX_SCRIPT = "data/vendor/grassroots_player_year_index.js";
 const PLAYER_BIO_LOOKUP_SCRIPT = "data/vendor/player_bio_lookup.js";
 const INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT = "data/vendor/international_profile_bio_lookup.js";
+const WINGSPAN_LOOKUP_SCRIPT = "data/vendor/wingspan_lookup.js";
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
 const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_buckets_manifest.js";
 const D1_FOUL_LOOKUP_SCRIPT = "data/vendor/d1_foul_lookup.js";
-const APP_BUILD_VERSION = "20260428-performance-v79";
+const APP_BUILD_VERSION = "20260428-performance-v80";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -504,59 +505,83 @@ const D1_DRIVE_COLUMNS = [
   { key: "drive_plus1_pct", label: "Drive +1%", defaultVisible: false },
 ];
 
+const D1_RIM_SCORING_COMPONENTS = [
+  { id: "iso", label: "Iso Rim", prefix: "rim_iso" },
+  { id: "pnr", label: "PnR Rim", prefix: "rim_pnr" },
+  { id: "spotup", label: "SU Rim", prefix: "rim_su" },
+];
+const D1_RIM_SCORING_COMPONENT_RATE_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
+  `${component.prefix}_freq`,
+  `${component.prefix}_ppp`,
+  `${component.prefix}_fg_pct`,
+  `${component.prefix}_efg_pct`,
+]);
+const D1_RIM_SCORING_COMPONENT_TOTAL_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
+  `${component.prefix}_poss`,
+  `${component.prefix}_points`,
+  `${component.prefix}_fga`,
+  `${component.prefix}_fgm`,
+]);
+const D1_RIM_SCORING_COMPONENT_PER_GAME_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
+  `${component.prefix}_poss_pg`,
+  `${component.prefix}_points_pg`,
+  `${component.prefix}_fga_pg`,
+  `${component.prefix}_fgm_pg`,
+]);
+const D1_RIM_SCORING_COMPONENT_PER40_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
+  `${component.prefix}_poss_per40`,
+  `${component.prefix}_points_per40`,
+  `${component.prefix}_fga_per40`,
+  `${component.prefix}_fgm_per40`,
+]);
 const D1_RIM_SCORING_AGG_COLUMNS = [
   "rim_scoring_freq",
   "rim_scoring_ppp",
   "rim_scoring_fg_pct",
   "rim_scoring_efg_pct",
   "rim_scoring_poss",
+  "rim_scoring_points",
   "rim_scoring_fga",
   "rim_scoring_fgm",
   "rim_scoring_poss_pg",
+  "rim_scoring_points_pg",
   "rim_scoring_fga_pg",
   "rim_scoring_fgm_pg",
   "rim_scoring_poss_per40",
+  "rim_scoring_points_per40",
   "rim_scoring_fga_per40",
   "rim_scoring_fgm_per40",
 ];
-const D1_RIM_SCORING_COMPONENTS = [
-  { id: "iso", label: "Iso Rim", prefix: "rim_iso" },
-  { id: "pnr", label: "PnR Rim", prefix: "rim_pnr" },
-  { id: "spotup", label: "SU Rim", prefix: "rim_su" },
-];
-const D1_RIM_SCORING_COMPONENT_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
-  `${component.prefix}_freq`,
-  `${component.prefix}_ppp`,
-  `${component.prefix}_fg_pct`,
-  `${component.prefix}_efg_pct`,
-  `${component.prefix}_poss`,
-  `${component.prefix}_fga`,
-  `${component.prefix}_fgm`,
-  `${component.prefix}_poss_pg`,
-  `${component.prefix}_fga_pg`,
-  `${component.prefix}_fgm_pg`,
-  `${component.prefix}_poss_per40`,
-  `${component.prefix}_fga_per40`,
-  `${component.prefix}_fgm_per40`,
-]);
-const D1_RIM_SCORING_COLUMNS = [
-  ...D1_RIM_SCORING_AGG_COLUMNS,
-  ...D1_RIM_SCORING_COMPONENT_COLUMNS,
+const D1_RIM_SCORING_RATE_COLUMNS = [
+  ...D1_RIM_SCORING_COMPONENT_RATE_COLUMNS,
   "rim_iso_tov_pct",
   "rim_iso_plus1_pct",
 ];
+const D1_RIM_SCORING_TOTAL_COLUMNS = D1_RIM_SCORING_COMPONENT_TOTAL_COLUMNS;
+const D1_RIM_SCORING_PER_GAME_COLUMNS = D1_RIM_SCORING_COMPONENT_PER_GAME_COLUMNS;
+const D1_RIM_SCORING_PER40_COLUMNS = D1_RIM_SCORING_COMPONENT_PER40_COLUMNS;
+const D1_RIM_SCORING_COLUMNS = [...new Set([
+  ...D1_RIM_SCORING_AGG_COLUMNS,
+  ...D1_RIM_SCORING_RATE_COLUMNS,
+  ...D1_RIM_SCORING_TOTAL_COLUMNS,
+  ...D1_RIM_SCORING_PER_GAME_COLUMNS,
+  ...D1_RIM_SCORING_PER40_COLUMNS,
+])];
 const D1_RIM_SCORING_LABELS = {
   rim_scoring_freq: "Rim Score Freq",
   rim_scoring_ppp: "Rim Score PPP",
   rim_scoring_fg_pct: "Rim Score FG%",
   rim_scoring_efg_pct: "Rim Score eFG%",
   rim_scoring_poss: "Rim Score Poss",
+  rim_scoring_points: "Rim Score PTS",
   rim_scoring_fga: "Rim Score FGA",
   rim_scoring_fgm: "Rim Score FGM",
   rim_scoring_poss_pg: "Rim Score Poss/G",
+  rim_scoring_points_pg: "Rim Score PTS/G",
   rim_scoring_fga_pg: "Rim Score FGA/G",
   rim_scoring_fgm_pg: "Rim Score FGM/G",
   rim_scoring_poss_per40: "Rim Score Poss/40",
+  rim_scoring_points_per40: "Rim Score PTS/40",
   rim_scoring_fga_per40: "Rim Score FGA/40",
   rim_scoring_fgm_per40: "Rim Score FGM/40",
   rim_iso_tov_pct: "Iso Rim TO%",
@@ -568,12 +593,15 @@ D1_RIM_SCORING_COMPONENTS.forEach((component) => {
   D1_RIM_SCORING_LABELS[`${component.prefix}_fg_pct`] = `${component.label} FG%`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_efg_pct`] = `${component.label} eFG%`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_poss`] = `${component.label} Poss`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_points`] = `${component.label} PTS`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fga`] = `${component.label} FGA`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fgm`] = `${component.label} FGM`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_poss_pg`] = `${component.label} Poss/G`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_points_pg`] = `${component.label} PTS/G`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fga_pg`] = `${component.label} FGA/G`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fgm_pg`] = `${component.label} FGM/G`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_poss_per40`] = `${component.label} Poss/40`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_points_per40`] = `${component.label} PTS/40`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fga_per40`] = `${component.label} FGA/40`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fgm_per40`] = `${component.label} FGM/40`;
 });
@@ -818,11 +846,11 @@ const D1_ADVANCED_GROUPS = [
     label: "Bart",
     groupClass: "advanced",
     columns: [...new Set([...D1_BART_CORE_COLUMNS, ...D1_BART_RATE_COLUMNS, ...D1_BART_COMBO_COLUMNS])],
-    defaultColumns: ["min_per", "porpag", "dporpag", "bpm"],
+    defaultColumns: ["min_per", "obpm", "dbpm", "bpm"],
     defaultUnitMode: "rates",
     unitModes: [
       { id: "core", label: "Core", columns: D1_BART_CORE_COLUMNS, defaultColumns: ["net_rating", "ortg", "drtg", "min_per"] },
-      { id: "rates", label: "Rates", columns: D1_BART_RATE_COLUMNS, defaultColumns: ["min_per", "porpag", "dporpag", "bpm"] },
+      { id: "rates", label: "Rates", columns: D1_BART_RATE_COLUMNS, defaultColumns: ["min_per", "obpm", "dbpm", "bpm"] },
       { id: "combos", label: "Combos", columns: D1_BART_COMBO_COLUMNS, defaultColumns: ["per", "fic", "ppr", "bpm_diff", "bpm_frac"] },
       { id: "all", label: "All", columns: [...new Set([...D1_BART_CORE_COLUMNS, ...D1_BART_RATE_COLUMNS, ...D1_BART_COMBO_COLUMNS])] },
     ],
@@ -919,7 +947,7 @@ function withSingleFilterDefault(filters = [], filterId, defaultValue) {
 }
 
 function buildD1Config() {
-  const demoColumns = ["conference", "coach", "pos", "class_year", "height_in", "weight_lb", "bmi", "age", "dob", "gp", "min", "mpg", "draft_pick"];
+  const demoColumns = ["conference", "coach", "pos", "class_year", "height_in", "weight_lb", "wingspan", "bmi", "age", "dob", "gp", "min", "mpg", "draft_pick"];
   const labels = {
     rank: "",
     season: "Year",
@@ -931,6 +959,7 @@ function buildD1Config() {
     class_year: "Class",
     height_in: "HT",
     weight_lb: "WT",
+    wingspan: "WS",
     bmi: "BMI",
     age: "Age",
     dob: "DOB",
@@ -1029,16 +1058,13 @@ function buildD1Config() {
       label: "Rim Scoring",
       groupClass: "rim_scoring",
       columns: D1_RIM_SCORING_COLUMNS,
-      defaultColumns: ["rim_scoring_freq", "rim_scoring_ppp", "rim_scoring_fg_pct", "rim_iso_freq", "rim_pnr_freq", "rim_su_freq"],
-      defaultUnitMode: "together",
+      defaultColumns: ["rim_iso_freq", "rim_pnr_freq", "rim_su_freq"],
+      defaultUnitMode: "rates",
       unitModes: [
-        { id: "together", label: "Together", columns: D1_RIM_SCORING_AGG_COLUMNS, defaultColumns: ["rim_scoring_freq", "rim_scoring_ppp", "rim_scoring_fg_pct", "rim_scoring_poss"] },
-        ...D1_RIM_SCORING_COMPONENTS.map((component) => ({
-          id: component.id,
-          label: component.label,
-          columns: D1_RIM_SCORING_COLUMNS.filter((column) => column.startsWith(`${component.prefix}_`)),
-          defaultColumns: [`${component.prefix}_freq`, `${component.prefix}_ppp`, `${component.prefix}_fg_pct`, `${component.prefix}_poss`],
-        })),
+        { id: "rates", label: "Rates", columns: D1_RIM_SCORING_RATE_COLUMNS, defaultColumns: ["rim_iso_freq", "rim_pnr_freq", "rim_su_freq"] },
+        { id: "totals", label: "Totals", columns: D1_RIM_SCORING_TOTAL_COLUMNS, defaultColumns: ["rim_iso_poss", "rim_pnr_poss", "rim_su_poss"] },
+        { id: "per40", label: "Per 40", columns: D1_RIM_SCORING_PER40_COLUMNS, defaultColumns: ["rim_iso_poss_per40", "rim_pnr_poss_per40", "rim_su_poss_per40"] },
+        { id: "per_game", label: "Per Game", columns: D1_RIM_SCORING_PER_GAME_COLUMNS, defaultColumns: ["rim_iso_poss_pg", "rim_pnr_poss_pg", "rim_su_poss_pg"] },
         { id: "all", label: "All", columns: D1_RIM_SCORING_COLUMNS },
       ],
     },
@@ -1061,6 +1087,7 @@ function buildD1Config() {
     title: "D1",
     subtitle: "",
     dataScript: "data/d1_enriched_all_seasons.js",
+    extraScripts: [WINGSPAN_LOOKUP_SCRIPT],
     multipartDataScript: {
       type: "multipart-script",
       manifestScript: "data/vendor/d1_enriched_all_seasons_manifest.js",
@@ -1093,9 +1120,9 @@ function buildD1Config() {
     searchColumns: withUniversalSearchColumns(["player_name", "player_search_text", "team_name", "conference", "coach", "team_search_text", "coach_search_text"]),
     sortBy: "min",
     sortDir: "desc",
-    demoToggleColumns: ["age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg", "draft_pick"],
+    demoToggleColumns: ["age", "height_in", "weight_lb", "wingspan", "bmi", "dob", "gp", "min", "mpg", "draft_pick"],
     demoColumns,
-    demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg", "draft_pick"],
+    demoFilterColumns: ["age", "height_in", "weight_lb", "wingspan", "bmi", "dob", "gp", "min", "mpg", "draft_pick"],
     groups,
     singleFilters: withSharedSingleFilters([
       { id: "conference_bucket", label: "Conf", column: "conference" },
@@ -1119,7 +1146,7 @@ function buildD1Config() {
       { id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C"] },
       { id: "class_year", label: "Class", column: "class_year", sort: ["Fr", "So", "Jr", "Sr", "Gr"] },
     ],
-    defaultVisible: [...new Set([...demoColumns.filter((column) => !["conference", "coach", "bmi", "draft_pick", "weight_lb", "mpg", "dob", "min"].includes(column)), ...defaultVisible])],
+    defaultVisible: [...new Set([...demoColumns.filter((column) => !["conference", "coach", "bmi", "draft_pick", "weight_lb", "wingspan", "mpg", "dob", "min"].includes(column)), ...defaultVisible])],
     labels,
   };
 }
@@ -1352,7 +1379,7 @@ function buildNbaCompanionConfig() {
 const PLAYER_CAREER_PROFESSIONAL_LEVELS = new Set(["International", "G League", "NBA", "Professional"]);
 
 function buildPlayerCareerConfig() {
-  const demoColumns = ["competition_level", "profile_levels", "pos", "class_year", "height_in", "weight_lb", "age", "dob", "draft_year", "draft_pick"];
+  const demoColumns = ["competition_level", "profile_levels", "pos", "class_year", "height_in", "weight_lb", "wingspan", "age", "dob", "draft_year", "draft_pick"];
   return {
     id: "player_career",
     navLabel: "Player/Career",
@@ -1364,6 +1391,7 @@ function buildPlayerCareerConfig() {
     extraScripts: [
       PLAYER_BIO_LOOKUP_SCRIPT,
       INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT,
+      WINGSPAN_LOOKUP_SCRIPT,
       {
         type: "multipart-script",
         manifestScript: "data/vendor/player_career_international_overlay_manifest.js",
@@ -1396,12 +1424,12 @@ function buildPlayerCareerConfig() {
     minYear: 1998,
     minuteFilterDefault: "",
     demoColumns,
-    demoFilterColumns: ["height_in", "weight_lb", "age", "gp", "min", "mpg", "draft_year", "draft_pick"],
+    demoFilterColumns: ["height_in", "weight_lb", "wingspan", "age", "gp", "min", "mpg", "draft_year", "draft_pick"],
     groups: [
       {
         id: "identity",
         label: "Identity",
-        columns: ["competition_level", "profile_levels", "career_path", "league", "team_name", "team_full", "nationality", "hometown", "high_school", "pre_draft_team", "current_team", "current_nba_status", "pos", "class_year", "height_in", "weight_lb", "age", "dob", "draft_year", "draft_pick", "rookie_year", "source_player_id", "player_profile_key", "realgm_player_id", "canonical_player_id"],
+        columns: ["competition_level", "profile_levels", "career_path", "league", "team_name", "team_full", "nationality", "hometown", "high_school", "pre_draft_team", "current_team", "current_nba_status", "pos", "class_year", "height_in", "weight_lb", "wingspan", "age", "dob", "draft_year", "draft_pick", "rookie_year", "source_player_id", "player_profile_key", "realgm_player_id", "canonical_player_id"],
         defaultColumns: ["competition_level", "profile_levels", "team_name", "pos", "class_year", "height_in", "draft_pick"],
       },
       {
@@ -1470,6 +1498,7 @@ function buildPlayerCareerConfig() {
       class_year: "Class",
       height_in: "HT",
       weight_lb: "WT",
+      wingspan: "WS",
       age: "Age",
       dob: "DOB",
       draft_year: "Draft",
@@ -1790,7 +1819,7 @@ function buildPlayerCareerExtraGroups(availableColumns, groupedColumns) {
 }
 
 function buildInternationalConfig() {
-  const demoColumns = ["league_name", "team_abbrev", "pos", "height_in", "weight_lb", "nationality", "age", "dob", "draft_year", "draft_pick", "gp", "min", "mpg"];
+  const demoColumns = ["league_name", "team_abbrev", "pos", "height_in", "weight_lb", "wingspan", "nationality", "age", "dob", "draft_year", "draft_pick", "gp", "min", "mpg"];
   return {
     id: "international",
     navLabel: "International",
@@ -1803,7 +1832,7 @@ function buildInternationalConfig() {
       manifestGlobalName: "INTERNATIONAL_ALL_SEASONS_PARTS",
       partTemplate: "data/vendor/international_all_seasons_parts/{part}.js",
     },
-    extraScripts: [PLAYER_BIO_LOOKUP_SCRIPT, INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT],
+    extraScripts: [PLAYER_BIO_LOOKUP_SCRIPT, INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT, WINGSPAN_LOOKUP_SCRIPT],
     globalName: "INTERNATIONAL_ALL_CSV",
     yearColumn: "season",
     playerColumn: "player_name",
@@ -1817,12 +1846,12 @@ function buildInternationalConfig() {
     minuteDefault: 200,
     minuteFilterDefault: 200,
     demoColumns,
-    demoFilterColumns: ["height_in", "weight_lb", "age", "dob", "draft_year", "draft_pick", "gp", "min", "mpg"],
+    demoFilterColumns: ["height_in", "weight_lb", "wingspan", "age", "dob", "draft_year", "draft_pick", "gp", "min", "mpg"],
     groups: [
       {
         id: "identity",
         label: "Identity",
-        columns: ["league_name", "competition_label", "team_name", "team_abbrev", "pos", "age", "dob", "birthday", "birth_city", "draft_year", "draft_pick", "draft_status", "nationality", "nationality_list", "nationality_regions", "realgm_player_id", "realgm_summary_url"],
+        columns: ["league_name", "competition_label", "team_name", "team_abbrev", "pos", "height_in", "weight_lb", "wingspan", "age", "dob", "birthday", "birth_city", "draft_year", "draft_pick", "draft_status", "nationality", "nationality_list", "nationality_regions", "realgm_player_id", "realgm_summary_url"],
         defaultColumns: ["league_name", "team_abbrev", "pos", "age", "nationality", "draft_year", "draft_pick"],
       },
       {
@@ -1887,6 +1916,7 @@ function buildInternationalConfig() {
       height: "HT",
       height_in: "HT",
       weight_lb: "WT",
+      wingspan: "WS",
       age: "Age",
       dob: "DOB",
       birthday: "Birthday",
@@ -2674,7 +2704,7 @@ const DATASETS = {
     title: "FIBA",
     subtitle: "",
     dataScript: "data/fiba_all_seasons.js",
-    extraScripts: [PLAYER_BIO_LOOKUP_SCRIPT, INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT],
+    extraScripts: [PLAYER_BIO_LOOKUP_SCRIPT, INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT, WINGSPAN_LOOKUP_SCRIPT],
     globalName: "FIBA_ALL_CSV",
     yearColumn: "season",
     playerColumn: "player_name",
@@ -2687,8 +2717,8 @@ const DATASETS = {
     minYear: 1998,
     minuteDefault: 0,
     minuteFilterDefault: "",
-    demoColumns: ["competition_label", "pos", "height_in", "age", "dob", "gp", "min", "mpg"],
-    demoFilterColumns: ["height_in", "age", "dob", "gp", "min", "mpg"],
+    demoColumns: ["competition_label", "pos", "height_in", "weight_lb", "wingspan", "age", "dob", "gp", "min", "mpg"],
+    demoFilterColumns: ["height_in", "weight_lb", "wingspan", "age", "dob", "gp", "min", "mpg"],
     groups: [
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "eff_pg", "plus_minus_pg"], defaultColumns: ["min", "mpg", "eff_pg", "plus_minus_pg"] },
       { id: "advanced", label: "Advanced", columns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "rgm_per", "fic", "ppr", "nba_career_epm", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
@@ -2714,6 +2744,8 @@ const DATASETS = {
       nationality: "Country",
       pos: "Pos",
       height_in: "HT",
+      weight_lb: "WT",
+      wingspan: "WS",
       age: "Age",
       dob: "DOB",
       gp: "GP",
@@ -2784,6 +2816,7 @@ const DATASETS = {
     title: "NBA",
     subtitle: "",
     dataScript: "data/nba_all_seasons.js",
+    extraScripts: [WINGSPAN_LOOKUP_SCRIPT],
     globalName: "NBA_ALL_CSV",
     yearColumn: "season",
     playerColumn: "player_name",
@@ -2794,7 +2827,7 @@ const DATASETS = {
     sortDir: "desc",
     minYear: 1998,
     minuteDefault: 200,
-    demoColumns: ["pos_text", "age", "inches", "weight", "gp", "mp", "mpg", "rookie_year"],
+    demoColumns: ["pos_text", "age", "inches", "weight", "wingspan", "gp", "mp", "mpg", "rookie_year"],
     demoFilterColumns: ["age", "inches", "weight", "bmi", "wingspan", "exp", "gp", "mp", "mpg", "rookie_year"],
     groups: [
       { id: "summary", label: "Summary", columns: ["off", "def", "tot", "ewins", "per", "porpag", "fic"] },
@@ -2828,6 +2861,7 @@ const DATASETS = {
       rookie_year: "Draft",
       inches: "HT",
       weight: "WT",
+      wingspan: "WS",
       off: "oEPM",
       def: "dEPM",
       tot: "EPM",
@@ -4258,6 +4292,13 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
       await upgradeMobileD1Dataset(cached, options);
       return appState.datasetCache[datasetId];
     }
+    if (datasetId === "player_career" && cached._profileOnlyInit && !options.profileOnly && cached._playerCareerChunked && !options.requireHydrated) {
+      const initialYears = getPlayerCareerInitialYears(DATASETS.player_career);
+      if (initialYears.length) {
+        await loadPlayerCareerRowsForYears(cached, DATASETS.player_career, initialYears, options);
+      }
+      cached._profileOnlyInit = false;
+    }
     if (datasetId === "player_career" && !cached._playerCareerInternationalOverlayApplied) {
       if (DATASETS.player_career.extraScripts?.length) {
         await Promise.all(DATASETS.player_career.extraScripts.map((entry) => loadScriptEntry(entry)));
@@ -4282,6 +4323,7 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
   let usePlayerCareerChunks = datasetId === "player_career" && Boolean(config.yearManifestScript && config.yearChunkTemplate);
   let useGrassrootsChunks = datasetId === "grassroots" && Boolean(config.yearChunkTemplate);
   let useMobileLite = datasetId === "d1" && !options.requireHydrated && !options.requireAllRows && config.mobileDataScriptTemplate;
+  const profileOnlyPlayerCareer = usePlayerCareerChunks && options.profileOnly && !options.requireHydrated && !options.requireAllRows;
   let rows;
   let availableYears = [];
   try {
@@ -4298,7 +4340,9 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
       }
       rows = [];
       const initialDataset = { id: datasetId, rows, _loadedYears: new Set() };
-      await loadPlayerCareerRowsForYears(initialDataset, config, yearsToLoad, options);
+      if (!profileOnlyPlayerCareer) {
+        await loadPlayerCareerRowsForYears(initialDataset, config, yearsToLoad, options);
+      }
       rows = initialDataset.rows;
       availableYears = availableYears.length
         ? availableYears
@@ -4382,6 +4426,7 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
     dataset._playerCareerChunked = true;
     dataset._playerCareerSupplementChunked = isSupplementDeferredDataset(dataset);
     dataset.availableYears = availableYears.length ? availableYears : meta.years;
+    dataset._profileOnlyInit = Boolean(profileOnlyPlayerCareer);
   }
   if (useGrassrootsChunks) {
     dataset._grassrootsChunked = true;
@@ -4390,7 +4435,7 @@ async function ensureDatasetLoaded(datasetId, options = {}) {
     dataset._mobileLite = true;
     dataset.availableYears = availableYears.length ? availableYears : meta.years;
   }
-  if (datasetId === "player_career") {
+  if (datasetId === "player_career" && !profileOnlyPlayerCareer) {
     applyPlayerCareerInternationalOverlay(dataset, config);
   }
   appState.datasetCache[datasetId] = dataset;
@@ -5880,6 +5925,9 @@ function getPlayerCareerInternationalOverlayRows(config) {
 function normalizeInternationalLeagueAlias(value) {
   const key = normalizeKey(value);
   if (!key) return "";
+  if (/^(?:aus|australian|australia) nbl$/.test(key) || /^nbl australia$/.test(key) || /^national basketball league australia$/.test(key)) return "australian nbl";
+  if (/^(?:italian )?lega a$/.test(key) || /^italy lega a$/.test(key) || /^serie a italy$/.test(key)) return "lega a";
+  if (/^(?:spanish )?acb$/.test(key) || /^liga acb$/.test(key) || /^liga endesa$/.test(key)) return "acb";
   if (/\bg bbl\b/.test(key) || /\bgerman bbl\b/.test(key)) return "german bbl";
   if ((/\bliga aba\b/.test(key) || /\baba\b/.test(key)) && /\badriatic league\b/.test(key)) return "liga aba";
   if (/^liga aba$/.test(key)) return "liga aba";
@@ -6096,8 +6144,10 @@ async function loadPlayerCareerRowsForYears(dataset, config, years, options = {}
         const partPaths = getPlayerCareerYearChunkPartPaths(config, season);
         const chunkMap = window.PLAYER_CAREER_YEAR_CSV_CHUNKS = window.PLAYER_CAREER_YEAR_CSV_CHUNKS || {};
         if (partPaths.length) {
-          chunkMap[season] = "";
-          await loadScriptsInOrder(partPaths);
+          if (!chunkMap[season]) {
+            chunkMap[season] = "";
+            await loadScriptsInOrder(partPaths);
+          }
         } else {
           const src = getPlayerCareerYearChunkPath(config, season);
           if (!src) throw new Error(`Missing Player/Career chunk for ${season}`);
@@ -10771,20 +10821,10 @@ function getGroupSelectionState(dataset, group, state) {
 
 function getRenderedFilterColumnsForGroup(dataset, group, state) {
   if (!group) return [];
-  const groupState = getGroupSelectionState(dataset, group, state);
   const unitMode = getGroupUnitMode(state, dataset, group);
-  const defaults = getGroupScopeColumns(dataset, group, state, "default", unitMode);
-  const selected = groupState === "all"
-    ? getGroupScopeColumns(dataset, group, state, "all", unitMode)
-    : groupState === "custom"
-    ? getGroupScopeColumns(dataset, group, state, "custom", unitMode)
-    : defaults;
+  const unitColumns = getGroupColumnsForUnitMode(dataset, group, unitMode);
   const activeFilters = (group.columns || []).filter((column) => hasActiveRangeFilter(state?.numericFilters?.[column]));
-  return Array.from(new Set([
-    ...(groupState === "custom" ? defaults : []),
-    ...selected,
-    ...activeFilters,
-  ]));
+  return Array.from(new Set([...unitColumns, ...activeFilters]));
 }
 
 function areSameColumns(left = [], right = []) {
@@ -12365,6 +12405,7 @@ function normalizePhysicalMeasurements(row) {
   normalizePhysicalMeasurementField(row, "inches");
   normalizePhysicalMeasurementField(row, "weight_lb");
   normalizePhysicalMeasurementField(row, "weight");
+  normalizePhysicalMeasurementField(row, "wingspan");
 }
 
 function buildGrassrootsAttributeProfileKeys(row) {
@@ -14556,8 +14597,102 @@ async function getPlayerProfileCandidateYears(dataset, identity) {
   return Array.from(years).sort(compareYears);
 }
 
+async function loadPlayerCareerProfileCsvText(config, season) {
+  const year = getStringValue(season).trim();
+  if (!year) return "";
+  const chunkMap = window.PLAYER_CAREER_YEAR_CSV_CHUNKS = window.PLAYER_CAREER_YEAR_CSV_CHUNKS || {};
+  if (chunkMap[year]) return chunkMap[year];
+  const partPaths = getPlayerCareerYearChunkPartPaths(config, year);
+  if (partPaths.length) {
+    chunkMap[year] = "";
+    await loadScriptsInOrder(partPaths);
+    return chunkMap[year] || "";
+  }
+  const src = getPlayerCareerYearChunkPath(config, year);
+  if (!src) return "";
+  await loadScriptOnce(src);
+  return chunkMap[year] || "";
+}
+
+function getPlayerCareerProfileLineFragments(identity) {
+  const fragments = new Set();
+  (identity?.names || new Set()).forEach((name) => {
+    const key = normalizeNameKey(name);
+    if (key) fragments.add(key);
+  });
+  (identity?.ids || new Set()).forEach((value) => {
+    const text = getStringValue(value).trim();
+    if (!text) return;
+    fragments.add(text.toLowerCase());
+    const realgm = text.match(/^rgm:(.+)$/i);
+    const generic = text.match(/^id:(.+)$/i);
+    if (realgm) {
+      fragments.add(`rgm_${realgm[1]}`.toLowerCase());
+      fragments.add(getStringValue(realgm[1]).toLowerCase());
+    }
+    if (generic) fragments.add(getStringValue(generic[1]).toLowerCase());
+  });
+  return Array.from(fragments).filter((value) => value && value.length >= 2);
+}
+
+function filterPlayerCareerProfileCsv(csvText, identity) {
+  const text = getStringValue(csvText);
+  const headerEnd = text.indexOf("\n");
+  if (headerEnd < 0) return "";
+  const header = text.slice(0, headerEnd);
+  const fragments = getPlayerCareerProfileLineFragments(identity);
+  if (!fragments.length) return "";
+  const matchedLines = [];
+  let start = headerEnd + 1;
+  while (start < text.length) {
+    const end = text.indexOf("\n", start);
+    const line = text.slice(start, end === -1 ? text.length : end);
+    const lower = line.toLowerCase();
+    if (fragments.some((fragment) => lower.includes(fragment))) matchedLines.push(line);
+    if (end === -1) break;
+    start = end + 1;
+  }
+  return matchedLines.length ? `${header}\n${matchedLines.join("\n")}` : "";
+}
+
+async function loadPlayerCareerProfileRows(identity, options = {}) {
+  const config = DATASETS.player_career;
+  if (config.yearManifestScript) await loadScriptOnce(config.yearManifestScript);
+  await Promise.all([
+    PLAYER_BIO_LOOKUP_SCRIPT,
+    INTERNATIONAL_PROFILE_BIO_LOOKUP_SCRIPT,
+    WINGSPAN_LOOKUP_SCRIPT,
+  ].map((script) => loadScriptOnce(script).catch(() => undefined)));
+  applyPlayerCareerManifestConfig(config);
+  const shellDataset = { id: "player_career", rows: [], availableYears: getPlayerCareerAvailableYears(config), _loadedYears: new Set() };
+  const requestedYears = Array.isArray(options?.requestedYears)
+    ? options.requestedYears.map((season) => getStringValue(season).trim()).filter(Boolean)
+    : [];
+  const years = requestedYears.length ? requestedYears : await getPlayerProfileCandidateYears(shellDataset, identity);
+  const rows = [];
+  for (const season of years) {
+    const csvText = await loadPlayerCareerProfileCsvText(config, season);
+    const filteredCsv = filterPlayerCareerProfileCsv(csvText, identity);
+    if (!filteredCsv) continue;
+    rows.push(...parseDatasetRows(filteredCsv, "player_career", config, { ...options, skipEnhance: true }));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  }
+  rows.forEach((row) => {
+    preparePlayerCareerLoadedRow(row);
+    normalizePercentLikeColumns(row, "player_career");
+  });
+  const matchedRows = rows.filter((row) => rowMatchesPlayerProfile(row, identity));
+  const needsInternationalOverlay = matchedRows.some((row) => normalizeProfileLevel(row) === "International" || isPlayerCareerInternationalRow(row));
+  if (!needsInternationalOverlay) return matchedRows;
+  const overlayEntries = (config.extraScripts || []).filter((entry) => isMultipartScriptEntry(entry));
+  if (overlayEntries.length) await Promise.all(overlayEntries.map((entry) => loadScriptEntry(entry)));
+  const tempDataset = { ...config, id: "player_career", rows: matchedRows, meta: buildDatasetMeta(matchedRows, config) };
+  applyPlayerCareerInternationalOverlay(tempDataset, config);
+  return tempDataset.rows || matchedRows;
+}
+
 async function ensurePlayerCareerProfileSourceLoaded(identity, options = {}) {
-  const dataset = await ensureDatasetLoaded("player_career");
+  const dataset = await ensureDatasetLoaded("player_career", { profileOnly: true });
   if (dataset?._playerCareerChunked) {
     const requestedYears = Array.isArray(options?.requestedYears)
       ? options.requestedYears.map((season) => getStringValue(season).trim()).filter(Boolean)
@@ -14681,8 +14816,24 @@ function shouldFallbackToPlayerCareerProfileRows(baseRows, context) {
   return !competitionRows.some((row) => !playerProfileRowNeedsAugment(row));
 }
 
+function shouldBridgePlayerProfileFromCareer(baseRows, context) {
+  const currentDatasetId = normalizeKey(context?.currentDatasetId);
+  if (!currentDatasetId || currentDatasetId === "player_career") return false;
+  const bridgeDatasets = new Set(["grassroots", "d2", "naia", "juco", "international", "fiba"]);
+  if (!bridgeDatasets.has(currentDatasetId)) return false;
+  if (currentDatasetId !== "grassroots" && (context?.bucketRows?.length || context?.bucketAttempted)) return false;
+  const identity = context?.identity;
+  if (!identity || (!identity.names?.size && !identity.ids?.size)) return false;
+  const candidateRows = dedupePlayerProfileRows(baseRows || []);
+  return currentDatasetId === "grassroots" || candidateRows.length > 0;
+}
+
 async function finalizePlayerProfileRows(rows) {
   const sourceRows = (rows || []).filter(Boolean);
+  if (sourceRows.some((row) => rowHasNbaProfilePath(row))) {
+    await loadScriptOnce(WINGSPAN_LOOKUP_SCRIPT).catch(() => undefined);
+    sourceRows.forEach((row) => applyWingspanLookup(row));
+  }
   await applyD1ProfileFoulLookup(sourceRows);
   const dedupedRows = dedupePlayerProfileRows(sourceRows);
   const seasonRows = fillPlayerProfileReboundSplitsFromKnownRows(dedupedRows
@@ -14698,10 +14849,9 @@ async function getPlayerProfileRows(sourceRow, datasetId = "", options = {}) {
   const baseRows = buildPlayerProfileSourceRows(sourceRow, context, []);
   let playerCareerRows = [];
   const requestedYears = getPlayerProfileAugmentYears(baseRows, context);
-  if (shouldFallbackToPlayerCareerProfileRows(baseRows, context) || requestedYears.length) {
+  if (shouldFallbackToPlayerCareerProfileRows(baseRows, context) || shouldBridgePlayerProfileFromCareer(baseRows, context) || requestedYears.length) {
     try {
-      const playerCareerDataset = await ensurePlayerCareerProfileSourceLoaded(context.identity, { ...options, requestedYears });
-      playerCareerRows = collectIndexedPlayerProfileRows(playerCareerDataset, context.identity);
+      playerCareerRows = await loadPlayerCareerProfileRows(context.identity, { ...options, requestedYears });
     } catch (error) {
       console.warn("Player/Career profile source failed to load.", error);
     }
@@ -14713,7 +14863,7 @@ async function loadPlayerProfileRowsProgressively(sourceRow, datasetId = "", onU
   const context = await resolvePlayerProfileSourceContext(sourceRow, datasetId);
   const baseRows = buildPlayerProfileSourceRows(sourceRow, context, []);
   const requestedYears = getPlayerProfileAugmentYears(baseRows, context);
-  const needsPlayerCareer = shouldFallbackToPlayerCareerProfileRows(baseRows, context) || requestedYears.length;
+  const needsPlayerCareer = shouldFallbackToPlayerCareerProfileRows(baseRows, context) || shouldBridgePlayerProfileFromCareer(baseRows, context) || requestedYears.length;
   let partialRows = [];
   if (baseRows.length) {
     partialRows = await finalizePlayerProfileRows(baseRows);
@@ -14721,8 +14871,7 @@ async function loadPlayerProfileRowsProgressively(sourceRow, datasetId = "", onU
     if (!needsPlayerCareer) return partialRows;
   }
   try {
-    const playerCareerDataset = await ensurePlayerCareerProfileSourceLoaded(context.identity, { silent: true, requestedYears });
-    const playerCareerRows = collectIndexedPlayerProfileRows(playerCareerDataset, context.identity);
+    const playerCareerRows = await loadPlayerCareerProfileRows(context.identity, { silent: true, requestedYears });
     const fullRows = await finalizePlayerProfileRows(buildPlayerProfileSourceRows(sourceRow, context, playerCareerRows));
     if (typeof onUpdate === "function") onUpdate(fullRows, { complete: true, loadingMore: false });
     return fullRows;
@@ -14847,7 +14996,7 @@ const PLAYER_PROFILE_TOTAL_ALIASES = {
   fta: ["fta"],
 };
 
-const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumnsV5";
+const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumnsV6";
 const PLAYER_PROFILE_COLOR_STORAGE_KEY = "multiExplorerPlayerProfileColorsV2";
 const PLAYER_PROFILE_ROW_MODE_STORAGE_KEY = "multiExplorerPlayerProfileCareerOnlyV1";
 const PLAYER_PROFILE_SORT_STORAGE_KEY = "multiExplorerPlayerProfileSortV1";
@@ -14858,7 +15007,7 @@ const PLAYER_PROFILE_COLUMN_GROUPS = [
   {
     id: "identity",
     label: "Identity",
-    columns: ["season", "competition_level", "league", "team_name"],
+    columns: ["season", "competition_level", "league", "team_name", "height_in", "weight_lb", "dob", "wingspan"],
   },
   {
     id: "totals",
@@ -14897,6 +15046,7 @@ const PLAYER_PROFILE_COLUMN_GROUPS = [
 const PLAYER_PROFILE_ALL_COLUMNS = [...new Set(PLAYER_PROFILE_COLUMN_GROUPS.flatMap((group) => group.columns))];
 const PLAYER_PROFILE_DEFAULT_COLUMNS = [
   ...PLAYER_PROFILE_LOCKED_COLUMNS,
+  "height_in", "weight_lb", "dob", "wingspan",
   "gp", "mpg",
   "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "pf_pg", "stocks_pg",
   "fgm_pg", "fga_pg", "fg_pct",
@@ -14904,11 +15054,16 @@ const PLAYER_PROFILE_DEFAULT_COLUMNS = [
   "three_pm_pg", "three_pa_pg", "three_p_pct",
   "ftm_pg", "fta_pg", "ft_pct",
   "efg_pct", "ts_pct", "ftr", "three_pr", "ast_to",
+  "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40",
   "per", "bpm", "usg_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct",
 ];
 const PLAYER_PROFILE_LABELS = {
   competition_level: "Level",
   team_name: "Team",
+  height_in: "HT",
+  weight_lb: "WT",
+  dob: "DOB",
+  wingspan: "WS",
   pts: "PTS",
   trb: "TRB",
   orb: "ORB",
@@ -15685,7 +15840,14 @@ function sortPlayerProfileRows(rows, sortState, availableColumns = getAvailableP
 }
 
 function renderPlayerProfileModal(root, name, rows, options = {}) {
-  const mergedOptions = { ...(root?._playerProfileOptions || {}), ...options };
+  const previousNameKey = normalizeNameKey(root?._playerProfileName || "");
+  const nextNameKey = normalizeNameKey(name || "");
+  const shouldResetColumns = !previousNameKey || (nextNameKey && previousNameKey !== nextNameKey);
+  const mergedOptions = {
+    ...(root?._playerProfileOptions || {}),
+    ...options,
+    forceDefaultColumns: shouldResetColumns && !options.loadingMore,
+  };
   const displayRows = getPlayerProfileDisplayRows(rows, {
     careerOnly: getPlayerProfileCareerOnlyEnabled(),
     includeSeasonCombined: getPlayerProfileSeasonCombinedEnabled(),
@@ -15707,7 +15869,7 @@ function buildPlayerProfileContentHtml(name, rows, options = {}) {
   const includeSeasonCombined = getPlayerProfileSeasonCombinedEnabled();
   const displayRows = getPlayerProfileDisplayRows(rows, { careerOnly, includeSeasonCombined });
   const columns = getAvailablePlayerProfileColumns(displayRows, { commonOnly });
-  const visibleColumns = getPlayerProfileVisibleColumns(columns);
+  const visibleColumns = getPlayerProfileVisibleColumns(columns, { forceDefault: options.forceDefaultColumns });
   const colorsEnabled = getPlayerProfileColorsEnabled();
   const dataset = getPlayerProfileRenderDataset(rows);
   const profileColorState = { extraSelects: { view_mode: "player", color_mode: "competition" } };
@@ -15798,20 +15960,24 @@ function getPlayerProfileColumnLabel(dataset, column) {
   return PLAYER_PROFILE_LABELS[column] || displayLabel(dataset, column);
 }
 
-function getPlayerProfileVisibleColumns(availableColumns = PLAYER_PROFILE_ALL_COLUMNS) {
+function getPlayerProfileVisibleColumns(availableColumns = PLAYER_PROFILE_ALL_COLUMNS, options = {}) {
   const available = new Set(availableColumns);
   let stored = [];
-  try {
-    const parsed = JSON.parse(localStorage.getItem(PLAYER_PROFILE_STORAGE_KEY) || "[]");
-    if (Array.isArray(parsed)) stored = parsed;
-  } catch (_error) {
-    stored = [];
+  if (!options?.forceDefault) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PLAYER_PROFILE_STORAGE_KEY) || "[]");
+      if (Array.isArray(parsed)) stored = parsed;
+    } catch (_error) {
+      stored = [];
+    }
   }
   const selected = stored.length ? stored : PLAYER_PROFILE_DEFAULT_COLUMNS;
-  return new Set([
+  const visible = new Set([
     ...PLAYER_PROFILE_LOCKED_COLUMNS.filter((column) => available.has(column)),
     ...selected.filter((column) => available.has(column) && PLAYER_PROFILE_ALL_COLUMNS.includes(column)),
   ]);
+  if (options?.forceDefault) savePlayerProfileVisibleColumns(visible);
+  return visible;
 }
 
 function savePlayerProfileVisibleColumns(columns) {
@@ -16770,10 +16936,10 @@ function getDuplicateCompetitionKey(row, datasetId) {
     return normalizeKey(row?.event_group || row?.event_name || row?.event_raw_name || "");
   }
   if (datasetId === "fiba") {
-    return normalizeKey(row?.competition_key || row?.competition_label || row?.league_name || row?.league || "");
+    return normalizeInternationalLeagueAlias(row?.competition_key || row?.competition_label || row?.league_name || row?.league || "");
   }
   if (datasetId === "international") {
-    return normalizeKey(row?.league_name || row?.competition_label || row?.competition_key || row?.league || "");
+    return normalizeInternationalLeagueAlias(row?.league_name || row?.competition_label || row?.competition_key || row?.league || "");
   }
   return "";
 }
@@ -16923,6 +17089,7 @@ function enhanceRowForDataset(row, datasetId) {
   if (datasetId === "fiba") enhanceFibaRow(out);
   if (datasetId === "international") enhanceInternationalRow(out);
   if (datasetId === "nba") enhanceNbaRow(out);
+  applyWingspanLookup(out);
   normalizePercentLikeColumns(out, datasetId);
   out.stat_search_text = buildStatSearchText(out, datasetId);
   return out;
@@ -16972,11 +17139,50 @@ function applyPlayerBioLookup(row) {
   const realgmId = getStatusIdentityId(row) || getStringValue(row.realgm_player_id).trim() || getStringValue(row.source_player_id).trim();
   const entry = realgmId ? { ...(lookup[realgmId] || {}), ...(internationalLookup[realgmId] || {}) } : null;
   if (!entry) return;
-  ["dob", "birthday", "draft_year", "draft_pick", "rookie_year", "height_in", "weight_lb", "nationality", "birth_city"].forEach((field) => {
+  ["dob", "birthday", "draft_year", "draft_pick", "rookie_year", "height_in", "weight_lb", "wingspan", "nationality", "birth_city"].forEach((field) => {
     if (hasMeaningfulFieldValue(row[field])) return;
     if (!shouldApplyBioLookupField(row, entry, field)) return;
     if (hasMeaningfulFieldValue(entry[field])) row[field] = entry[field];
   });
+}
+
+function applyWingspanLookup(row) {
+  if (!row || typeof row !== "object") return;
+  if (Number.isFinite(row.wingspan) && row.wingspan > 0) return;
+  const lookup = typeof window !== "undefined" ? (window.WINGSPAN_LOOKUP || {}) : {};
+  if (!lookup || (!lookup.byNbaId && !lookup.byName)) return;
+  if (!rowHasNbaProfilePath(row)) return;
+  const nbaId = getWingspanNbaId(row);
+  const nameKey = normalizeNameKey(row.player_name || row.player || row.nba_name || row.name);
+  const entry = (nbaId && lookup.byNbaId?.[nbaId]) || (nameKey && lookup.byName?.[nameKey]) || null;
+  const wingspan = Number(entry?.wingspan);
+  if (Number.isFinite(wingspan) && wingspan > 0) row.wingspan = roundNumber(wingspan, 2);
+}
+
+function getWingspanNbaId(row) {
+  const candidates = [row?.nba_id, row?.nba_player_id, row?.player_id, row?.source_player_id];
+  for (const value of candidates) {
+    const text = getStringValue(value).trim();
+    if (/^\d{5,}$/.test(text)) return text;
+  }
+  return "";
+}
+
+function rowHasNbaProfilePath(row) {
+  if (!row) return false;
+  if (row?._statusFlags?.nba === true) return true;
+  if (normalizeProfileLevel(row) === "NBA") return true;
+  const rookieYearText = getStringValue(row.rookie_year).trim();
+  if (/^\d{4}$/.test(rookieYearText)) return true;
+  const nbaIdText = [row.nba_id, row.nba_player_id].map((value) => getStringValue(value).trim()).find((value) => /^\d{5,}$/.test(value));
+  if (nbaIdText) return true;
+  const text = normalizeKey([
+    row.profile_levels,
+    row.profile_career_path,
+    row.career_path,
+    row.source_dataset,
+  ].map((value) => getStringValue(value).trim()).filter(Boolean).join(" "));
+  return /\bnba\b/.test(text);
 }
 
 function shouldApplyBioLookupField(row, entry, field) {
@@ -17299,6 +17505,7 @@ function preparePlayerCareerLoadedRow(row) {
     row.min_per = roundNumber(Math.min(100, (row.mpg / 40) * 100), 1);
   }
   applyPlayerBioLookup(row);
+  applyWingspanLookup(row);
   normalizeDraftPickValue(row);
   if (!getStringValue(row.dob).trim() && getStringValue(row.birthday).trim()) row.dob = row.birthday;
   populateAgeFromDob(row);
@@ -18560,8 +18767,8 @@ function normalizeD1RimScoringMetrics(row) {
   if (!Number.isFinite(row.rim_scoring_efg_pct) && hasEfg && aggFga > 0) row.rim_scoring_efg_pct = roundNumber((weightedEfg / aggFga) * 100, 1);
 
   populateD1CountDisplayModes(row, [
-    "rim_scoring_poss", "rim_scoring_fga", "rim_scoring_fgm",
-    ...D1_RIM_SCORING_COMPONENTS.flatMap((component) => [`${component.prefix}_poss`, `${component.prefix}_fga`, `${component.prefix}_fgm`]),
+    "rim_scoring_poss", "rim_scoring_points", "rim_scoring_fga", "rim_scoring_fgm",
+    ...D1_RIM_SCORING_COMPONENTS.flatMap((component) => [`${component.prefix}_poss`, `${component.prefix}_points`, `${component.prefix}_fga`, `${component.prefix}_fgm`]),
   ]);
 }
 
