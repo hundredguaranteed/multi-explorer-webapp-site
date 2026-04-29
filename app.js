@@ -504,6 +504,80 @@ const D1_DRIVE_COLUMNS = [
   { key: "drive_plus1_pct", label: "Drive +1%", defaultVisible: false },
 ];
 
+const D1_RIM_SCORING_AGG_COLUMNS = [
+  "rim_scoring_freq",
+  "rim_scoring_ppp",
+  "rim_scoring_fg_pct",
+  "rim_scoring_efg_pct",
+  "rim_scoring_poss",
+  "rim_scoring_fga",
+  "rim_scoring_fgm",
+  "rim_scoring_poss_pg",
+  "rim_scoring_fga_pg",
+  "rim_scoring_fgm_pg",
+  "rim_scoring_poss_per40",
+  "rim_scoring_fga_per40",
+  "rim_scoring_fgm_per40",
+];
+const D1_RIM_SCORING_COMPONENTS = [
+  { id: "iso", label: "Iso Rim", prefix: "rim_iso" },
+  { id: "pnr", label: "PnR Rim", prefix: "rim_pnr" },
+  { id: "spotup", label: "SU Rim", prefix: "rim_su" },
+];
+const D1_RIM_SCORING_COMPONENT_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
+  `${component.prefix}_freq`,
+  `${component.prefix}_ppp`,
+  `${component.prefix}_fg_pct`,
+  `${component.prefix}_efg_pct`,
+  `${component.prefix}_poss`,
+  `${component.prefix}_fga`,
+  `${component.prefix}_fgm`,
+  `${component.prefix}_poss_pg`,
+  `${component.prefix}_fga_pg`,
+  `${component.prefix}_fgm_pg`,
+  `${component.prefix}_poss_per40`,
+  `${component.prefix}_fga_per40`,
+  `${component.prefix}_fgm_per40`,
+]);
+const D1_RIM_SCORING_COLUMNS = [
+  ...D1_RIM_SCORING_AGG_COLUMNS,
+  ...D1_RIM_SCORING_COMPONENT_COLUMNS,
+  "rim_iso_tov_pct",
+  "rim_iso_plus1_pct",
+];
+const D1_RIM_SCORING_LABELS = {
+  rim_scoring_freq: "Rim Score Freq",
+  rim_scoring_ppp: "Rim Score PPP",
+  rim_scoring_fg_pct: "Rim Score FG%",
+  rim_scoring_efg_pct: "Rim Score eFG%",
+  rim_scoring_poss: "Rim Score Poss",
+  rim_scoring_fga: "Rim Score FGA",
+  rim_scoring_fgm: "Rim Score FGM",
+  rim_scoring_poss_pg: "Rim Score Poss/G",
+  rim_scoring_fga_pg: "Rim Score FGA/G",
+  rim_scoring_fgm_pg: "Rim Score FGM/G",
+  rim_scoring_poss_per40: "Rim Score Poss/40",
+  rim_scoring_fga_per40: "Rim Score FGA/40",
+  rim_scoring_fgm_per40: "Rim Score FGM/40",
+  rim_iso_tov_pct: "Iso Rim TO%",
+  rim_iso_plus1_pct: "Iso Rim +1%",
+};
+D1_RIM_SCORING_COMPONENTS.forEach((component) => {
+  D1_RIM_SCORING_LABELS[`${component.prefix}_freq`] = `${component.label} Freq`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_ppp`] = `${component.label} PPP`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_fg_pct`] = `${component.label} FG%`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_efg_pct`] = `${component.label} eFG%`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_poss`] = `${component.label} Poss`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_fga`] = `${component.label} FGA`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_fgm`] = `${component.label} FGM`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_poss_pg`] = `${component.label} Poss/G`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_fga_pg`] = `${component.label} FGA/G`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_fgm_pg`] = `${component.label} FGM/G`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_poss_per40`] = `${component.label} Poss/40`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_fga_per40`] = `${component.label} FGA/40`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_fgm_per40`] = `${component.label} FGM/40`;
+});
+
 const D1_RUNNER_COLUMNS = [
   { key: "runner_freq", label: "Runner Freq", defaultVisible: true },
   { key: "runner_ppp", label: "Runner PPP", defaultVisible: true },
@@ -914,6 +988,7 @@ function buildD1Config() {
   D1_DRIVE_COLUMNS.forEach((item) => {
     labels[item.key] = item.label;
   });
+  Object.assign(labels, D1_RIM_SCORING_LABELS);
   D1_RUNNER_COLUMNS.forEach((item) => {
     labels[item.key] = item.label;
   });
@@ -948,6 +1023,24 @@ function buildD1Config() {
       columns: D1_DRIVE_COLUMNS.map((item) => item.key),
       defaultColumns: D1_DRIVE_COLUMNS.filter((item) => item.defaultVisible).map((item) => item.key),
       unitModeKind: "playtype",
+    },
+    {
+      id: "rim_scoring",
+      label: "Rim Scoring",
+      groupClass: "rim_scoring",
+      columns: D1_RIM_SCORING_COLUMNS,
+      defaultColumns: ["rim_scoring_freq", "rim_scoring_ppp", "rim_scoring_fg_pct", "rim_iso_freq", "rim_pnr_freq", "rim_su_freq"],
+      defaultUnitMode: "together",
+      unitModes: [
+        { id: "together", label: "Together", columns: D1_RIM_SCORING_AGG_COLUMNS, defaultColumns: ["rim_scoring_freq", "rim_scoring_ppp", "rim_scoring_fg_pct", "rim_scoring_poss"] },
+        ...D1_RIM_SCORING_COMPONENTS.map((component) => ({
+          id: component.id,
+          label: component.label,
+          columns: D1_RIM_SCORING_COLUMNS.filter((column) => column.startsWith(`${component.prefix}_`)),
+          defaultColumns: [`${component.prefix}_freq`, `${component.prefix}_ppp`, `${component.prefix}_fg_pct`, `${component.prefix}_poss`],
+        })),
+        { id: "all", label: "All", columns: D1_RIM_SCORING_COLUMNS },
+      ],
     },
     {
       id: "runner",
@@ -3071,6 +3164,8 @@ function wireGlobalEvents() {
     if (!column || !state.numericFilters[column]) return;
     if (minColumn) state.numericFilters[column].min = target.value;
     if (maxColumn) state.numericFilters[column].max = target.value;
+    scheduleFilterResultsRender(dataset, state, [column]);
+    scheduleUrlStateSync(dataset, state);
   });
 
   elements.loadMoreBtn.addEventListener("click", async () => {
@@ -8128,15 +8223,16 @@ function enrichD1Rows(rows) {
 
     if (driveMatch?.values) {
       const driveValues = driveMatch.values;
-      const drivePoss = Number(driveValues[driveIndex.Poss]);
-      const drivePoints = Number(driveValues[driveIndex.Points]);
-      const driveTov = Number(driveValues[driveIndex.TO]);
-      const driveFta = Number(driveValues[driveIndex.FTA]);
-      const driveFgm = Number(driveValues[driveIndex.FGM]);
-      const driveFga = Number(driveValues[driveIndex.FGA]);
-      const driveTwoPm = Number(driveValues[driveIndex["2FGM"]]);
-      const driveTwoPa = Number(driveValues[driveIndex["2FGA"]]);
-      const drivePlus1 = Number(driveValues[driveIndex["+1"]]);
+      const driveMetric = (name) => finiteSourceNumber(driveValues[driveIndex[name]]);
+      const drivePoss = driveMetric("Poss");
+      const drivePoints = driveMetric("Points");
+      const driveTov = driveMetric("TO");
+      const driveFta = driveMetric("FTA");
+      const driveFgm = driveMetric("FGM");
+      const driveFga = driveMetric("FGA");
+      const driveTwoPm = driveMetric("2FGM");
+      const driveTwoPa = driveMetric("2FGA");
+      const drivePlus1 = driveMetric("+1");
       const totalPoss = firstFinite(row.total_poss, rawMatch?.poss, Number.NaN);
       if (Number.isFinite(drivePoints)) row.drive_points = drivePoints;
       if (Number.isFinite(driveTov)) row.drive_tov = driveTov;
@@ -8146,7 +8242,7 @@ function enrichD1Rows(rows) {
       if (Number.isFinite(drivePlus1)) row.drive_plus1 = drivePlus1;
       if (Number.isFinite(drivePoss) && Number.isFinite(totalPoss) && totalPoss > 0) {
         row.drive_freq = roundNumber((drivePoss / totalPoss) * 100, 1);
-        const transitionPoss = firstFinite(row.transition_poss, Number.isFinite(row.transition_freq) ? (totalPoss * row.transition_freq) / 100 : Number.NaN, 0);
+        const transitionPoss = Number.isFinite(row.transition_freq) ? (totalPoss * row.transition_freq) / 100 : firstFinite(row.transition_poss, Number.NaN);
         const halfcourtPoss = totalPoss - transitionPoss;
         if (halfcourtPoss > 0) row.hc_drive_freq = roundNumber((drivePoss / halfcourtPoss) * 100, 1);
       }
@@ -8170,6 +8266,7 @@ function enrichD1Rows(rows) {
     const coachName = getD1CoachName(row.season, rawMatch?.team || row.team_full || row.team_name, coachDict);
     if (coachName) row.coach = coachName;
     normalizeD1DriveMetrics(row);
+    normalizeD1RimScoringMetrics(row);
     refreshDerivedBiography(row);
   });
   repairD1SplitAliasRows(rows);
@@ -9058,6 +9155,12 @@ function assignD1RawMetric(row, values, baseIndex, metricIndex, target) {
 function assignIfFinite(row, target, value) {
   const numeric = Number(value);
   if (Number.isFinite(numeric)) row[target] = numeric;
+}
+
+function finiteSourceNumber(value) {
+  if (value == null || value === "") return Number.NaN;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : Number.NaN;
 }
 
 function assignD1AdvShotProfile(row, advValues, advIndex) {
@@ -12240,6 +12343,13 @@ function getGrassrootsCareerWeight(row) {
 function normalizePhysicalMeasurementField(row, field) {
   if (!row || !field) return;
   const rawValue = row[field];
+  if (/^(height_in|inches)$/i.test(field) && typeof rawValue === "string") {
+    const parsedHeight = parseHeightToInches(rawValue);
+    if (Number.isFinite(parsedHeight) && parsedHeight > 0) {
+      row[field] = parsedHeight;
+      return;
+    }
+  }
   const numeric = typeof rawValue === "number"
     ? rawValue
     : (getStringValue(rawValue).trim() === "" ? Number.NaN : Number(rawValue));
@@ -16367,10 +16477,10 @@ function colorFromPercentile(pct) {
   }
   if (clamped < 0.45) {
     const t = smoothstep(Math.pow((0.45 - clamped) / 0.45, 1.15));
-    return interpolateColorStops(["#fff7f3", "#f5d6ca", "#e89b81", "#cd593d", "#911f14"], t);
+    return interpolateColorStops(["#fff7f3", "#f8ddd4", "#efb8a8", "#dc856f", "#bd5945"], t);
   }
   const t = smoothstep(Math.pow((clamped - 0.55) / 0.45, 1.15));
-  return interpolateColorStops(["#f8fcf9", "#e7f3e9", "#c7e3cc", "#86c192", "#2f7d57"], t);
+  return interpolateColorStops(["#f8fcf9", "#e5f2e8", "#c8e0cd", "#9bc8a4", "#68a977"], t);
 }
 
 function subtlePercentileGradient(value) {
@@ -16412,14 +16522,7 @@ function hexToRgb(hex) {
 }
 
 function getReadableTextColor(r, g, b) {
-  const channel = (value) => {
-    const srgb = Math.min(1, Math.max(0, value / 255));
-    return srgb <= 0.03928 ? srgb / 12.92 : Math.pow((srgb + 0.055) / 1.055, 2.4);
-  };
-  const luminance = (0.2126 * channel(r)) + (0.7152 * channel(g)) + (0.0722 * channel(b));
-  const contrastWithBlack = (luminance + 0.05) / 0.05;
-  const contrastWithWhite = 1.05 / (luminance + 0.05);
-  return contrastWithBlack >= contrastWithWhite ? "#111111" : "#ffffff";
+  return "#111111";
 }
 
 function updateSummary(dataset, state, filtered) {
@@ -17074,6 +17177,7 @@ function enhanceD1Row(row) {
     row.halfcourt_freq = roundNumber((row.halfcourt_poss / row.total_poss) * 100, 1);
   }
   normalizeD1DriveMetrics(row);
+  normalizeD1RimScoringMetrics(row);
   normalizeD1RunnerMetrics(row);
   D1_TRUE_PLAYTYPE_IDS.forEach((id) => populatePrefixedTsPct(row, id));
   populatePrefixedTsPct(row, "halfcourt");
@@ -18349,11 +18453,10 @@ function normalizeD1DriveMetrics(row) {
   const totalPoss = firstPositiveFinite(row.total_poss, estimatedPossessions(row), Number.NaN);
   const driveGpColumns = ["drive_poss", "drive_fga", "drive_fta", "drive_two_pa"];
   if (Number.isFinite(row.transition_freq)) row.transition_freq = roundNumber(clampPercentValue(row.transition_freq), 1);
-  let transitionPoss = firstFinite(row.transition_poss, Number.NaN);
-  if (!Number.isFinite(transitionPoss) && Number.isFinite(totalPoss) && Number.isFinite(row.transition_freq)) {
-    transitionPoss = (totalPoss * clampPercentValue(row.transition_freq)) / 100;
-    row.transition_poss = roundNumber(transitionPoss, 1);
-  }
+  let transitionPoss = Number.isFinite(totalPoss) && Number.isFinite(row.transition_freq)
+    ? (totalPoss * clampPercentValue(row.transition_freq)) / 100
+    : firstFinite(row.transition_poss, Number.NaN);
+  if (!Number.isFinite(row.transition_poss) && Number.isFinite(transitionPoss)) row.transition_poss = roundNumber(transitionPoss, 1);
   let halfcourtPoss = firstFinite(row.halfcourt_poss, Number.NaN);
   if (!Number.isFinite(halfcourtPoss) && Number.isFinite(totalPoss)) {
     halfcourtPoss = Math.max(0, totalPoss - (Number.isFinite(transitionPoss) ? transitionPoss : 0));
@@ -18365,12 +18468,18 @@ function normalizeD1DriveMetrics(row) {
   } else if (Number.isFinite(row.drive_freq)) {
     row.drive_freq = roundNumber(clampPercentValue(row.drive_freq), 1);
   }
-  if (Number.isFinite(drivePoss) && Number.isFinite(halfcourtPoss) && halfcourtPoss > 0) {
-    row.hc_drive_freq = roundNumber(clampPercentValue((drivePoss / halfcourtPoss) * 100), 1);
+  const halfcourtSeasonPoss = Number.isFinite(totalPoss)
+    ? Math.max(0, totalPoss - (Number.isFinite(transitionPoss) ? transitionPoss : 0))
+    : halfcourtPoss;
+  if (Number.isFinite(drivePoss) && Number.isFinite(halfcourtSeasonPoss) && halfcourtSeasonPoss > 0) {
+    row.hc_drive_freq = roundNumber(clampPercentValue((drivePoss / halfcourtSeasonPoss) * 100), 1);
   } else if (Number.isFinite(row.hc_drive_freq)) {
     row.hc_drive_freq = roundNumber(clampPercentValue(row.hc_drive_freq), 1);
   } else if (Number.isFinite(row.drive_freq)) {
     row.hc_drive_freq = row.drive_freq;
+  }
+  if (Number.isFinite(row.drive_freq) && Number.isFinite(row.transition_freq)) {
+    row.drive_plus_trans_freq = roundNumber(clampPercentValue(row.drive_freq + row.transition_freq), 1);
   }
   if (!Number.isFinite(row.drive_ppp) && Number.isFinite(row.drive_points) && Number.isFinite(drivePoss) && drivePoss > 0) {
     row.drive_ppp = roundNumber(row.drive_points / drivePoss, 3);
@@ -18385,6 +18494,75 @@ function normalizeD1DriveMetrics(row) {
   if (!Number.isFinite(row.drive_ftr)) row.drive_ftr = ratioIfPossible(row.drive_fta, row.drive_fga);
   if (!Number.isFinite(row.drive_plus1_pct)) row.drive_plus1_pct = percentOfPossessions(row.drive_plus1, drivePoss);
   populateD1CountDisplayModes(row, driveGpColumns);
+}
+
+function normalizeD1RimScoringMetrics(row) {
+  if (!row || row._careerAggregate) return;
+  const totalPoss = firstPositiveFinite(row.total_poss, estimatedPossessions(row), Number.NaN);
+  let aggPoss = 0;
+  let aggPoints = 0;
+  let aggFga = 0;
+  let aggFgm = 0;
+  let weightedEfg = 0;
+  let hasPoss = false;
+  let hasPoints = false;
+  let hasFga = false;
+  let hasFgm = false;
+  let hasEfg = false;
+
+  D1_RIM_SCORING_COMPONENTS.forEach((component) => {
+    const prefix = component.prefix;
+    const poss = firstFinite(row[`${prefix}_poss`], Number.NaN);
+    const points = firstFinite(row[`${prefix}_points`], Number.NaN);
+    const fga = firstFinite(row[`${prefix}_fga`], Number.NaN);
+    const fgm = firstFinite(row[`${prefix}_fgm`], Number.NaN);
+    const efg = firstFinite(row[`${prefix}_efg_pct`], Number.NaN);
+    if (Number.isFinite(poss) && Number.isFinite(totalPoss) && totalPoss > 0) {
+      row[`${prefix}_freq`] = roundNumber(clampPercentValue((poss / totalPoss) * 100), 1);
+    }
+    if (!Number.isFinite(row[`${prefix}_ppp`]) && Number.isFinite(points) && Number.isFinite(poss) && poss > 0) {
+      row[`${prefix}_ppp`] = roundNumber(points / poss, 3);
+    }
+    if (!Number.isFinite(row[`${prefix}_fg_pct`])) row[`${prefix}_fg_pct`] = percentIfPossible(fgm, fga);
+    if (Number.isFinite(poss)) {
+      aggPoss += poss;
+      hasPoss = true;
+    }
+    if (Number.isFinite(points)) {
+      aggPoints += points;
+      hasPoints = true;
+    }
+    if (Number.isFinite(fga)) {
+      aggFga += fga;
+      hasFga = true;
+      if (Number.isFinite(efg)) {
+        weightedEfg += fga * ratioValueFromMaybePercent(efg);
+        hasEfg = true;
+      }
+    }
+    if (Number.isFinite(fgm)) {
+      aggFgm += fgm;
+      hasFgm = true;
+    }
+  });
+
+  if (!Number.isFinite(row.rim_scoring_poss) && hasPoss) row.rim_scoring_poss = roundNumber(aggPoss, 3);
+  if (!Number.isFinite(row.rim_scoring_points) && hasPoints) row.rim_scoring_points = roundNumber(aggPoints, 3);
+  if (!Number.isFinite(row.rim_scoring_fga) && hasFga) row.rim_scoring_fga = roundNumber(aggFga, 3);
+  if (!Number.isFinite(row.rim_scoring_fgm) && hasFgm) row.rim_scoring_fgm = roundNumber(aggFgm, 3);
+  if (Number.isFinite(row.rim_scoring_poss) && Number.isFinite(totalPoss) && totalPoss > 0) {
+    row.rim_scoring_freq = roundNumber(clampPercentValue((row.rim_scoring_poss / totalPoss) * 100), 1);
+  }
+  if (!Number.isFinite(row.rim_scoring_ppp) && Number.isFinite(row.rim_scoring_points) && Number.isFinite(row.rim_scoring_poss) && row.rim_scoring_poss > 0) {
+    row.rim_scoring_ppp = roundNumber(row.rim_scoring_points / row.rim_scoring_poss, 3);
+  }
+  if (!Number.isFinite(row.rim_scoring_fg_pct)) row.rim_scoring_fg_pct = percentIfPossible(row.rim_scoring_fgm, row.rim_scoring_fga);
+  if (!Number.isFinite(row.rim_scoring_efg_pct) && hasEfg && aggFga > 0) row.rim_scoring_efg_pct = roundNumber((weightedEfg / aggFga) * 100, 1);
+
+  populateD1CountDisplayModes(row, [
+    "rim_scoring_poss", "rim_scoring_fga", "rim_scoring_fgm",
+    ...D1_RIM_SCORING_COMPONENTS.flatMap((component) => [`${component.prefix}_poss`, `${component.prefix}_fga`, `${component.prefix}_fgm`]),
+  ]);
 }
 
 function normalizeD1RunnerMetrics(row) {
