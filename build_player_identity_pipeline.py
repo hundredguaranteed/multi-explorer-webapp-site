@@ -3561,6 +3561,8 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
     team_name = clean_text(row.get("_team_name"))
     season_label = canonical_season_label(row.get("season"))
     realgm_overlay = build_realgm_overlay_for_site_row(dataset_id, row, profile)
+    grassroots_missing_fta = dataset_id == "grassroots" and first_number(row.get("fta")) is None
+    grassroots_missing_ftr = dataset_id == "grassroots" and not clean_text(row.get("ftr")) and not clean_text(row.get("fta_rate"))
     ftr_value = first_non_blank(row.get("ftr"), row.get("fta_rate"))
     three_pr_value = first_non_blank(row.get("three_pr"), row.get("tpa_rate"))
     out = {
@@ -3613,18 +3615,18 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         "two_pa": first_number(row.get("two_pa"), row.get("2pa"), row.get("two_p_att"), realgm_overlay.get("two_pa")),
         "three_pm": first_number(row.get("three_pm"), row.get("3pm"), row.get("tpm"), row.get("three_p_made"), realgm_overlay.get("three_pm")),
         "three_pa": first_number(row.get("three_pa"), row.get("3pa"), row.get("tpa"), row.get("three_p_att"), realgm_overlay.get("three_pa")),
-        "ftm": first_number(row.get("ftm"), realgm_overlay.get("ftm")),
-        "fta": first_number(row.get("fta"), realgm_overlay.get("fta")),
+        "ftm": first_number(row.get("ftm"), None if dataset_id == "grassroots" else realgm_overlay.get("ftm")),
+        "fta": first_number(row.get("fta"), None if dataset_id == "grassroots" else realgm_overlay.get("fta")),
         "fga_75": first_number(row.get("fga_75")),
         "fta_75": first_number(row.get("fta_75")),
         "fg3a_75": first_number(row.get("fg3a_75")),
         "fg_pct": first_non_blank(normalize_site_percent_value(dataset_id, "fg_pct", row.get("fg_pct")), realgm_overlay.get("fg_pct")),
         "two_p_pct": first_non_blank(normalize_site_percent_value(dataset_id, "two_p_pct", first_non_blank(row.get("two_p_pct"), row.get("2p_pct"), row.get("fg2pct"))), realgm_overlay.get("two_p_pct")),
         "three_p_pct": first_non_blank(normalize_site_percent_value(dataset_id, "three_p_pct", first_non_blank(row.get("3p_pct"), row.get("tp_pct"), row.get("fg3pct"))), realgm_overlay.get("three_p_pct")),
-        "ft_pct": first_non_blank(normalize_site_percent_value(dataset_id, "ft_pct", first_non_blank(row.get("ft_pct"), row.get("ftpct"))), realgm_overlay.get("ft_pct")),
+        "ft_pct": first_non_blank(normalize_site_percent_value(dataset_id, "ft_pct", first_non_blank(row.get("ft_pct"), row.get("ftpct"))), "" if dataset_id == "grassroots" else realgm_overlay.get("ft_pct")),
         "efg_pct": first_non_blank(normalize_site_percent_value(dataset_id, "efg_pct", first_non_blank(row.get("efg_pct"), row.get("efg"))), realgm_overlay.get("efg_pct")),
         "ts_pct": first_non_blank(normalize_site_percent_value(dataset_id, "ts_pct", first_non_blank(row.get("ts_pct"), row.get("tspct"))), realgm_overlay.get("ts_pct")),
-        "ftr": first_non_blank(normalize_ratio_field(ftr_value), realgm_overlay.get("ftr")),
+        "ftr": first_non_blank(normalize_ratio_field(ftr_value), "" if dataset_id == "grassroots" else realgm_overlay.get("ftr")),
         "three_pr": first_non_blank(normalize_ratio_field(three_pr_value), realgm_overlay.get("three_pr")),
         "rim_made": first_number(row.get("rim_made")),
         "rim_att": first_number(row.get("rim_att")),
@@ -3661,7 +3663,16 @@ def standardize_site_row_for_player_career(dataset_id: str, row: dict[str, objec
         apply_player_career_defensive_rate_derivations(out)
     fill_per_game_and_per40(out)
     fill_player_career_impact_metrics(out)
+    if grassroots_missing_fta:
+        clear_grassroots_missing_free_throw_fields(out, clear_ftr=grassroots_missing_ftr)
     return out
+
+
+def clear_grassroots_missing_free_throw_fields(row: dict[str, object], clear_ftr: bool = True) -> None:
+    for column in ("ftm", "fta", "ftm_pg", "fta_pg", "ftm_per40", "fta_per40", "ft_pct", "ts_pct"):
+        row[column] = ""
+    if clear_ftr:
+        row["ftr"] = ""
 
 
 GRASSROOTS_PLAYER_CAREER_SUM_COLUMNS = (
@@ -3715,6 +3726,8 @@ def aggregate_grassroots_player_career_rows(rows: list[dict[str, object]]) -> li
 
     aggregated: list[dict[str, object]] = []
     for group_rows in grouped.values():
+        group_missing_fta = all(first_number(row.get("fta")) is None for row in group_rows)
+        group_missing_ftr = all(not clean_text(row.get("ftr")) and not clean_text(row.get("fta_rate")) for row in group_rows)
         representative = max(
             group_rows,
             key=lambda row: (
@@ -3755,6 +3768,8 @@ def aggregate_grassroots_player_career_rows(rows: list[dict[str, object]]) -> li
         apply_player_career_shooting_derivations(out)
         fill_per_game_and_per40(out)
         fill_player_career_impact_metrics(out)
+        if group_missing_fta:
+            clear_grassroots_missing_free_throw_fields(out, clear_ftr=group_missing_ftr)
         aggregated.append(out)
 
     aggregated.sort(key=lambda row: (normalize_name_key(row.get("player_name")), clean_text(row.get("season")), normalize_key(row.get("team_name"))))
@@ -4945,6 +4960,13 @@ def apply_player_career_shooting_derivations(row: dict[str, object]) -> None:
     if three_pm is None and three_pa == 0:
         three_pm = 0.0
     fgm = first_number(row.get("fgm"), add_numbers(two_pm, three_pm))
+    points_value = first_number(row.get("pts"))
+    ftm_value = first_number(row.get("ftm"))
+    if three_pm is None and fgm is not None and points_value is not None and ftm_value is not None:
+        inferred_three_pm = points_value - (2.0 * fgm) - ftm_value
+        if math.isfinite(inferred_three_pm) and inferred_three_pm >= -0.01:
+            if three_pa is None or inferred_three_pm <= (three_pa + 0.01):
+                three_pm = max(0.0, inferred_three_pm)
     if three_pm is None and fgm is not None and two_pm is not None:
         three_pm = max(0.0, fgm - two_pm)
     if two_pm is None and fgm is not None and three_pm is not None:
@@ -4998,7 +5020,6 @@ def apply_player_career_shooting_derivations(row: dict[str, object]) -> None:
     if first_number(row.get("fta")) is None and first_number(row.get("ftm")) == 0 and ft_pct_ratio is None:
         row["fta"] = 0
 
-    points_value = first_number(row.get("pts"))
     if first_number(row.get("ftm")) is None and points_value is not None and two_pm is not None and three_pm is not None:
         row["ftm"] = round_number(max(0.0, points_value - (two_pm * 2.0) - (three_pm * 3.0)), 3)
     if first_number(row.get("fta")) is None and first_number(row.get("ftm")) == 0:

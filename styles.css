@@ -749,10 +749,20 @@ a,
   line-height: 1.15;
 }
 
+.player-profile-bio {
+  margin-bottom: 3px;
+  color: var(--text);
+  font-weight: 600;
+}
+
 .player-profile-header div,
 .player-profile-loading {
   font-size: 12px;
   color: var(--muted);
+}
+
+.player-profile-header .player-profile-bio {
+  color: var(--text);
 }
 
 .player-profile-layout {

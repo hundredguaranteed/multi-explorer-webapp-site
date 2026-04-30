@@ -15,6 +15,7 @@ const GRASSROOTS_SEARCH_PREFETCH_MIN_TOKEN_LENGTH = 5;
 const GRASSROOTS_SEARCH_PREFETCH_MAX_SINGLE_TOKEN_YEARS = 12;
 const GRASSROOTS_SEARCH_PREFETCH_MAX_PREFIX_KEYS = 80;
 const GRASSROOTS_SEARCH_PREFETCH_MAX_PREFIX_YEARS = 16;
+const NBA_COMPANION_INITIAL_D1_YEARS = 4;
 const HOME_ID = "home";
 const PROFILE_ROUTE_ID = "profile";
 const HOME_PAGES = [
@@ -43,7 +44,7 @@ const WINGSPAN_LOOKUP_SCRIPT = "data/vendor/wingspan_lookup.js";
 const PLAYER_PROFILE_YEAR_INDEX_SCRIPT = "data/vendor/player_profile_year_index.js";
 const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_buckets_manifest.js";
 const D1_FOUL_LOOKUP_SCRIPT = "data/vendor/d1_foul_lookup.js";
-const APP_BUILD_VERSION = "20260428-performance-v80";
+const APP_BUILD_VERSION = "20260430-playtypes-v81";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -440,9 +441,14 @@ const D1_PLAYTYPE_DEFS = [
 
 const D1_PLAYTYPE_METRICS = [
   { source: "Poss", suffix: "poss", label: "Poss", defaultVisible: false },
+  { source: "Pts", suffix: "points", label: "PTS", defaultVisible: false },
+  { source: "", suffix: "points_pg", label: "PTS/G", defaultVisible: false },
+  { source: "", suffix: "points_per40", label: "PTS/40", defaultVisible: false },
   { source: "%Time", suffix: "freq", label: "Freq", defaultVisible: true },
   { source: "PPP", suffix: "ppp", label: "PPP", defaultVisible: true },
   { source: "FG Att", suffix: "fg_att", label: "FGA", defaultVisible: false },
+  { source: "FG Made", suffix: "fg_made", label: "FGM", defaultVisible: false },
+  { source: "FG Miss", suffix: "fg_miss", label: "FG Miss", defaultVisible: false },
   { source: "", suffix: "fg_att_pg", label: "FGA/G", defaultVisible: false },
   { source: "", suffix: "fg_att_per40", label: "FGA/40", defaultVisible: false },
   { source: "eFG%", suffix: "efg_pct", label: "eFG%", defaultVisible: false },
@@ -453,10 +459,14 @@ const D1_PLAYTYPE_METRICS = [
   { source: "", suffix: "fta_pg", label: "FTA/G", defaultVisible: false },
   { source: "", suffix: "fta_per40", label: "FTA/40", defaultVisible: false },
   { source: "2 FG Att", suffix: "two_fg_att", label: "2PA", defaultVisible: false },
+  { source: "2 FG Made", suffix: "two_fg_made", label: "2PM", defaultVisible: false },
+  { source: "2 FG Miss", suffix: "two_fg_miss", label: "2P Miss", defaultVisible: false },
   { source: "", suffix: "two_fg_att_pg", label: "2PA/G", defaultVisible: false },
   { source: "", suffix: "two_fg_att_per40", label: "2PA/40", defaultVisible: false },
   { source: "2 FG%", suffix: "two_fg_pct", label: "2P%", defaultVisible: false },
   { source: "3FG Att", suffix: "three_fg_att", label: "3PA", defaultVisible: false },
+  { source: "3 FG Made", suffix: "three_fg_made", label: "3PM", defaultVisible: false },
+  { source: "3 FG Miss", suffix: "three_fg_miss", label: "3P Miss", defaultVisible: false },
   { source: "", suffix: "three_fg_att_pg", label: "3PA/G", defaultVisible: false },
   { source: "", suffix: "three_fg_att_per40", label: "3PA/40", defaultVisible: false },
   { source: "3 FG%", suffix: "three_fg_pct", label: "3P%", defaultVisible: false },
@@ -466,6 +476,36 @@ const D1_TRUE_PLAYTYPE_IDS = ["iso", "pnr_bh", "post_up", "pnr_roll", "spot_up",
 const D1_HALFCOURT_PLAYTYPE_IDS = D1_TRUE_PLAYTYPE_IDS.filter((id) => id !== "transition");
 const D1_PLAYTYPE_FAMILY_PREFIXES = [...D1_TRUE_PLAYTYPE_IDS, "halfcourt", "creation", "shooting", "assisted_fin", "unassisted_fin", "transition", "runner", "drive"];
 const PLAYTYPE_PERCENTILE_FREQ_FLOOR = 1;
+
+const NBA_PLAYTYPE_DEFS = [
+  ...D1_PLAYTYPE_DEFS,
+  { id: "transition", label: "Transition", short: "Trans" },
+  { id: "misc", label: "Misc", short: "Misc" },
+];
+
+const NBA_PLAYTYPE_METRICS = [
+  { suffix: "percentile", label: "Pctl", defaultVisible: false },
+  { suffix: "freq", label: "Freq", defaultVisible: true },
+  { suffix: "ppp", label: "PPP", defaultVisible: true },
+  { suffix: "fg_pct", label: "FG%", defaultVisible: false },
+  { suffix: "efg_pct", label: "eFG%", defaultVisible: false },
+  { suffix: "ft_poss_pct", label: "FT Poss%", defaultVisible: true },
+  { suffix: "tov_pct", label: "TO%", defaultVisible: true },
+  { suffix: "sf_pct", label: "SF%", defaultVisible: false },
+  { suffix: "plus1_pct", label: "+1%", defaultVisible: false },
+  { suffix: "score_pct", label: "Score%", defaultVisible: false },
+  { suffix: "poss", label: "Poss", defaultVisible: false },
+  { suffix: "points", label: "PTS", defaultVisible: false },
+  { suffix: "fg_made", label: "FGM", defaultVisible: false },
+  { suffix: "fga", label: "FGA", defaultVisible: false },
+  { suffix: "fg_miss", label: "FG Miss", defaultVisible: false },
+  { suffix: "poss_pg", label: "Poss/G", defaultVisible: false },
+  { suffix: "points_pg", label: "PTS/G", defaultVisible: false },
+  { suffix: "fga_pg", label: "FGA/G", defaultVisible: false },
+  { suffix: "poss_per40", label: "Poss/40", defaultVisible: false },
+  { suffix: "points_per40", label: "PTS/40", defaultVisible: false },
+  { suffix: "fga_per40", label: "FGA/40", defaultVisible: false },
+];
 
 const D1_SUMMARY_COLUMNS = [
   { key: "halfcourt_ppp", label: "HC PPP", defaultVisible: true },
@@ -510,56 +550,84 @@ const D1_RIM_SCORING_COMPONENTS = [
   { id: "pnr", label: "PnR Rim", prefix: "rim_pnr" },
   { id: "spotup", label: "SU Rim", prefix: "rim_su" },
 ];
+const D1_RIM_SCORING_AGG_RATE_COLUMNS = [
+  "rim_scoring_freq",
+  "rim_scoring_ppp",
+  "rim_scoring_fg_pct",
+  "rim_scoring_efg_pct",
+];
+const D1_RIM_SCORING_AGG_TOTAL_COLUMNS = [
+  "rim_scoring_poss",
+  "rim_scoring_points",
+  "rim_scoring_fga",
+  "rim_scoring_fgm",
+];
+const D1_RIM_SCORING_AGG_PER_GAME_COLUMNS = [
+  "rim_scoring_poss_pg",
+  "rim_scoring_points_pg",
+  "rim_scoring_fga_pg",
+  "rim_scoring_fgm_pg",
+];
+const D1_RIM_SCORING_AGG_PER40_COLUMNS = [
+  "rim_scoring_poss_per40",
+  "rim_scoring_points_per40",
+  "rim_scoring_fga_per40",
+  "rim_scoring_fgm_per40",
+];
 const D1_RIM_SCORING_COMPONENT_RATE_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
   `${component.prefix}_freq`,
   `${component.prefix}_ppp`,
   `${component.prefix}_fg_pct`,
   `${component.prefix}_efg_pct`,
+  `${component.prefix}_ftr`,
+  `${component.prefix}_tov_pct`,
+  `${component.prefix}_plus1_pct`,
 ]);
 const D1_RIM_SCORING_COMPONENT_TOTAL_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
   `${component.prefix}_poss`,
   `${component.prefix}_points`,
   `${component.prefix}_fga`,
   `${component.prefix}_fgm`,
+  `${component.prefix}_fta`,
+  `${component.prefix}_tov`,
+  `${component.prefix}_plus1`,
 ]);
 const D1_RIM_SCORING_COMPONENT_PER_GAME_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
   `${component.prefix}_poss_pg`,
   `${component.prefix}_points_pg`,
   `${component.prefix}_fga_pg`,
   `${component.prefix}_fgm_pg`,
+  `${component.prefix}_fta_pg`,
 ]);
 const D1_RIM_SCORING_COMPONENT_PER40_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
   `${component.prefix}_poss_per40`,
   `${component.prefix}_points_per40`,
   `${component.prefix}_fga_per40`,
   `${component.prefix}_fgm_per40`,
+  `${component.prefix}_fta_per40`,
 ]);
 const D1_RIM_SCORING_AGG_COLUMNS = [
-  "rim_scoring_freq",
-  "rim_scoring_ppp",
-  "rim_scoring_fg_pct",
-  "rim_scoring_efg_pct",
-  "rim_scoring_poss",
-  "rim_scoring_points",
-  "rim_scoring_fga",
-  "rim_scoring_fgm",
-  "rim_scoring_poss_pg",
-  "rim_scoring_points_pg",
-  "rim_scoring_fga_pg",
-  "rim_scoring_fgm_pg",
-  "rim_scoring_poss_per40",
-  "rim_scoring_points_per40",
-  "rim_scoring_fga_per40",
-  "rim_scoring_fgm_per40",
+  ...D1_RIM_SCORING_AGG_RATE_COLUMNS,
+  ...D1_RIM_SCORING_AGG_TOTAL_COLUMNS,
+  ...D1_RIM_SCORING_AGG_PER_GAME_COLUMNS,
+  ...D1_RIM_SCORING_AGG_PER40_COLUMNS,
 ];
 const D1_RIM_SCORING_RATE_COLUMNS = [
+  ...D1_RIM_SCORING_AGG_RATE_COLUMNS,
   ...D1_RIM_SCORING_COMPONENT_RATE_COLUMNS,
-  "rim_iso_tov_pct",
-  "rim_iso_plus1_pct",
 ];
-const D1_RIM_SCORING_TOTAL_COLUMNS = D1_RIM_SCORING_COMPONENT_TOTAL_COLUMNS;
-const D1_RIM_SCORING_PER_GAME_COLUMNS = D1_RIM_SCORING_COMPONENT_PER_GAME_COLUMNS;
-const D1_RIM_SCORING_PER40_COLUMNS = D1_RIM_SCORING_COMPONENT_PER40_COLUMNS;
+const D1_RIM_SCORING_TOTAL_COLUMNS = [
+  ...D1_RIM_SCORING_AGG_TOTAL_COLUMNS,
+  ...D1_RIM_SCORING_COMPONENT_TOTAL_COLUMNS,
+];
+const D1_RIM_SCORING_PER_GAME_COLUMNS = [
+  ...D1_RIM_SCORING_AGG_PER_GAME_COLUMNS,
+  ...D1_RIM_SCORING_COMPONENT_PER_GAME_COLUMNS,
+];
+const D1_RIM_SCORING_PER40_COLUMNS = [
+  ...D1_RIM_SCORING_AGG_PER40_COLUMNS,
+  ...D1_RIM_SCORING_COMPONENT_PER40_COLUMNS,
+];
 const D1_RIM_SCORING_COLUMNS = [...new Set([
   ...D1_RIM_SCORING_AGG_COLUMNS,
   ...D1_RIM_SCORING_RATE_COLUMNS,
@@ -592,18 +660,26 @@ D1_RIM_SCORING_COMPONENTS.forEach((component) => {
   D1_RIM_SCORING_LABELS[`${component.prefix}_ppp`] = `${component.label} PPP`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fg_pct`] = `${component.label} FG%`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_efg_pct`] = `${component.label} eFG%`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_ftr`] = `${component.label} FTr`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_tov_pct`] = `${component.label} TO%`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_plus1_pct`] = `${component.label} +1%`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_poss`] = `${component.label} Poss`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_points`] = `${component.label} PTS`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fga`] = `${component.label} FGA`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fgm`] = `${component.label} FGM`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_fta`] = `${component.label} FTA`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_tov`] = `${component.label} TO`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_plus1`] = `${component.label} +1`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_poss_pg`] = `${component.label} Poss/G`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_points_pg`] = `${component.label} PTS/G`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fga_pg`] = `${component.label} FGA/G`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fgm_pg`] = `${component.label} FGM/G`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_fta_pg`] = `${component.label} FTA/G`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_poss_per40`] = `${component.label} Poss/40`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_points_per40`] = `${component.label} PTS/40`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fga_per40`] = `${component.label} FGA/40`;
   D1_RIM_SCORING_LABELS[`${component.prefix}_fgm_per40`] = `${component.label} FGM/40`;
+  D1_RIM_SCORING_LABELS[`${component.prefix}_fta_per40`] = `${component.label} FTA/40`;
 });
 
 const D1_RUNNER_COLUMNS = [
@@ -894,9 +970,14 @@ function getD1DefaultPlaytypeShootSuffix(playtypeId) {
 function getD1TransitionGroup() {
   const metricColumns = [
     { key: "transition_poss", label: "Trans Poss", defaultVisible: false },
+    { key: "transition_points", label: "Trans PTS", defaultVisible: false },
+    { key: "transition_points_pg", label: "Trans PTS/G", defaultVisible: false },
+    { key: "transition_points_per40", label: "Trans PTS/40", defaultVisible: false },
     { key: "transition_freq", label: "Trans Freq", defaultVisible: true },
     { key: "transition_ppp", label: "Trans PPP", defaultVisible: true },
     { key: "transition_fg_att", label: "Trans FGA", defaultVisible: false },
+    { key: "transition_fg_made", label: "Trans FGM", defaultVisible: false },
+    { key: "transition_fg_miss", label: "Trans FG Miss", defaultVisible: false },
     { key: "transition_fg_att_pg", label: "Trans FGA/G", defaultVisible: false },
     { key: "transition_fg_att_per40", label: "Trans FGA/40", defaultVisible: false },
     { key: "transition_efg_pct", label: "Trans eFG%", defaultVisible: true },
@@ -907,10 +988,14 @@ function getD1TransitionGroup() {
     { key: "transition_fta_pg", label: "Trans FTA/G", defaultVisible: false },
     { key: "transition_fta_per40", label: "Trans FTA/40", defaultVisible: false },
     { key: "transition_two_fg_att", label: "Trans 2PA", defaultVisible: false },
+    { key: "transition_two_fg_made", label: "Trans 2PM", defaultVisible: false },
+    { key: "transition_two_fg_miss", label: "Trans 2P Miss", defaultVisible: false },
     { key: "transition_two_fg_att_pg", label: "Trans 2PA/G", defaultVisible: false },
     { key: "transition_two_fg_att_per40", label: "Trans 2PA/40", defaultVisible: false },
     { key: "transition_two_fg_pct", label: "Trans 2P%", defaultVisible: false },
     { key: "transition_three_fg_att", label: "Trans 3PA", defaultVisible: false },
+    { key: "transition_three_fg_made", label: "Trans 3PM", defaultVisible: false },
+    { key: "transition_three_fg_miss", label: "Trans 3P Miss", defaultVisible: false },
     { key: "transition_three_fg_att_pg", label: "Trans 3PA/G", defaultVisible: false },
     { key: "transition_three_fg_att_per40", label: "Trans 3PA/40", defaultVisible: false },
     { key: "transition_three_fg_pct", label: "Trans 3P%", defaultVisible: false },
@@ -926,6 +1011,56 @@ function getD1TransitionGroup() {
     },
     labels: Object.fromEntries(metricColumns.map((item) => [item.key, item.label])),
   };
+}
+
+function buildCollegePlaytypeGroups() {
+  const transitionGroup = getD1TransitionGroup().group;
+  return D1_PLAYTYPE_DEFS.map((playtype) => {
+    const metrics = getD1PlaytypeMetrics(playtype.id);
+    const shootSuffix = getD1DefaultPlaytypeShootSuffix(playtype.id);
+    return {
+      id: playtype.id,
+      label: playtype.label,
+      columns: metrics.map((metric) => `${playtype.id}_${metric.suffix}`),
+      defaultColumns: metrics
+        .filter((metric) => metric.defaultVisible || metric.suffix === shootSuffix)
+        .map((metric) => `${playtype.id}_${metric.suffix}`),
+      unitModeKind: "playtype",
+    };
+  }).concat({ ...transitionGroup });
+}
+
+function buildCollegePlaytypeLabels() {
+  const labels = {};
+  D1_PLAYTYPE_DEFS.forEach((playtype) => {
+    getD1PlaytypeMetrics(playtype.id).forEach((metric) => {
+      labels[`${playtype.id}_${metric.suffix}`] = `${playtype.short} ${metric.label}`;
+    });
+  });
+  Object.assign(labels, getD1TransitionGroup().labels);
+  return labels;
+}
+
+function buildNbaPlaytypeGroups() {
+  return NBA_PLAYTYPE_DEFS.map((playtype) => ({
+    id: playtype.id,
+    label: playtype.label,
+    columns: NBA_PLAYTYPE_METRICS.map((metric) => `${playtype.id}_${metric.suffix}`),
+    defaultColumns: NBA_PLAYTYPE_METRICS
+      .filter((metric) => metric.defaultVisible)
+      .map((metric) => `${playtype.id}_${metric.suffix}`),
+    unitModeKind: "playtype",
+  }));
+}
+
+function buildNbaPlaytypeLabels() {
+  const labels = {};
+  NBA_PLAYTYPE_DEFS.forEach((playtype) => {
+    NBA_PLAYTYPE_METRICS.forEach((metric) => {
+      labels[`${playtype.id}_${metric.suffix}`] = `${playtype.short} ${metric.label}`;
+    });
+  });
+  return labels;
 }
 
 function cloneSingleFilter(filter, override = {}) {
@@ -1058,13 +1193,13 @@ function buildD1Config() {
       label: "Rim Scoring",
       groupClass: "rim_scoring",
       columns: D1_RIM_SCORING_COLUMNS,
-      defaultColumns: ["rim_iso_freq", "rim_pnr_freq", "rim_su_freq"],
+      defaultColumns: ["rim_scoring_freq", "rim_scoring_ppp", "rim_iso_freq", "rim_pnr_freq", "rim_su_freq"],
       defaultUnitMode: "rates",
       unitModes: [
-        { id: "rates", label: "Rates", columns: D1_RIM_SCORING_RATE_COLUMNS, defaultColumns: ["rim_iso_freq", "rim_pnr_freq", "rim_su_freq"] },
-        { id: "totals", label: "Totals", columns: D1_RIM_SCORING_TOTAL_COLUMNS, defaultColumns: ["rim_iso_poss", "rim_pnr_poss", "rim_su_poss"] },
-        { id: "per40", label: "Per 40", columns: D1_RIM_SCORING_PER40_COLUMNS, defaultColumns: ["rim_iso_poss_per40", "rim_pnr_poss_per40", "rim_su_poss_per40"] },
-        { id: "per_game", label: "Per Game", columns: D1_RIM_SCORING_PER_GAME_COLUMNS, defaultColumns: ["rim_iso_poss_pg", "rim_pnr_poss_pg", "rim_su_poss_pg"] },
+        { id: "rates", label: "Rates", columns: D1_RIM_SCORING_RATE_COLUMNS, defaultColumns: ["rim_scoring_freq", "rim_scoring_ppp", "rim_iso_freq", "rim_pnr_freq", "rim_su_freq"] },
+        { id: "totals", label: "Totals", columns: D1_RIM_SCORING_TOTAL_COLUMNS, defaultColumns: ["rim_scoring_poss", "rim_scoring_points", "rim_iso_poss", "rim_pnr_poss", "rim_su_poss"] },
+        { id: "per40", label: "Per 40", columns: D1_RIM_SCORING_PER40_COLUMNS, defaultColumns: ["rim_scoring_poss_per40", "rim_scoring_points_per40", "rim_iso_poss_per40", "rim_pnr_poss_per40", "rim_su_poss_per40"] },
+        { id: "per_game", label: "Per Game", columns: D1_RIM_SCORING_PER_GAME_COLUMNS, defaultColumns: ["rim_scoring_poss_pg", "rim_scoring_points_pg", "rim_iso_poss_pg", "rim_pnr_poss_pg", "rim_su_poss_pg"] },
         { id: "all", label: "All", columns: D1_RIM_SCORING_COLUMNS },
       ],
     },
@@ -1161,6 +1296,35 @@ function buildLowerTierShotProfileGroup() {
   };
 }
 
+const NBA_COMPANION_PLAYTYPE_DEFS = NBA_PLAYTYPE_DEFS.filter((playtype) => playtype.id !== "misc");
+const NBA_COMPANION_PLAYTYPE_METRICS = [
+  { suffix: "freq", label: "Freq" },
+  { suffix: "ppp", label: "PPP" },
+  { suffix: "poss", label: "Poss" },
+];
+const NBA_COMPANION_PLAYTYPE_COLUMNS = NBA_COMPANION_PLAYTYPE_DEFS.flatMap((playtype) => (
+  NBA_COMPANION_PLAYTYPE_METRICS.flatMap((metric) => [
+    `ncaa_${playtype.id}_${metric.suffix}`,
+    `nba_${playtype.id}_${metric.suffix}`,
+  ])
+));
+const NBA_COMPANION_DEFAULT_PLAYTYPE_IDS = new Set(["iso", "pnr_bh", "post_up", "spot_up", "transition"]);
+const NBA_COMPANION_PLAYTYPE_DEFAULT_COLUMNS = NBA_COMPANION_PLAYTYPE_DEFS
+  .filter((playtype) => NBA_COMPANION_DEFAULT_PLAYTYPE_IDS.has(playtype.id))
+  .flatMap((playtype) => [
+  `ncaa_${playtype.id}_ppp`,
+  `nba_${playtype.id}_ppp`,
+  `ncaa_${playtype.id}_freq`,
+  `nba_${playtype.id}_freq`,
+  ]);
+const NBA_COMPANION_PLAYTYPE_LABELS = NBA_COMPANION_PLAYTYPE_DEFS.reduce((labels, playtype) => {
+  NBA_COMPANION_PLAYTYPE_METRICS.forEach((metric) => {
+    labels[`ncaa_${playtype.id}_${metric.suffix}`] = `NCAA ${playtype.short} ${metric.label}`;
+    labels[`nba_${playtype.id}_${metric.suffix}`] = `NBA ${playtype.short} ${metric.label}`;
+  });
+  return labels;
+}, {});
+
 const NBA_COMPANION_GROUPS = [
   {
     id: "summary",
@@ -1179,6 +1343,13 @@ const NBA_COMPANION_GROUPS = [
     label: "Shot Profile",
     columns: ["ncaa_rim_pct", "nba_rim_pct", "ncaa_rim_ast_pct", "nba_rim_ast_pct", "ncaa_mid_pct", "nba_mid_pct", "ncaa_mid_ast_pct", "nba_mid_ast_pct", "ncaa_two_p_pct", "nba_two_p_pct", "ncaa_two_p_ast_pct", "nba_two_p_ast_pct", "ncaa_three_p_pct", "nba_three_p_pct", "ncaa_three_p_ast_pct", "nba_three_p_ast_pct", "ncaa_ft_pct", "nba_ft_pct", "ncaa_ftr", "nba_ftr", "ncaa_three_pr", "nba_three_pr"],
     defaultColumns: ["ncaa_rim_pct", "nba_rim_pct", "ncaa_rim_ast_pct", "nba_rim_ast_pct", "ncaa_two_p_pct", "nba_two_p_pct", "ncaa_two_p_ast_pct", "nba_two_p_ast_pct", "ncaa_three_p_pct", "nba_three_p_pct", "ncaa_three_p_ast_pct", "nba_three_p_ast_pct", "ncaa_ft_pct", "nba_ft_pct", "ncaa_ftr", "nba_ftr", "ncaa_three_pr", "nba_three_pr"],
+  },
+  {
+    id: "playtypes",
+    label: "Playtypes",
+    columns: NBA_COMPANION_PLAYTYPE_COLUMNS,
+    defaultColumns: NBA_COMPANION_PLAYTYPE_DEFAULT_COLUMNS,
+    unitModeKind: "playtype",
   },
 ];
 
@@ -1248,6 +1419,7 @@ const NBA_COMPANION_LABELS = {
   nba_ftr: "NBA FTr",
   ncaa_three_pr: "NCAA 3Pr",
   nba_three_pr: "NBA 3Pr",
+  ...NBA_COMPANION_PLAYTYPE_LABELS,
 };
 
 const NBA_COMPANION_COPY_MAP = [
@@ -1283,6 +1455,9 @@ const NBA_COMPANION_COPY_MAP = [
   ["ncaa_ft_pct", "ft_pct"],
   ["ncaa_ftr", "ftr"],
   ["ncaa_three_pr", "three_pr"],
+  ...NBA_COMPANION_PLAYTYPE_DEFS.flatMap((playtype) => (
+    NBA_COMPANION_PLAYTYPE_METRICS.map((metric) => [`ncaa_${playtype.id}_${metric.suffix}`, `${playtype.id}_${metric.suffix}`])
+  )),
 ];
 
 const NBA_COMPANION_NBA_COPY_MAP = [
@@ -1319,6 +1494,49 @@ const NBA_COMPANION_NBA_COPY_MAP = [
   ["nba_ft_pct", "ftpct"],
   ["nba_ftr", "ftr"],
   ["nba_three_pr", "three_pr"],
+  ...NBA_COMPANION_PLAYTYPE_DEFS.flatMap((playtype) => (
+    NBA_COMPANION_PLAYTYPE_METRICS.map((metric) => [`nba_${playtype.id}_${metric.suffix}`, `${playtype.id}_${metric.suffix}`])
+  )),
+];
+
+const NBA_COMPANION_BASE_COLUMNS = [
+  "rank",
+  "season",
+  "player_name",
+  "player",
+  "player_search_text",
+  "player_aliases",
+  "team_name",
+  "team_full",
+  "team_search_text",
+  "coach",
+  "coach_search_text",
+  "conference",
+  "conference_bucket",
+  "pos",
+  "class_year",
+  "height_in",
+  "weight_lb",
+  "wingspan",
+  "bmi",
+  "age",
+  "dob",
+  "birthday",
+  "draft_year",
+  "draft_pick",
+  "gp",
+  "min",
+  "mpg",
+  "realgm_player_id",
+  "canonical_player_id",
+  "source_player_id",
+  "player_id",
+  "pid",
+  "id",
+  "player_profile_key",
+  "profile_levels",
+  "career_path",
+  "current_nba_status",
 ];
 
 const DEFENSE_RATE_PERCENTILE_COLUMNS = {
@@ -1422,7 +1640,7 @@ function buildPlayerCareerConfig() {
     sortDir: "desc",
     defaultAllYears: false,
     minYear: 1998,
-    minuteFilterDefault: "",
+    minuteFilterDefault: 200,
     demoColumns,
     demoFilterColumns: ["height_in", "weight_lb", "wingspan", "age", "gp", "min", "mpg", "draft_year", "draft_pick"],
     groups: [
@@ -2241,6 +2459,7 @@ const DATASETS = {
       { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "two_pm", "two_pa", "two_p_pct", "3pm", "3pa", "3p_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "three_pa_per100"], defaultColumns: ["fg_pct", "two_p_pct", "3p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "three_pa_per100"] },
       buildLowerTierShotProfileGroup(),
+      ...buildCollegePlaytypeGroups(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "ast_stl_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"] },
       { id: "per_game", label: "Per Game", columns: ["pts_pg", "trb_pg", "ast_pg", "ast_stl_pg", "tov_pg", "stl_pg", "blk_pg", "stocks_pg", "two_pa_pg", "three_pa_pg"], defaultColumns: ["pts_pg", "trb_pg", "ast_pg", "stl_pg"] },
       { id: "d1_peak", label: "D1 Peak", columns: ["d1_peak_prpg", "d1_peak_dprpg", "d1_peak_bpm"], defaultColumns: [] },
@@ -2320,6 +2539,7 @@ const DATASETS = {
       d1_peak_dprpg: "D1 Peak dPRPG",
       d1_peak_bpm: "D1 Peak BPM",
       ...LOWER_TIER_SHOT_PROFILE_LABELS,
+      ...buildCollegePlaytypeLabels(),
     },
   },
   naia: {
@@ -2352,6 +2572,7 @@ const DATASETS = {
       { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "tpm", "tpa", "tp_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"] },
       buildLowerTierShotProfileGroup(),
+      ...buildCollegePlaytypeGroups(),
       { id: "per40", label: "Per 40", columns: ["pts_per40", "trb_per40", "ast_per40", "ast_stl_per40", "tov_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"], defaultColumns: ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"] },
       { id: "per_game", label: "Per Game", columns: ["pts_pg", "trb_pg", "ast_pg", "ast_stl_pg", "tov_pg", "stl_pg", "blk_pg", "stocks_pg", "two_pa_pg", "three_pa_pg"], defaultColumns: ["pts_pg", "trb_pg", "ast_pg", "stl_pg"] },
       { id: "d1_peak", label: "D1 Peak", columns: ["d1_peak_prpg", "d1_peak_dprpg", "d1_peak_bpm"], defaultColumns: [] },
@@ -2434,6 +2655,7 @@ const DATASETS = {
       d1_peak_dprpg: "D1 Peak dPRPG",
       d1_peak_bpm: "D1 Peak BPM",
       ...LOWER_TIER_SHOT_PROFILE_LABELS,
+      ...buildCollegePlaytypeLabels(),
     },
   },
   juco: {
@@ -2456,8 +2678,8 @@ const DATASETS = {
     searchColumns: withUniversalSearchColumns(["player_name", "player_search_text", "team_name", "level", "region", "conference", "coach", "team_search_text", "coach_search_text"]),
     sortBy: "min",
     sortDir: "desc",
-    minuteDefault: 0,
-    minuteFilterDefault: "",
+    minuteDefault: 200,
+    minuteFilterDefault: 200,
     demoColumns: ["level", "region", "age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg"],
     demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "gp", "min", "mpg", "dob"],
     groups: [
@@ -2590,8 +2812,8 @@ const DATASETS = {
     sortDir: "desc",
     defaultAllYears: false,
     autoHydrateGrassrootsYears: false,
-    minuteDefault: 0,
-    minuteFilterDefault: "",
+    minuteDefault: 200,
+    minuteFilterDefault: 200,
     demoColumns: ["pos", "class_year", "height_in", "weight_lb"],
     demoFilterColumns: ["height_in", "weight_lb", "gp", "min", "mpg"],
     groups: [
@@ -2715,8 +2937,8 @@ const DATASETS = {
     sortDir: "desc",
     defaultAllYears: true,
     minYear: 1998,
-    minuteDefault: 0,
-    minuteFilterDefault: "",
+    minuteDefault: 200,
+    minuteFilterDefault: 200,
     demoColumns: ["competition_label", "pos", "height_in", "weight_lb", "wingspan", "age", "dob", "gp", "min", "mpg"],
     demoFilterColumns: ["height_in", "weight_lb", "wingspan", "age", "dob", "gp", "min", "mpg"],
     groups: [
@@ -2834,6 +3056,7 @@ const DATASETS = {
       { id: "per_game", label: "Per Game", columns: ["pts_pg", "trb_pg", "ast_pg", "ast_stl_pg", "tov_pg", "stl_pg", "blk_pg", "stocks_pg", "two_pa_pg", "three_pa_pg"], defaultColumns: ["pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg"] },
       { id: "shot_profile", label: "Shot Profile", columns: ["fgpct_rim", "rim_ast_pct", "fga_rim_75", "fgpct_mid", "mid_ast_pct", "fga_mid_75", "fg2pct", "two_ast_pct", "fg3pct", "three_ast_pct", "fg3a_75", "ftpct", "three_p_per100", "three_pr", "ftr"] },
       { id: "advanced", label: "Advanced", columns: ["orbpct", "drbpct", "usg", "astpct", "ast_to", "topct", "stlpct", "blkpct", "tspct", "efg"] },
+      ...buildNbaPlaytypeGroups(),
     ],
     singleFilters: withSharedSingleFilters(),
     multiFilters: [{ id: "pos_text", label: "Pos", column: "pos_text", sort: ["PG", "SG", "SF", "PF", "C"] }],
@@ -2895,6 +3118,7 @@ const DATASETS = {
       mid_ast_pct: "Mid Ast%",
       two_ast_pct: "2P Ast%",
       three_ast_pct: "3P Ast%",
+      ...buildNbaPlaytypeLabels(),
     },
   },
   player_career: buildPlayerCareerConfig(),
@@ -3172,7 +3396,15 @@ function wireGlobalEvents() {
       const groupId = groupUnitButton.dataset.groupUnit;
       const group = dataset.meta.groups.find((item) => item.id === groupId);
       if (!group) return;
+      const anchorTop = groupUnitButton.getBoundingClientRect().top;
       await cycleGroupUnitMode(dataset, state, group);
+      const nextButton = elements.statGroups?.querySelector(`[data-group-unit="${CSS.escape(groupId)}"]`);
+      if (nextButton) {
+        const nextTop = nextButton.getBoundingClientRect().top;
+        if (Number.isFinite(anchorTop) && Number.isFinite(nextTop) && Math.abs(nextTop - anchorTop) > 1) {
+          window.scrollBy(0, nextTop - anchorTop);
+        }
+      }
       return;
     }
     const statButton = target.closest("[data-stat-column]");
@@ -4466,7 +4698,9 @@ async function ensureNbaCompanionDataset() {
   }
 
   const config = DATASETS.nba_companion;
-  const [d1Dataset, nbaDataset] = await Promise.all([ensureDatasetLoaded("d1", { requireAllRows: true }), ensureDatasetLoaded("nba")]);
+  const [d1Dataset, nbaDataset] = await Promise.all([ensureDatasetLoaded("d1"), ensureDatasetLoaded("nba")]);
+  const initialYears = getAvailableYears(d1Dataset).slice(0, NBA_COMPANION_INITIAL_D1_YEARS);
+  await ensureDatasetYearsLoaded(d1Dataset, initialYears);
   const dataset = rebuildNbaCompanionDataset(null, d1Dataset, nbaDataset, config);
   appState.datasetCache.nba_companion = dataset;
   return dataset;
@@ -4498,7 +4732,7 @@ function rebuildNbaCompanionDataset(targetDataset, d1Dataset, nbaDataset, config
 async function loadNbaCompanionRowsForYears(dataset, years, options = {}) {
   const targetYears = Array.from(new Set((years || []).map((season) => getStringValue(season).trim()).filter(Boolean)));
   if (!dataset || !targetYears.length) return dataset;
-  const d1Dataset = await ensureDatasetLoaded("d1", { requireAllRows: true });
+  const d1Dataset = await ensureDatasetLoaded("d1");
   await ensureDatasetYearsLoaded(d1Dataset, targetYears, options);
   const nbaDataset = await ensureDatasetLoaded("nba");
   const rebuilt = rebuildNbaCompanionDataset(dataset, d1Dataset, nbaDataset, DATASETS.nba_companion);
@@ -4525,7 +4759,10 @@ function buildNbaCompanionRows(d1Dataset, nbaDataset, graph) {
     const nbaCareer = nbaCareerByD1NodeId.get(group.nodeId);
     if (!nbaCareer) return [];
     return (group.rows || []).map((row) => {
-      const out = { ...row };
+      const out = {};
+      NBA_COMPANION_BASE_COLUMNS.forEach((column) => {
+        if (row[column] !== undefined) out[column] = row[column];
+      });
       NBA_COMPANION_COPY_MAP.forEach(([target, source]) => {
         out[target] = row[source];
       });
@@ -10509,7 +10746,7 @@ const GROUP_UNIT_MODE_ORDER = [
 ];
 
 function isPlaytypeCountColumn(baseColumn) {
-  return /(?:_poss$|_fga$|_two_pa$|_three_pa$|_fta$|_fg_att$|_two_fg_att$|_three_fg_att$)/i.test(baseColumn);
+  return /(?:_poss$|_points$|_pts$|_fga$|_two_pa$|_three_pa$|_fta$|_fg_att$|_fg_made$|_fg_miss$|_two_fg_att$|_two_fg_made$|_two_fg_miss$|_three_fg_att$|_three_fg_made$|_three_fg_miss$)/i.test(baseColumn);
 }
 
 function isShotProfileCountColumn(baseColumn) {
@@ -15007,7 +15244,7 @@ const PLAYER_PROFILE_COLUMN_GROUPS = [
   {
     id: "identity",
     label: "Identity",
-    columns: ["season", "competition_level", "league", "team_name", "height_in", "weight_lb", "dob", "wingspan"],
+    columns: ["season", "competition_level", "league", "team_name", "wingspan"],
   },
   {
     id: "totals",
@@ -15046,7 +15283,7 @@ const PLAYER_PROFILE_COLUMN_GROUPS = [
 const PLAYER_PROFILE_ALL_COLUMNS = [...new Set(PLAYER_PROFILE_COLUMN_GROUPS.flatMap((group) => group.columns))];
 const PLAYER_PROFILE_DEFAULT_COLUMNS = [
   ...PLAYER_PROFILE_LOCKED_COLUMNS,
-  "height_in", "weight_lb", "dob", "wingspan",
+  "wingspan",
   "gp", "mpg",
   "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "pf_pg", "stocks_pg",
   "fgm_pg", "fga_pg", "fg_pct",
@@ -15863,6 +16100,47 @@ function renderPlayerProfileModal(root, name, rows, options = {}) {
   bindPlayerProfileSortControls(root);
 }
 
+function getPlayerProfileBioValue(rows, columns = []) {
+  const sortedRows = (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && !row._careerAggregate)
+    .slice()
+    .sort((left, right) => playerProfileRowScore(right) - playerProfileRowScore(left));
+  for (const row of sortedRows) {
+    for (const column of columns) {
+      const value = row?.[column];
+      if (value == null || value === "") continue;
+      if (typeof value === "number" && !Number.isFinite(value)) continue;
+      return value;
+    }
+  }
+  return "";
+}
+
+function formatPlayerProfileHeight(value) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (Number.isFinite(numeric) && numeric > 24 && numeric < 110) {
+    const inches = Math.round(numeric);
+    return `${Math.floor(inches / 12)}-${inches % 12}`;
+  }
+  return getStringValue(value).trim();
+}
+
+function buildPlayerProfileBioHtml(rows) {
+  const heightText = formatPlayerProfileHeight(getPlayerProfileBioValue(rows, ["height_in", "inches"]));
+  const weight = getPlayerProfileBioValue(rows, ["weight_lb", "weight"]);
+  const dobText = getStringValue(getPlayerProfileBioValue(rows, ["dob", "birth_date"])).trim();
+  const wingspanText = formatPlayerProfileHeight(getPlayerProfileBioValue(rows, ["wingspan"]));
+  const parts = [];
+  if (heightText) parts.push(`HT ${heightText}`);
+  if (weight !== "" && weight != null) {
+    const numericWeight = typeof weight === "number" ? weight : Number(weight);
+    parts.push(`WT ${Number.isFinite(numericWeight) ? Math.round(numericWeight) : getStringValue(weight).trim()}`);
+  }
+  if (dobText) parts.push(`DOB ${dobText}`);
+  if (wingspanText) parts.push(`WS ${wingspanText}`);
+  return parts.length ? `<div class="player-profile-bio">${escapeHtml(parts.join(" | "))}</div>` : "";
+}
+
 function buildPlayerProfileContentHtml(name, rows, options = {}) {
   const careerOnly = getPlayerProfileCareerOnlyEnabled();
   const commonOnly = getPlayerProfileCommonColumnsOnlyEnabled();
@@ -15909,6 +16187,7 @@ function buildPlayerProfileContentHtml(name, rows, options = {}) {
   return `
     <div class="player-profile-header">
       <h2>${escapeHtml(name || "Player")}</h2>
+      ${buildPlayerProfileBioHtml(rows)}
       <div>${escapeHtml(countLabel)}</div>
       ${loadingNote}
       ${backLink}
@@ -17155,8 +17434,20 @@ function applyWingspanLookup(row) {
   const nbaId = getWingspanNbaId(row);
   const nameKey = normalizeNameKey(row.player_name || row.player || row.nba_name || row.name);
   const entry = (nbaId && lookup.byNbaId?.[nbaId]) || (nameKey && lookup.byName?.[nameKey]) || null;
+  if (!shouldUseWingspanLookupEntry(row, entry)) return;
   const wingspan = Number(entry?.wingspan);
   if (Number.isFinite(wingspan) && wingspan > 0) row.wingspan = roundNumber(wingspan, 2);
+}
+
+function shouldUseWingspanLookupEntry(row, entry) {
+  if (!entry) return false;
+  const sourceYear = Number(entry.source_year);
+  if (!Number.isFinite(sourceYear)) return true;
+  const proYear = firstFinite(row?.rookie_year, row?.draft_year, Number.NaN);
+  if (Number.isFinite(proYear) && sourceYear < proYear - 2) return false;
+  const seasonYear = extractLeadingYear(row?.season);
+  if (!Number.isFinite(proYear) && Number.isFinite(seasonYear) && sourceYear < seasonYear - 3) return false;
+  return true;
 }
 
 function getWingspanNbaId(row) {
@@ -18361,6 +18652,7 @@ function populateD1PlaytypeVolumeMetrics(row) {
   const gp = firstFinite(row.gp, Number.NaN);
   const minutes = firstFinite(row.min, Number.isFinite(gp) && Number.isFinite(row.mpg) ? row.gp * row.mpg : Number.NaN, Number.NaN);
   D1_TRUE_PLAYTYPE_IDS.forEach((id) => {
+    const pointsColumn = `${id}_points`;
     const fgAttColumn = `${id}_fg_att`;
     const twoAttColumn = `${id}_two_fg_att`;
     const threeAttColumn = `${id}_three_fg_att`;
@@ -18385,6 +18677,7 @@ function populateD1PlaytypeVolumeMetrics(row) {
       row[ftaColumn] = roundNumber(fgAtt * ftr, 1);
     }
     [
+      [pointsColumn, `${id}_points_pg`],
       [fgAttColumn, `${id}_fg_att_pg`],
       [twoAttColumn, `${id}_two_fg_att_pg`],
       [threeAttColumn, `${id}_three_fg_att_pg`],
@@ -18395,6 +18688,7 @@ function populateD1PlaytypeVolumeMetrics(row) {
       if (pg !== "") row[perGameColumn] = pg;
     });
     [
+      [pointsColumn, `${id}_points_per40`],
       [fgAttColumn, `${id}_fg_att_per40`],
       [twoAttColumn, `${id}_two_fg_att_per40`],
       [threeAttColumn, `${id}_three_fg_att_per40`],
@@ -19339,11 +19633,15 @@ function buildDatasetMeta(rows, config) {
   const demoToggleColumns = (config.demoToggleColumns || [])
     .filter((column) => !((config.lockedColumns || []).includes(column)))
     .filter((column) => available.has(column));
+  const demoFilterColumnSet = new Set(config.demoFilterColumns || []);
   let groups = config.groups
     .map((group) => {
-      const columnsForGroup = group.columns.filter((column) => available.has(column));
+      const removeDemoFilterDuplicates = /^(?:info|meta)$/i.test(group.id || "");
+      const columnsForGroup = group.columns
+        .filter((column) => available.has(column))
+        .filter((column) => !(removeDemoFilterDuplicates && demoFilterColumnSet.has(column)));
       const defaultColumns = (group.defaultColumns || group.columns.filter((column) => config.defaultVisible.includes(column)))
-        .filter((column) => available.has(column));
+        .filter((column) => columnsForGroup.includes(column));
       return { ...group, columns: columnsForGroup, defaultColumns };
     })
     .filter((group) => group.columns.length);
