@@ -14,6 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = ROOT.parent / "Overall Playtype Data" / "College Basketball"
+RIM_SOURCE_ROOT = ROOT.parent / "Rim Scoring Data"
 
 PLAYTYPE_FILE_MARKERS = [
     ("pnr_bh", "P&R Ball Handler"),
@@ -27,6 +28,12 @@ PLAYTYPE_FILE_MARKERS = [
     ("iso", "Isolation"),
     ("cut", "Cut"),
 ]
+
+RIM_SOURCE_FILES = {
+    "rim_iso": "rim_iso_all.csv",
+    "rim_pnr": "rim_pnr_all.csv",
+    "rim_su": "rim_su_all.csv",
+}
 
 SOURCE_TO_SUFFIX = {
     "Poss": "poss",
@@ -57,6 +64,35 @@ SOURCE_TO_SUFFIX = {
     "3PA/FGA": "three_pr",
 }
 
+RIM_SOURCE_TO_SUFFIX = {
+    "Poss": "poss",
+    "Points": "points",
+    "PPP": "ppp",
+    "FGA": "fga",
+    "FGM": "fgm",
+    "FGm": "fg_miss",
+    "FG%": "fg_pct",
+    "eFG%": "efg_pct",
+    "2FGA": "two_fg_att",
+    "2FGM": "two_fg_made",
+    "2FGm": "two_fg_miss",
+    "2FG%": "two_fg_pct",
+    "3FGA": "three_fg_att",
+    "3FGM": "three_fg_made",
+    "3FGm": "three_fg_miss",
+    "3FG%": "three_fg_pct",
+    "FTA": "fta",
+    "FTM": "ftm",
+    "FTm": "ft_miss",
+    "FT%": "ft_pct",
+    "TO": "tov",
+    "%TO": "tov_pct",
+    "%SF": "sf_pct",
+    "%Score": "score_pct",
+    "+1": "plus1",
+    "%+1": "plus1_pct",
+}
+
 PLAYTYPE_SUFFIX_ORDER = [
     "poss", "points", "points_pg", "points_per40",
     "freq", "ppp",
@@ -67,6 +103,19 @@ PLAYTYPE_SUFFIX_ORDER = [
     "three_fg_att", "three_fg_made", "three_fg_miss", "three_fg_pct", "three_fg_att_pg", "three_fg_att_per40", "three_pr",
 ]
 
+RIM_SUFFIX_ORDER = [
+    "poss", "points", "ppp", "freq",
+    "fga", "fgm", "fg_miss", "fg_pct", "efg_pct",
+    "two_fg_att", "two_fg_made", "two_fg_miss", "two_fg_pct",
+    "three_fg_att", "three_fg_made", "three_fg_miss", "three_fg_pct",
+    "fta", "ftm", "ft_miss", "ft_pct", "ftr",
+    "tov", "tov_pct", "sf_pct", "score_pct", "plus1", "plus1_pct",
+    "poss_pg", "points_pg", "fga_pg", "fgm_pg", "two_fg_att_pg", "two_fg_made_pg",
+    "three_fg_att_pg", "three_fg_made_pg", "fta_pg", "ftm_pg", "tov_pg", "plus1_pg",
+    "poss_per40", "points_per40", "fga_per40", "fgm_per40", "two_fg_att_per40", "two_fg_made_per40",
+    "three_fg_att_per40", "three_fg_made_per40", "fta_per40", "ftm_per40", "tov_per40", "plus1_per40",
+]
+
 TEAM_STOP_WORDS = {
     "men", "mens", "women", "womens", "basketball", "university", "college",
 }
@@ -75,7 +124,10 @@ TEAM_STOP_WORDS = {
 def main() -> None:
     csv.field_size_limit(1024 * 1024 * 1024)
     sources = load_source_playtypes()
+    rim_sources = load_rim_scoring_sources()
     print(f"Loaded {sum(len(items) for items in sources.values()):,} source playtype player rows.")
+    print(f"Loaded {sum(len(items) for items in rim_sources.values()):,} source rim scoring player rows.")
+    available_years = sorted({year for year, _playtype in sources} | {year for year, _component in rim_sources})
 
     d1_full_rows = read_multipart_csv(
         ROOT / "data" / "vendor" / "d1_enriched_all_seasons_parts",
@@ -83,7 +135,8 @@ def main() -> None:
     )
     d1_year_rows = {
         year: read_single_assignment_csv(ROOT / "data" / "vendor" / "d1_year_chunks" / f"{year}.js")
-        for year in (2025, 2026)
+        for year in available_years
+        if (ROOT / "data" / "vendor" / "d1_year_chunks" / f"{year}.js").exists()
     }
     d2_rows = read_single_assignment_csv(ROOT / "data" / "d2_all_seasons.js")
     naia_rows = read_multipart_csv(
@@ -93,8 +146,10 @@ def main() -> None:
 
     summaries = []
     summaries.append(("d1-full", apply_sources_to_dataset("d1", d1_full_rows, sources)))
+    summaries.append(("d1-rim-full", apply_rim_sources_to_d1(d1_full_rows, rim_sources)))
     for year, rows in d1_year_rows.items():
         summaries.append((f"d1-year-{year}", apply_sources_to_dataset("d1", rows, sources)))
+        summaries.append((f"d1-rim-year-{year}", apply_rim_sources_to_d1(rows, rim_sources)))
     summaries.append(("d2", apply_sources_to_dataset("d2", d2_rows, sources)))
     summaries.append(("naia", apply_sources_to_dataset("naia", naia_rows, sources)))
 
@@ -136,8 +191,6 @@ def load_source_playtypes() -> dict[tuple[int, str], list[dict[str, str]]]:
         if not year_dir.is_dir() or not year_dir.name.isdigit():
             continue
         year = int(year_dir.name)
-        if year not in {2025, 2026}:
-            continue
         for path in sorted(year_dir.glob("*.csv")):
             playtype = detect_playtype_id(path.name)
             if not playtype:
@@ -159,6 +212,62 @@ def load_source_playtypes() -> dict[tuple[int, str], list[dict[str, str]]]:
     for row in grouped.values():
         by_year_type[(int(row["_source_year"]), row["_playtype_id"])].append(row)
     return by_year_type
+
+
+def load_rim_scoring_sources() -> dict[tuple[int, str], list[dict[str, str]]]:
+    grouped: dict[tuple[int, str, str, str], dict[str, str]] = {}
+    for component, filename in RIM_SOURCE_FILES.items():
+        path = RIM_SOURCE_ROOT / filename
+        if not path.exists():
+            continue
+        for row in read_source_csv(path):
+            year = season_end_year(row.get("Season"))
+            if year is None:
+                continue
+            player = clean_text(row.get("Player"))
+            team = clean_text(row.get("Team"))
+            if not player or not team:
+                continue
+            key = (year, component, normalize_name(player), normalize_team(team))
+            existing = grouped.get(key)
+            if existing is None or rim_source_row_score(row) > rim_source_row_score(existing):
+                row = dict(row)
+                row["_source_year"] = str(year)
+                row["_rim_component"] = component
+                grouped[key] = row
+
+    by_year_component: dict[tuple[int, str], list[dict[str, str]]] = defaultdict(list)
+    for row in grouped.values():
+        by_year_component[(int(row["_source_year"]), row["_rim_component"])].append(row)
+    return by_year_component
+
+
+def season_end_year(value: object) -> int | None:
+    text = clean_text(value)
+    if not text:
+        return None
+    match = re.search(r"(\d{4})(?:\s*-\s*(\d{2}|\d{4}))?", text)
+    if not match:
+        return None
+    start = int(match.group(1))
+    if not match.group(2):
+        return start
+    end = match.group(2)
+    if len(end) == 4:
+        return int(end)
+    century = start // 100
+    candidate = century * 100 + int(end)
+    if candidate < start:
+        candidate += 100
+    return candidate
+
+
+def rim_source_row_score(row: dict[str, str]) -> float:
+    poss = parse_number(row.get("Poss"))
+    fga = parse_number(row.get("FGA"))
+    pts = parse_number(row.get("Points"))
+    gp = parse_number(row.get("GP"))
+    return (poss or 0.0) * 1000 + (fga or 0.0) * 10 + (pts or 0.0) + (gp or 0.0) * 0.001
 
 
 def detect_playtype_id(filename: str) -> str:
@@ -205,13 +314,39 @@ def apply_sources_to_dataset(dataset_id: str, rows: list[dict[str, str]], source
     return summary
 
 
+def apply_rim_sources_to_d1(rows: list[dict[str, str]], sources: dict[tuple[int, str], list[dict[str, str]]]) -> dict[str, int]:
+    rows_by_season = build_target_index("d1", rows)
+    summary = {"candidate_sources": 0, "matched": 0, "updated_rows": 0}
+    updated_ids: set[int] = set()
+    for (source_year, component), source_rows in sources.items():
+        season_label = dataset_season_label("d1", source_year)
+        index = rows_by_season.get(season_label)
+        if not index:
+            continue
+        summary["candidate_sources"] += len(source_rows)
+        for source_row in source_rows:
+            target = choose_target_row(index, "d1", source_row)
+            if target is None:
+                continue
+            summary["matched"] += 1
+            update_row_rim_scoring_values(target, component, source_row)
+            updated_ids.add(id(target))
+    summary["updated_rows"] = len(updated_ids)
+    return summary
+
+
 def build_target_index(dataset_id: str, rows: list[dict[str, str]]) -> dict[str, dict[str, object]]:
     by_season: dict[str, dict[str, object]] = {}
     for row in rows:
         season = clean_text(row.get("season"))
         if not season:
             continue
-        entry = by_season.setdefault(season, {"rows": [], "team": defaultdict(list), "player": defaultdict(list)})
+        entry = by_season.setdefault(season, {
+            "rows": [],
+            "team": defaultdict(list),
+            "player": defaultdict(list),
+            "team_player": defaultdict(list),
+        })
         entry["rows"].append(row)
         player = target_player_name(dataset_id, row)
         player_key = normalize_name(player)
@@ -219,6 +354,8 @@ def build_target_index(dataset_id: str, rows: list[dict[str, str]]) -> dict[str,
             entry["player"][player_key].append(row)
         for key in target_team_keys(row):
             entry["team"][key].append(row)
+            if player_key:
+                entry["team_player"][f"{key}|{player_key}"].append(row)
     return by_season
 
 
@@ -226,10 +363,30 @@ def choose_target_row(index: dict[str, object], dataset_id: str, source_row: dic
     source_name = clean_text(source_row.get("Player"))
     source_team = clean_text(source_row.get("Team"))
     source_name_key = normalize_name(source_name)
+    source_keys = source_team_keys(source_team)
+    exact_candidates: list[dict[str, str]] = []
+    seen_exact: set[int] = set()
+    team_player_map = index.get("team_player", {})
+    for key in source_keys:
+        for row in team_player_map.get(f"{key}|{source_name_key}", []):
+            row_id = id(row)
+            if row_id in seen_exact:
+                continue
+            seen_exact.add(row_id)
+            exact_candidates.append(row)
+    if exact_candidates:
+        return max(exact_candidates, key=row_match_quality)
+
+    exact_name_candidates = index["player"].get(source_name_key, [])
+    if exact_name_candidates:
+        team_matched = [row for row in exact_name_candidates if team_similarity(source_team, row) >= 0.72]
+        if team_matched:
+            return max(team_matched, key=lambda row: (team_similarity(source_team, row) * 20) + row_match_quality(row))
+
     team_candidates: list[dict[str, str]] = []
     seen: set[int] = set()
     team_map = index["team"]
-    for key in source_team_keys(source_team):
+    for key in source_keys:
         for row in team_map.get(key, []):
             row_id = id(row)
             if row_id in seen:
@@ -305,6 +462,68 @@ def update_row_playtype_values(row: dict[str, str], playtype_id: str, source_row
 
     for suffix in PLAYTYPE_SUFFIX_ORDER:
         column = f"{playtype_id}_{suffix}"
+        if suffix in values:
+            row[column] = format_csv_number(values[suffix])
+        elif column not in row:
+            row[column] = ""
+
+
+def update_row_rim_scoring_values(row: dict[str, str], prefix: str, source_row: dict[str, str]) -> None:
+    values: dict[str, float | str] = {}
+    for source_column, suffix in RIM_SOURCE_TO_SUFFIX.items():
+        value = parse_number(source_row.get(source_column))
+        if value is None:
+            continue
+        values[suffix] = value
+
+    poss = number_or_none(values.get("poss"))
+    points = number_or_none(values.get("points"))
+    ppp = number_or_none(values.get("ppp"))
+    if points is None and poss is not None and ppp is not None:
+        points = poss * ppp
+        values["points"] = round_value(points, 3)
+    if ppp is None and points is not None and poss is not None and poss > 0:
+        values["ppp"] = round_value(points / poss, 3)
+
+    fga = number_or_none(values.get("fga"))
+    fgm = number_or_none(values.get("fgm"))
+    if "fg_miss" not in values and fga is not None and fgm is not None:
+        values["fg_miss"] = max(0.0, fga - fgm)
+    two_att = number_or_none(values.get("two_fg_att"))
+    two_made = number_or_none(values.get("two_fg_made"))
+    if "two_fg_miss" not in values and two_att is not None and two_made is not None:
+        values["two_fg_miss"] = max(0.0, two_att - two_made)
+    three_att = number_or_none(values.get("three_fg_att"))
+    three_made = number_or_none(values.get("three_fg_made"))
+    if "three_fg_miss" not in values and three_att is not None and three_made is not None:
+        values["three_fg_miss"] = max(0.0, three_att - three_made)
+    fta = number_or_none(values.get("fta"))
+    ftm = number_or_none(values.get("ftm"))
+    if "ft_miss" not in values and fta is not None and ftm is not None:
+        values["ft_miss"] = max(0.0, fta - ftm)
+    if "ftr" not in values and fga is not None and fga > 0 and fta is not None:
+        values["ftr"] = round_value(fta / fga, 3)
+
+    gp = parse_number(row.get("gp") or row.get("GP") or source_row.get("GP"))
+    minutes = parse_number(row.get("min") or row.get("mp"))
+    mpg = parse_number(row.get("mpg") or row.get("min_per_g"))
+    if minutes is None and gp and mpg:
+        minutes = gp * mpg
+    per_bases = [
+        "poss", "points", "fga", "fgm", "two_fg_att", "two_fg_made",
+        "three_fg_att", "three_fg_made", "fta", "ftm", "tov", "plus1",
+    ]
+    for base in per_bases:
+        total = number_or_none(values.get(base))
+        if total is None:
+            continue
+        if gp and gp > 0:
+            values[f"{base}_pg"] = round_value(total / gp, 3)
+        if minutes and minutes > 0:
+            values[f"{base}_per40"] = round_value(total * 40 / minutes, 3)
+
+    for suffix in RIM_SUFFIX_ORDER:
+        column = f"{prefix}_{suffix}"
         if suffix in values:
             row[column] = format_csv_number(values[suffix])
         elif column not in row:
@@ -447,6 +666,17 @@ def collect_fieldnames(rows: list[dict[str, str]]) -> list[str]:
             if key not in seen:
                 seen.add(key)
                 fieldnames.append(key)
+    has_rim_columns = any(
+        any(key.startswith(f"{prefix}_") for key in row.keys() for prefix in RIM_SOURCE_FILES)
+        for row in rows
+    )
+    if has_rim_columns:
+        for prefix in RIM_SOURCE_FILES:
+            for suffix in RIM_SUFFIX_ORDER:
+                key = f"{prefix}_{suffix}"
+                if key not in seen:
+                    seen.add(key)
+                    fieldnames.append(key)
     return fieldnames
 
 

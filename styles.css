@@ -436,7 +436,8 @@ a,
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 3px;
-  align-items: center;
+  align-items: start;
+  min-height: 19px;
 }
 
 .stat-group__body {
@@ -454,7 +455,16 @@ a,
 }
 
 .group-unit-button {
-  min-width: 60px;
+  width: 64px;
+  min-width: 64px;
+  align-self: start;
+  white-space: nowrap;
+}
+
+.group-cycle-button {
+  height: 19px;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .table-area {
@@ -896,7 +906,7 @@ a,
   display: inline-grid;
   align-items: center;
   justify-content: center;
-  grid-template-columns: 9ch 5.6ch;
+  grid-template-columns: auto auto;
   gap: 1px;
   width: 100%;
   font-variant-numeric: tabular-nums;
@@ -905,7 +915,7 @@ a,
 
 .split-display__pair {
   display: inline-grid;
-  grid-template-columns: 4ch 1ch 4ch;
+  grid-template-columns: auto 1ch auto;
   align-items: center;
   column-gap: 0;
   min-width: 0;
@@ -914,13 +924,13 @@ a,
 .split-display__made {
   display: inline-block;
   min-width: 0;
-  text-align: right;
+  text-align: center;
 }
 
 .split-display__att {
   display: inline-block;
   min-width: 0;
-  text-align: left;
+  text-align: center;
 }
 
 .split-display__sep {
@@ -931,9 +941,9 @@ a,
 
 .split-display__pct {
   display: inline-block;
-  min-width: 5.4ch;
+  min-width: 4.4ch;
   padding: 1px 1px;
-  text-align: right;
+  text-align: center;
 }
 
 .player-profile-sort-button {

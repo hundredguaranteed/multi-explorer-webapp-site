@@ -507,6 +507,31 @@ const NBA_PLAYTYPE_METRICS = [
   { suffix: "fga_per40", label: "FGA/40", defaultVisible: false },
 ];
 
+const GENERAL_TOTAL_COLUMNS = ["pts", "trb", "orb", "drb", "ast", "stl", "blk", "tov", "pf", "stocks"];
+const GENERAL_PER_GAME_COLUMNS = GENERAL_TOTAL_COLUMNS.map((column) => `${column}_pg`);
+const GENERAL_PER40_COLUMNS = GENERAL_TOTAL_COLUMNS.map((column) => `${column}_per40`);
+const GENERAL_PER100_COLUMNS = GENERAL_TOTAL_COLUMNS.map((column) => `${column}_per100`);
+const GENERAL_DEFAULT_TOTAL_COLUMNS = ["pts", "trb", "ast", "stl", "blk", "tov"];
+const GENERAL_DEFAULT_PER_GAME_COLUMNS = ["pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "tov_pg"];
+const GENERAL_DEFAULT_PER40_COLUMNS = ["pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "tov_per40"];
+const GENERAL_LABELS = {
+  pts: "PTS",
+  trb: "TRB",
+  orb: "ORB",
+  drb: "DRB",
+  ast: "AST",
+  stl: "STL",
+  blk: "BLK",
+  tov: "TOV",
+  pf: "PF",
+  stocks: "Stocks",
+};
+GENERAL_TOTAL_COLUMNS.forEach((column) => {
+  GENERAL_LABELS[`${column}_pg`] = `${GENERAL_LABELS[column]}/G`;
+  GENERAL_LABELS[`${column}_per40`] = `${GENERAL_LABELS[column]}/40`;
+  GENERAL_LABELS[`${column}_per100`] = `${GENERAL_LABELS[column]}/100`;
+});
+
 const D1_SUMMARY_COLUMNS = [
   { key: "halfcourt_ppp", label: "HC PPP", defaultVisible: true },
   { key: "halfcourt_two_pa", label: "HC 2PA", defaultVisible: false },
@@ -550,62 +575,36 @@ const D1_RIM_SCORING_COMPONENTS = [
   { id: "pnr", label: "PnR Rim", prefix: "rim_pnr" },
   { id: "spotup", label: "SU Rim", prefix: "rim_su" },
 ];
-const D1_RIM_SCORING_AGG_RATE_COLUMNS = [
-  "rim_scoring_freq",
-  "rim_scoring_ppp",
-  "rim_scoring_fg_pct",
-  "rim_scoring_efg_pct",
+const D1_RIM_SCORING_RATE_SUFFIXES = [
+  "freq", "ppp", "fg_pct", "efg_pct", "two_fg_pct", "three_fg_pct", "ft_pct",
+  "ftr", "tov_pct", "sf_pct", "score_pct", "plus1_pct",
 ];
-const D1_RIM_SCORING_AGG_TOTAL_COLUMNS = [
-  "rim_scoring_poss",
-  "rim_scoring_points",
-  "rim_scoring_fga",
-  "rim_scoring_fgm",
+const D1_RIM_SCORING_TOTAL_SUFFIXES = [
+  "poss", "points", "fga", "fgm", "fg_miss",
+  "two_fg_att", "two_fg_made", "two_fg_miss",
+  "three_fg_att", "three_fg_made", "three_fg_miss",
+  "fta", "ftm", "ft_miss", "tov", "plus1",
 ];
-const D1_RIM_SCORING_AGG_PER_GAME_COLUMNS = [
-  "rim_scoring_poss_pg",
-  "rim_scoring_points_pg",
-  "rim_scoring_fga_pg",
-  "rim_scoring_fgm_pg",
+const D1_RIM_SCORING_PER_MODE_SUFFIXES = [
+  "poss", "points", "fga", "fgm", "two_fg_att", "two_fg_made",
+  "three_fg_att", "three_fg_made", "fta", "ftm", "tov", "plus1",
 ];
-const D1_RIM_SCORING_AGG_PER40_COLUMNS = [
-  "rim_scoring_poss_per40",
-  "rim_scoring_points_per40",
-  "rim_scoring_fga_per40",
-  "rim_scoring_fgm_per40",
-];
-const D1_RIM_SCORING_COMPONENT_RATE_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
-  `${component.prefix}_freq`,
-  `${component.prefix}_ppp`,
-  `${component.prefix}_fg_pct`,
-  `${component.prefix}_efg_pct`,
-  `${component.prefix}_ftr`,
-  `${component.prefix}_tov_pct`,
-  `${component.prefix}_plus1_pct`,
-]);
-const D1_RIM_SCORING_COMPONENT_TOTAL_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
-  `${component.prefix}_poss`,
-  `${component.prefix}_points`,
-  `${component.prefix}_fga`,
-  `${component.prefix}_fgm`,
-  `${component.prefix}_fta`,
-  `${component.prefix}_tov`,
-  `${component.prefix}_plus1`,
-]);
-const D1_RIM_SCORING_COMPONENT_PER_GAME_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
-  `${component.prefix}_poss_pg`,
-  `${component.prefix}_points_pg`,
-  `${component.prefix}_fga_pg`,
-  `${component.prefix}_fgm_pg`,
-  `${component.prefix}_fta_pg`,
-]);
-const D1_RIM_SCORING_COMPONENT_PER40_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => [
-  `${component.prefix}_poss_per40`,
-  `${component.prefix}_points_per40`,
-  `${component.prefix}_fga_per40`,
-  `${component.prefix}_fgm_per40`,
-  `${component.prefix}_fta_per40`,
-]);
+const D1_RIM_SCORING_AGG_RATE_COLUMNS = D1_RIM_SCORING_RATE_SUFFIXES.map((suffix) => `rim_scoring_${suffix}`);
+const D1_RIM_SCORING_AGG_TOTAL_COLUMNS = D1_RIM_SCORING_TOTAL_SUFFIXES.map((suffix) => `rim_scoring_${suffix}`);
+const D1_RIM_SCORING_AGG_PER_GAME_COLUMNS = D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `rim_scoring_${suffix}_pg`);
+const D1_RIM_SCORING_AGG_PER40_COLUMNS = D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `rim_scoring_${suffix}_per40`);
+const D1_RIM_SCORING_COMPONENT_RATE_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => (
+  D1_RIM_SCORING_RATE_SUFFIXES.map((suffix) => `${component.prefix}_${suffix}`)
+));
+const D1_RIM_SCORING_COMPONENT_TOTAL_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => (
+  D1_RIM_SCORING_TOTAL_SUFFIXES.map((suffix) => `${component.prefix}_${suffix}`)
+));
+const D1_RIM_SCORING_COMPONENT_PER_GAME_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => (
+  D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `${component.prefix}_${suffix}_pg`)
+));
+const D1_RIM_SCORING_COMPONENT_PER40_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => (
+  D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `${component.prefix}_${suffix}_per40`)
+));
 const D1_RIM_SCORING_AGG_COLUMNS = [
   ...D1_RIM_SCORING_AGG_RATE_COLUMNS,
   ...D1_RIM_SCORING_AGG_TOTAL_COLUMNS,
@@ -635,51 +634,52 @@ const D1_RIM_SCORING_COLUMNS = [...new Set([
   ...D1_RIM_SCORING_PER_GAME_COLUMNS,
   ...D1_RIM_SCORING_PER40_COLUMNS,
 ])];
-const D1_RIM_SCORING_LABELS = {
-  rim_scoring_freq: "Rim Score Freq",
-  rim_scoring_ppp: "Rim Score PPP",
-  rim_scoring_fg_pct: "Rim Score FG%",
-  rim_scoring_efg_pct: "Rim Score eFG%",
-  rim_scoring_poss: "Rim Score Poss",
-  rim_scoring_points: "Rim Score PTS",
-  rim_scoring_fga: "Rim Score FGA",
-  rim_scoring_fgm: "Rim Score FGM",
-  rim_scoring_poss_pg: "Rim Score Poss/G",
-  rim_scoring_points_pg: "Rim Score PTS/G",
-  rim_scoring_fga_pg: "Rim Score FGA/G",
-  rim_scoring_fgm_pg: "Rim Score FGM/G",
-  rim_scoring_poss_per40: "Rim Score Poss/40",
-  rim_scoring_points_per40: "Rim Score PTS/40",
-  rim_scoring_fga_per40: "Rim Score FGA/40",
-  rim_scoring_fgm_per40: "Rim Score FGM/40",
-  rim_iso_tov_pct: "Iso Rim TO%",
-  rim_iso_plus1_pct: "Iso Rim +1%",
+const D1_RIM_SCORING_SUFFIX_LABELS = {
+  freq: "Freq",
+  ppp: "PPP",
+  fg_pct: "FG%",
+  efg_pct: "eFG%",
+  two_fg_pct: "2P%",
+  three_fg_pct: "3P%",
+  ft_pct: "FT%",
+  ftr: "FTr",
+  tov_pct: "TO%",
+  sf_pct: "SF%",
+  score_pct: "Score%",
+  plus1_pct: "+1%",
+  poss: "Poss",
+  points: "PTS",
+  fga: "FGA",
+  fgm: "FGM",
+  fg_miss: "FG Miss",
+  two_fg_att: "2PA",
+  two_fg_made: "2PM",
+  two_fg_miss: "2P Miss",
+  three_fg_att: "3PA",
+  three_fg_made: "3PM",
+  three_fg_miss: "3P Miss",
+  fta: "FTA",
+  ftm: "FTM",
+  ft_miss: "FT Miss",
+  tov: "TO",
+  plus1: "+1",
 };
+const D1_RIM_SCORING_LABELS = {};
+function assignRimScoringLabels(prefix, label) {
+  D1_RIM_SCORING_RATE_SUFFIXES.forEach((suffix) => {
+    D1_RIM_SCORING_LABELS[`${prefix}_${suffix}`] = `${label} ${D1_RIM_SCORING_SUFFIX_LABELS[suffix]}`;
+  });
+  D1_RIM_SCORING_TOTAL_SUFFIXES.forEach((suffix) => {
+    D1_RIM_SCORING_LABELS[`${prefix}_${suffix}`] = `${label} ${D1_RIM_SCORING_SUFFIX_LABELS[suffix]}`;
+  });
+  D1_RIM_SCORING_PER_MODE_SUFFIXES.forEach((suffix) => {
+    D1_RIM_SCORING_LABELS[`${prefix}_${suffix}_pg`] = `${label} ${D1_RIM_SCORING_SUFFIX_LABELS[suffix]}/G`;
+    D1_RIM_SCORING_LABELS[`${prefix}_${suffix}_per40`] = `${label} ${D1_RIM_SCORING_SUFFIX_LABELS[suffix]}/40`;
+  });
+}
+assignRimScoringLabels("rim_scoring", "Rim Score");
 D1_RIM_SCORING_COMPONENTS.forEach((component) => {
-  D1_RIM_SCORING_LABELS[`${component.prefix}_freq`] = `${component.label} Freq`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_ppp`] = `${component.label} PPP`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_fg_pct`] = `${component.label} FG%`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_efg_pct`] = `${component.label} eFG%`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_ftr`] = `${component.label} FTr`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_tov_pct`] = `${component.label} TO%`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_plus1_pct`] = `${component.label} +1%`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_poss`] = `${component.label} Poss`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_points`] = `${component.label} PTS`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_fga`] = `${component.label} FGA`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_fgm`] = `${component.label} FGM`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_fta`] = `${component.label} FTA`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_tov`] = `${component.label} TO`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_plus1`] = `${component.label} +1`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_poss_pg`] = `${component.label} Poss/G`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_points_pg`] = `${component.label} PTS/G`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_fga_pg`] = `${component.label} FGA/G`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_fgm_pg`] = `${component.label} FGM/G`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_fta_pg`] = `${component.label} FTA/G`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_poss_per40`] = `${component.label} Poss/40`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_points_per40`] = `${component.label} PTS/40`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_fga_per40`] = `${component.label} FGA/40`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_fgm_per40`] = `${component.label} FGM/40`;
-  D1_RIM_SCORING_LABELS[`${component.prefix}_fta_per40`] = `${component.label} FTA/40`;
+  assignRimScoringLabels(component.prefix, component.label);
 });
 
 const D1_RUNNER_COLUMNS = [
@@ -762,7 +762,7 @@ const D1_SHOT_PROFILE_COLUMNS = [
   { key: "mid_unast_made_per40", label: "Mid Unast/40", defaultVisible: false, mode: "per40" },
   { key: "mid_pct", label: "Mid%", defaultVisible: true, mode: "always" },
   { key: "mid_ast_pct", label: "Mid Ast%", defaultVisible: true, mode: "always" },
-  { key: "rim_to_mid_att_ratio", label: "Rim/Long 2", defaultVisible: true, mode: "always" },
+  { key: "rim_to_mid_att_ratio", label: "R:L2", defaultVisible: true, mode: "always" },
   { key: "two_p_made", label: "2P Made", defaultVisible: false, mode: "totals" },
   { key: "two_p_att", label: "2P Att", defaultVisible: false, mode: "totals" },
   { key: "two_p_unast_made", label: "2P Unast", defaultVisible: false, mode: "totals" },
@@ -1063,6 +1063,31 @@ function buildNbaPlaytypeLabels() {
   return labels;
 }
 
+function buildGeneralStatGroup(options = {}) {
+  const includePer100 = options.includePer100 !== false;
+  const includeTotals = options.includeTotals !== false;
+  const columns = [...(includeTotals ? GENERAL_TOTAL_COLUMNS : []), ...GENERAL_PER_GAME_COLUMNS, ...GENERAL_PER40_COLUMNS];
+  if (includePer100) columns.push(...GENERAL_PER100_COLUMNS);
+  const unitModes = [
+    { id: "per_game", label: "Per G", columns: GENERAL_PER_GAME_COLUMNS, defaultColumns: GENERAL_DEFAULT_PER_GAME_COLUMNS },
+    { id: "per40", label: "Per 40", columns: GENERAL_PER40_COLUMNS, defaultColumns: GENERAL_DEFAULT_PER40_COLUMNS },
+  ];
+  if (includePer100) {
+    unitModes.push({ id: "per100", label: "Per 100", columns: GENERAL_PER100_COLUMNS, defaultColumns: ["pts_per100", "trb_per100", "ast_per100", "stl_per100", "blk_per100", "tov_per100"] });
+  }
+  if (includeTotals) unitModes.push({ id: "totals", label: "Totals", columns: GENERAL_TOTAL_COLUMNS, defaultColumns: GENERAL_DEFAULT_TOTAL_COLUMNS });
+  unitModes.push({ id: "all", label: "All", columns });
+  return {
+    id: "general",
+    label: "General",
+    groupClass: "general",
+    columns,
+    defaultColumns: GENERAL_DEFAULT_PER_GAME_COLUMNS,
+    defaultUnitMode: "per_game",
+    unitModes,
+  };
+}
+
 function cloneSingleFilter(filter, override = {}) {
   const merged = { ...filter, ...override };
   const sourceOptions = override.options || filter.options;
@@ -1113,6 +1138,7 @@ function buildD1Config() {
       defaultColumns: [],
       hiddenInFilters: true,
     },
+    buildGeneralStatGroup({ includeTotals: false }),
     ...D1_ADVANCED_GROUPS,
     ...D1_ANCILLARY_GROUPS,
     {
@@ -1148,6 +1174,7 @@ function buildD1Config() {
   D1_ADVANCED_COLUMNS.forEach((item) => {
     labels[item.key] = item.label;
   });
+  Object.assign(labels, GENERAL_LABELS);
   labels.nba_career_epm = "NBA EPM";
   D1_DRIVE_COLUMNS.forEach((item) => {
     labels[item.key] = item.label;
@@ -1193,13 +1220,13 @@ function buildD1Config() {
       label: "Rim Scoring",
       groupClass: "rim_scoring",
       columns: D1_RIM_SCORING_COLUMNS,
-      defaultColumns: ["rim_scoring_freq", "rim_scoring_ppp", "rim_iso_freq", "rim_pnr_freq", "rim_su_freq"],
+      defaultColumns: ["rim_scoring_freq", "rim_scoring_ppp", "rim_scoring_ftr", "rim_scoring_tov_pct", "rim_iso_freq", "rim_pnr_freq", "rim_su_freq"],
       defaultUnitMode: "rates",
       unitModes: [
-        { id: "rates", label: "Rates", columns: D1_RIM_SCORING_RATE_COLUMNS, defaultColumns: ["rim_scoring_freq", "rim_scoring_ppp", "rim_iso_freq", "rim_pnr_freq", "rim_su_freq"] },
-        { id: "totals", label: "Totals", columns: D1_RIM_SCORING_TOTAL_COLUMNS, defaultColumns: ["rim_scoring_poss", "rim_scoring_points", "rim_iso_poss", "rim_pnr_poss", "rim_su_poss"] },
-        { id: "per40", label: "Per 40", columns: D1_RIM_SCORING_PER40_COLUMNS, defaultColumns: ["rim_scoring_poss_per40", "rim_scoring_points_per40", "rim_iso_poss_per40", "rim_pnr_poss_per40", "rim_su_poss_per40"] },
-        { id: "per_game", label: "Per Game", columns: D1_RIM_SCORING_PER_GAME_COLUMNS, defaultColumns: ["rim_scoring_poss_pg", "rim_scoring_points_pg", "rim_iso_poss_pg", "rim_pnr_poss_pg", "rim_su_poss_pg"] },
+        { id: "rates", label: "Rates", columns: D1_RIM_SCORING_RATE_COLUMNS, defaultColumns: ["rim_scoring_freq", "rim_scoring_ppp", "rim_scoring_ftr", "rim_scoring_tov_pct", "rim_iso_freq", "rim_pnr_freq", "rim_su_freq"] },
+        { id: "totals", label: "Totals", columns: D1_RIM_SCORING_TOTAL_COLUMNS, defaultColumns: ["rim_scoring_poss", "rim_scoring_points", "rim_scoring_fga", "rim_scoring_fta", "rim_iso_poss", "rim_pnr_poss", "rim_su_poss"] },
+        { id: "per40", label: "Per 40", columns: D1_RIM_SCORING_PER40_COLUMNS, defaultColumns: ["rim_scoring_poss_per40", "rim_scoring_points_per40", "rim_scoring_fga_per40", "rim_scoring_fta_per40", "rim_iso_poss_per40", "rim_pnr_poss_per40", "rim_su_poss_per40"] },
+        { id: "per_game", label: "Per Game", columns: D1_RIM_SCORING_PER_GAME_COLUMNS, defaultColumns: ["rim_scoring_poss_pg", "rim_scoring_points_pg", "rim_scoring_fga_pg", "rim_scoring_fta_pg", "rim_iso_poss_pg", "rim_pnr_poss_pg", "rim_su_poss_pg"] },
         { id: "all", label: "All", columns: D1_RIM_SCORING_COLUMNS },
       ],
     },
@@ -1213,7 +1240,7 @@ function buildD1Config() {
   );
 
   const defaultVisible = groups
-    .filter((group) => ["advanced_bart", "ancillaries", "shot_profile", "halfcourt", "transition"].includes(group.id))
+    .filter((group) => ["general", "advanced_bart", "ancillaries", "shot_profile", "halfcourt", "transition"].includes(group.id))
     .flatMap((group) => group.defaultColumns);
 
   return {
@@ -1656,6 +1683,7 @@ function buildPlayerCareerConfig() {
         columns: ["gp", "min", "mpg", "pts", "trb", "ast", "tov", "stl", "blk", "pf", "stocks", "orb", "drb"],
         defaultColumns: ["gp", "min", "mpg"],
       },
+      buildGeneralStatGroup(),
       {
         id: "shooting",
         label: "Shooting",
@@ -1694,7 +1722,7 @@ function buildPlayerCareerConfig() {
       { id: "pos", label: "Pos", column: "pos", sort: STANDARD_POSITION_SORT },
       { id: "path_levels", label: "Path", column: "profile_levels", sort: PLAYER_CAREER_LEVEL_FILTER_ORDER },
     ],
-    defaultVisible: ["rank", "season", "player_name", "competition_level", "profile_levels", "team_name", "pos", "class_year", "gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "stocks_pg", "tov_pg", "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "adjoe", "adrtg", "porpag", "dporpag", "bpm", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40"],
+    defaultVisible: ["rank", "season", "player_name", "competition_level", "profile_levels", "team_name", "pos", "class_year", "gp", "min", "mpg", ...GENERAL_DEFAULT_PER_GAME_COLUMNS, "stocks_pg", "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "adjoe", "adrtg", "porpag", "dporpag", "bpm"],
     labels: {
       rank: "",
       season: "Year",
@@ -1840,6 +1868,7 @@ function buildPlayerCareerConfig() {
       d1_peak_prpg: "D1 Peak PRPG",
       d1_peak_dprpg: "D1 Peak dPRPG",
       d1_peak_bpm: "D1 Peak BPM",
+      ...GENERAL_LABELS,
       ...D1_SUMMARY_COLUMNS.reduce((labels, item) => ({ ...labels, [item.key]: item.label }), {}),
       ...D1_HALFCOURT_COLUMNS.reduce((labels, item) => ({ ...labels, [item.key]: item.label }), {}),
       ...D1_SHOT_PROFILE_COLUMNS.reduce((labels, item) => ({ ...labels, [item.key]: item.label }), {}),
@@ -2078,6 +2107,7 @@ function buildInternationalConfig() {
         columns: ["gp", "min", "mpg", "pts", "trb", "ast", "tov", "stl", "blk", "pf", "stocks", "orb", "drb"],
         defaultColumns: ["gp", "min", "mpg"],
       },
+      buildGeneralStatGroup(),
       {
         id: "advanced",
         label: "Advanced",
@@ -2119,7 +2149,7 @@ function buildInternationalConfig() {
       { id: "nationality_regions", label: "Region", column: "nationality_regions", renderAsSelect: true, sort: INTERNATIONAL_REGION_ORDER, options: INTERNATIONAL_REGION_ORDER },
       { id: "nationality", label: "Country", column: "nationality_list", renderAsSelect: true },
     ],
-    defaultVisible: ["rank", "season", "player_name", "league_name", "team_abbrev", "pos", "age", "dob", "nationality", "draft_year", "draft_pick", "gp", "min", "mpg", "per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "tov_pct", "ast_to", "stl_pct", "blk_pct", "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "stocks_pg", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40"],
+    defaultVisible: ["rank", "season", "player_name", "league_name", "team_abbrev", "pos", "age", "dob", "nationality", "draft_year", "draft_pick", "gp", "min", "mpg", ...GENERAL_DEFAULT_PER_GAME_COLUMNS, "per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "tov_pct", "ast_to", "stl_pct", "blk_pct", "fg_pct", "two_p_pct", "three_p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"],
     labels: {
       rank: "",
       season: "Year",
@@ -2231,6 +2261,7 @@ function buildInternationalConfig() {
       ows: "OWS",
       dws: "DWS",
       ws: "WS",
+      ...GENERAL_LABELS,
     },
   };
 }
@@ -2455,6 +2486,7 @@ const DATASETS = {
     demoColumns: ["pos", "class_year", "height_in", "weight_lb", "gp", "min", "mpg"],
     demoFilterColumns: ["gp", "min", "mpg"],
     groups: [
+      buildGeneralStatGroup(),
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag"] },
       { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "two_pm", "two_pa", "two_p_pct", "3pm", "3pa", "3p_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "three_pa_per100"], defaultColumns: ["fg_pct", "two_p_pct", "3p_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "three_pa_per100"] },
@@ -2469,7 +2501,7 @@ const DATASETS = {
       { id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C"] },
       { id: "class_year", label: "Class", column: "class_year", sort: ["Fr", "So", "Jr", "Sr", "Gr"] },
     ],
-    defaultVisible: ["rank", "season", "player", "team_name", "class_year", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "two_p_pct", "3p_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "three_pa_per100", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
+    defaultVisible: ["rank", "season", "player", "team_name", "class_year", "gp", "min", ...GENERAL_DEFAULT_PER_GAME_COLUMNS, "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "two_p_pct", "3p_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "three_pa_per100", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"],
     labels: {
       rank: "",
       season: "Year",
@@ -2535,6 +2567,7 @@ const DATASETS = {
       ftr: "FTr",
       three_pr: "3Pr",
       three_pa_per100: "3PA/100",
+      ...GENERAL_LABELS,
       d1_peak_prpg: "D1 Peak PRPG",
       d1_peak_dprpg: "D1 Peak dPRPG",
       d1_peak_bpm: "D1 Peak BPM",
@@ -2559,7 +2592,7 @@ const DATASETS = {
     yearColumn: "season",
     playerColumn: "player_name",
     teamColumn: "team_name",
-    lockedColumns: ["rank", "season", "player_name", "team_name", "pos"],
+    lockedColumns: ["rank", "season", "player_name", "team_name"],
     searchColumns: withUniversalSearchColumns(["player_name", "player_search_text", "team_name", "conference", "division", "coach", "team_search_text", "coach_search_text"]),
     sortBy: "min",
     sortDir: "desc",
@@ -2568,6 +2601,7 @@ const DATASETS = {
     demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "dob", "gp", "min", "mpg"],
     groups: [
       { id: "info", label: "Info", columns: ["division", "conference"], defaultColumns: ["division"] },
+      buildGeneralStatGroup(),
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag"] },
       { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "tpm", "tpa", "tp_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"] },
@@ -2583,7 +2617,7 @@ const DATASETS = {
       { id: "status_path", label: "Status", options: STATUS_EVER_FILTER_OPTIONS },
     ]),
     minYear: 2011,
-    defaultVisible: ["rank", "season", "player_name", "team_name", "division", "age", "height_in", "gp", "min", "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40"],
+    defaultVisible: ["rank", "season", "player_name", "team_name", "division", "gp", "min", ...GENERAL_DEFAULT_PER_GAME_COLUMNS, "adjoe", "adrtg", "porpag", "dporpag", "min_per", "usg_pct", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"],
     labels: {
       rank: "",
       season: "Year",
@@ -2654,6 +2688,7 @@ const DATASETS = {
       d1_peak_prpg: "D1 Peak PRPG",
       d1_peak_dprpg: "D1 Peak dPRPG",
       d1_peak_bpm: "D1 Peak BPM",
+      ...GENERAL_LABELS,
       ...LOWER_TIER_SHOT_PROFILE_LABELS,
       ...buildCollegePlaytypeLabels(),
     },
@@ -2684,6 +2719,7 @@ const DATASETS = {
     demoFilterColumns: ["age", "height_in", "weight_lb", "bmi", "gp", "min", "mpg", "dob"],
     groups: [
       { id: "info", label: "Info", columns: ["level", "region"], defaultColumns: ["level", "region"] },
+      buildGeneralStatGroup(),
       { id: "summary", label: "Summary", columns: ["adjoe", "adrtg", "porpag", "dporpag", "per", "fic", "ppr", "nba_career_epm"], defaultColumns: ["adjoe", "adrtg", "porpag", "dporpag"] },
       { id: "advanced", label: "Advanced", columns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "tpm", "tpa", "tp_pct", "ftm", "fta", "ft_pct", "ts_pct", "efg_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr"] },
@@ -2698,7 +2734,7 @@ const DATASETS = {
       { id: "region", label: "Region", column: "region" },
       { id: "status_path", label: "Status", options: STATUS_EVER_FILTER_OPTIONS },
     ]),
-    defaultVisible: ["rank", "season", "player_name", "team_name", "level", "region", "age", "height_in", "gp", "min", "mpg", "adjoe", "adrtg", "porpag", "dporpag", "pts_pg", "trb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "stocks_pg", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct"],
+    defaultVisible: ["rank", "season", "player_name", "team_name", "level", "region", "gp", "min", "mpg", ...GENERAL_DEFAULT_PER_GAME_COLUMNS, "adjoe", "adrtg", "porpag", "dporpag", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ft_pct", "ftr", "three_pr", "rim_pct", "mid_pct"],
     labels: {
       rank: "",
       season: "Year",
@@ -2778,6 +2814,7 @@ const DATASETS = {
       d1_peak_prpg: "D1 Peak PRPG",
       d1_peak_dprpg: "D1 Peak dPRPG",
       d1_peak_bpm: "D1 Peak BPM",
+      ...GENERAL_LABELS,
       ...LOWER_TIER_SHOT_PROFILE_LABELS,
     },
   },
@@ -2818,6 +2855,7 @@ const DATASETS = {
     demoFilterColumns: ["height_in", "weight_lb", "gp", "min", "mpg"],
     groups: [
       { id: "meta", label: "Info", columns: ["setting", "state", "age_range", "class_year", "height_in", "weight_lb", "event_name", "circuit", "team_name", "pos", "gp", "min", "mpg"], defaultColumns: ["pos", "gp", "min", "mpg"] },
+      buildGeneralStatGroup(),
       { id: "main", label: "Main", columns: ["dsi", "ram", "c_ram", "psp", "three_pe", "usg_pct"], defaultColumns: ["dsi", "ram", "c_ram", "psp", "three_pe", "usg_pct"] },
       { id: "rates", label: "Rates", columns: ["fg_pct", "2p_pct", "tp_pct", "three_pr", "ftm_fga", "three_pr_plus_ftm_fga", "ast_to", "blk_pf", "stl_pf", "stocks_pf"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "three_pr", "ftm_fga", "three_pr_plus_ftm_fga", "ast_to", "blk_pf", "stl_pf", "stocks_pf"] },
       {
@@ -2843,7 +2881,7 @@ const DATASETS = {
       { id: "circuit", label: "Circuit", column: "circuit", sort: GRASSROOTS_CIRCUIT_ORDER },
       { id: "pos", label: "Pos", column: "pos", sort: STANDARD_POSITION_SORT },
     ],
-    defaultVisible: ["rank", "season", "circuit", "player_name", "pos", "height_in", "gp", "min", "mpg", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "fg_pct", "2p_pct", "tp_pct", "three_pr", "ftm_fga", "three_pr_plus_ftm_fga", "tpm_pg", "ftm_pg", "usg_pct", "ram", "c_ram", "psp", "three_pe", "dsi", "blk_pf", "stl_pf", "stocks_pf"],
+    defaultVisible: ["rank", "season", "circuit", "player_name", "pos", "height_in", "gp", "min", "mpg", ...GENERAL_DEFAULT_PER_GAME_COLUMNS, "fg_pct", "2p_pct", "tp_pct", "three_pr", "ftm_fga", "three_pr_plus_ftm_fga", "tpm_pg", "ftm_pg", "usg_pct", "ram", "c_ram", "psp", "three_pe", "dsi", "blk_pf", "stl_pf", "stocks_pf"],
     labels: {
       rank: "",
       season: "Year",
@@ -2918,6 +2956,7 @@ const DATASETS = {
       blk_per40: "BLK/40",
       pf_per40: "PF/40",
       stocks_per40: "Stocks/40",
+      ...GENERAL_LABELS,
     },
   },
   fiba: {
@@ -2942,6 +2981,7 @@ const DATASETS = {
     demoColumns: ["competition_label", "pos", "height_in", "weight_lb", "wingspan", "age", "dob", "gp", "min", "mpg"],
     demoFilterColumns: ["height_in", "weight_lb", "wingspan", "age", "dob", "gp", "min", "mpg"],
     groups: [
+      buildGeneralStatGroup(),
       { id: "summary", label: "Summary", columns: ["gp", "min", "mpg", "eff_pg", "plus_minus_pg"], defaultColumns: ["min", "mpg", "eff_pg", "plus_minus_pg"] },
       { id: "advanced", label: "Advanced", columns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "rgm_per", "fic", "ppr", "nba_career_epm", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"], defaultColumns: ["min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "orb_pct", "drb_pct", "trb_pct", "usg_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"] },
       { id: "shooting", label: "Shooting", columns: ["fg_pct", "2pm", "2pa", "2p_pct", "3pm", "3pa", "tp_pct", "ftm", "fta", "ft_pct", "efg_pct", "ts_pct", "ftr", "three_pr"], defaultColumns: ["fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ftr", "three_pr"] },
@@ -2956,7 +2996,7 @@ const DATASETS = {
       { id: "pos", label: "Pos", column: "pos", sort: STANDARD_POSITION_SORT },
       { id: "competition_label", label: "Event", column: "competition_label", renderAsSelect: true },
     ],
-    defaultVisible: ["rank", "season", "player_name", "team_name", "competition_label", "pos", "min", "mpg", "eff_pg", "plus_minus_pg", "min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct", "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40", "two_pa_per40", "three_pa_per40"],
+    defaultVisible: ["rank", "season", "player_name", "team_name", "competition_label", "pos", "min", "mpg", ...GENERAL_DEFAULT_PER_GAME_COLUMNS, "eff_pg", "plus_minus_pg", "min_per", "adjoe", "adrtg", "porpag", "dporpag", "per", "fg_pct", "2p_pct", "tp_pct", "efg_pct", "ts_pct", "ftr", "three_pr", "rim_pct", "mid_pct", "orb_pct", "drb_pct", "trb_pct", "ast_pct", "ast_to", "tov_pct", "stl_pct", "blk_pct"],
     labels: {
       rank: "",
       season: "Year",
@@ -3028,6 +3068,7 @@ const DATASETS = {
       tov_pct: "TOV%",
       stl_pct: "STL%",
       blk_pct: "BLK%",
+      ...GENERAL_LABELS,
       ...LOWER_TIER_SHOT_PROFILE_LABELS,
     },
   },
@@ -3052,15 +3093,15 @@ const DATASETS = {
     demoColumns: ["pos_text", "age", "inches", "weight", "wingspan", "gp", "mp", "mpg", "rookie_year"],
     demoFilterColumns: ["age", "inches", "weight", "bmi", "wingspan", "exp", "gp", "mp", "mpg", "rookie_year"],
     groups: [
+      buildGeneralStatGroup(),
       { id: "summary", label: "Summary", columns: ["off", "def", "tot", "ewins", "per", "porpag", "fic"] },
-      { id: "per_game", label: "Per Game", columns: ["pts_pg", "trb_pg", "ast_pg", "ast_stl_pg", "tov_pg", "stl_pg", "blk_pg", "stocks_pg", "two_pa_pg", "three_pa_pg"], defaultColumns: ["pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg"] },
       { id: "shot_profile", label: "Shot Profile", columns: ["fgpct_rim", "rim_ast_pct", "fga_rim_75", "fgpct_mid", "mid_ast_pct", "fga_mid_75", "fg2pct", "two_ast_pct", "fg3pct", "three_ast_pct", "fg3a_75", "ftpct", "three_p_per100", "three_pr", "ftr"] },
       { id: "advanced", label: "Advanced", columns: ["orbpct", "drbpct", "usg", "astpct", "ast_to", "topct", "stlpct", "blkpct", "tspct", "efg"] },
       ...buildNbaPlaytypeGroups(),
     ],
     singleFilters: withSharedSingleFilters(),
     multiFilters: [{ id: "pos_text", label: "Pos", column: "pos_text", sort: ["PG", "SG", "SF", "PF", "C"] }],
-    defaultVisible: ["rank", "season", "player_name", "team_alias", "pos_text", "age", "gp", "mp", "pts_pg", "trb_pg", "ast_pg", "stl_pg", "blk_pg", "off", "def", "tot", "ewins", "per", "porpag", "fic", "fgpct_rim", "fgpct_mid", "fg2pct", "fg3pct", "ftpct", "three_p_per100", "three_pr", "ftr", "usg", "orbpct", "drbpct", "astpct", "ast_to", "topct", "stlpct", "blkpct", "tspct", "efg"],
+    defaultVisible: ["rank", "season", "player_name", "team_alias", "pos_text", "age", "gp", "mp", ...GENERAL_DEFAULT_PER_GAME_COLUMNS, "off", "def", "tot", "ewins", "per", "porpag", "fic", "fgpct_rim", "fgpct_mid", "fg2pct", "fg3pct", "ftpct", "three_p_per100", "three_pr", "ftr", "usg", "orbpct", "drbpct", "astpct", "ast_to", "topct", "stlpct", "blkpct", "tspct", "efg"],
     labels: {
       rank: "",
       season: "Year",
@@ -3118,6 +3159,7 @@ const DATASETS = {
       mid_ast_pct: "Mid Ast%",
       two_ast_pct: "2P Ast%",
       three_ast_pct: "3P Ast%",
+      ...GENERAL_LABELS,
       ...buildNbaPlaytypeLabels(),
     },
   },
@@ -10742,11 +10784,12 @@ const GROUP_UNIT_MODE_ORDER = [
   { id: "totals", label: "Totals" },
   { id: "per_game", label: "Per G" },
   { id: "per40", label: "Per 40" },
+  { id: "per100", label: "Per 100" },
   { id: "all", label: "All" },
 ];
 
 function isPlaytypeCountColumn(baseColumn) {
-  return /(?:_poss$|_points$|_pts$|_fga$|_two_pa$|_three_pa$|_fta$|_fg_att$|_fg_made$|_fg_miss$|_two_fg_att$|_two_fg_made$|_two_fg_miss$|_three_fg_att$|_three_fg_made$|_three_fg_miss$)/i.test(baseColumn);
+  return /(?:_poss$|_points$|_pts$|_fga$|_fgm$|_fg_miss$|_two_pa$|_three_pa$|_fta$|_ftm$|_tov$|_plus1$|_fg_att$|_fg_made$|_fg_miss$|_two_fg_att$|_two_fg_made$|_two_fg_miss$|_three_fg_att$|_three_fg_made$|_three_fg_miss$)/i.test(baseColumn);
 }
 
 function isShotProfileCountColumn(baseColumn) {
@@ -10755,6 +10798,7 @@ function isShotProfileCountColumn(baseColumn) {
 
 function getColumnUnitMode(column, group = null) {
   const baseColumn = stripCompanionPrefix(column);
+  if (/_per100$/i.test(baseColumn)) return "per100";
   if (/_per40$/i.test(baseColumn)) return "per40";
   if (/_pg$/i.test(baseColumn) || /_per_g$/i.test(baseColumn)) return "per_game";
   if (group?.unitModeKind === "playtype") {
@@ -14143,22 +14187,22 @@ function getColumnWidth(column, dataset) {
   const baseColumn = stripCompanionPrefix(column);
   if (isRelativeDisplayColumn(column)) return 38;
   if (column === "rank") return 24;
-  if (isSplitDisplayColumn(column)) return 82;
+  if (isSplitDisplayColumn(column)) return 74;
   if (baseColumn === dataset.yearColumn || baseColumn === "season") return 34;
   if (baseColumn === "age_range") return 48;
   if (isPlayerDisplayColumn(dataset, column)) {
-    if (dataset.id === "nba") return 118;
-    if (dataset.id === "player_career") return 112;
-    if (dataset.id === "grassroots") return 114;
-    return 110;
+    if (dataset.id === "nba") return 108;
+    if (dataset.id === "player_career") return 106;
+    if (dataset.id === "grassroots") return 108;
+    return 104;
   }
   if (isTeamDisplayColumn(dataset, column)) {
-    if (baseColumn === "team_full" || baseColumn === "current_team" || baseColumn === "pre_draft_team") return 108;
+    if (baseColumn === "team_full" || baseColumn === "current_team" || baseColumn === "pre_draft_team") return 98;
     if (dataset.id === "nba" && baseColumn === "team_name") return 58;
-    if (dataset.id === "grassroots") return 84;
-    if (dataset.id === "player_career") return 88;
-    if (dataset.id === "international") return 92;
-    return 82;
+    if (dataset.id === "grassroots") return 78;
+    if (dataset.id === "player_career") return 82;
+    if (dataset.id === "international") return 84;
+    return 76;
   }
   if (dataset.id === "player_career" && baseColumn === "profile_levels") return 96;
   if (dataset.id === "player_career" && baseColumn === "career_path") return 156;
@@ -14172,13 +14216,13 @@ function getColumnWidth(column, dataset) {
   if (baseColumn === "state") return 44;
   if (dataset.id === "grassroots" && baseColumn === "circuit") return 74;
   if (baseColumn === "ftm_fga") return 50;
-  if (baseColumn === "rim_to_mid_att_ratio") return 62;
+  if (baseColumn === "rim_to_mid_att_ratio") return 42;
   if (baseColumn === "ast_stl_pg" || baseColumn === "ast_stl_per40") return 56;
   if (baseColumn === "blk_pf" || baseColumn === "stl_pf" || baseColumn === "stocks_pf") return 54;
   if (baseColumn === "three_pr_plus_ftm_fga") return 72;
-  if (dataset.id === "team_coach" && isTeamCoachPlaytypeColumn(baseColumn)) return 62;
-  if (dataset.id === "d1" && isD1PlaytypeColumn(baseColumn)) return 62;
-  if (/player/i.test(baseColumn)) return 116;
+  if (dataset.id === "team_coach" && isTeamCoachPlaytypeColumn(baseColumn)) return 56;
+  if (dataset.id === "d1" && isD1PlaytypeColumn(baseColumn)) return 56;
+  if (/player/i.test(baseColumn)) return 108;
   if (baseColumn === "competition_label") return 78;
   if (/^nationality$|^team_code$/.test(baseColumn)) return 52;
   if (baseColumn === "coach") return dataset.id === "team_coach" ? 64 : 74;
@@ -15233,7 +15277,7 @@ const PLAYER_PROFILE_TOTAL_ALIASES = {
   fta: ["fta"],
 };
 
-const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumnsV6";
+const PLAYER_PROFILE_STORAGE_KEY = "multiExplorerPlayerProfileColumnsV7";
 const PLAYER_PROFILE_COLOR_STORAGE_KEY = "multiExplorerPlayerProfileColorsV2";
 const PLAYER_PROFILE_ROW_MODE_STORAGE_KEY = "multiExplorerPlayerProfileCareerOnlyV1";
 const PLAYER_PROFILE_SORT_STORAGE_KEY = "multiExplorerPlayerProfileSortV1";
@@ -15251,6 +15295,7 @@ const PLAYER_PROFILE_COLUMN_GROUPS = [
     label: "Totals",
     columns: [
       "gp", "min", "mpg", "pts", "trb", "orb", "drb", "ast", "tov", "stl", "blk", "pf", "stocks",
+      "ast_tov", "fg_made_att", "two_p_made_att", "three_p_made_att", "ft_made_att",
       "fgm", "fga", "two_pm", "two_pa", "three_pm", "three_pa", "ftm", "fta",
     ],
   },
@@ -15259,8 +15304,9 @@ const PLAYER_PROFILE_COLUMN_GROUPS = [
     label: "Per Game",
     columns: [
       "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "pf_pg", "stocks_pg",
-      "fgm_pg", "fga_pg", "fg_pct", "two_pm_pg", "two_pa_pg", "two_p_pct", "three_pm_pg", "three_pa_pg", "three_p_pct",
-      "ftm_pg", "fta_pg", "ft_pct", "ftr", "three_pr", "efg_pct", "ts_pct", "ast_to",
+      "ast_tov_pg", "fg_made_att_pg", "fg_pct", "two_p_made_att_pg", "two_p_pct", "three_p_made_att_pg", "three_p_pct",
+      "ft_made_att_pg", "ft_pct", "ftr", "three_pr", "efg_pct", "ts_pct", "ast_to",
+      "fgm_pg", "fga_pg", "two_pm_pg", "two_pa_pg", "three_pm_pg", "three_pa_pg", "ftm_pg", "fta_pg",
     ],
   },
   {
@@ -15268,6 +15314,7 @@ const PLAYER_PROFILE_COLUMN_GROUPS = [
     label: "Per 40",
     columns: [
       "pts_per40", "trb_per40", "orb_per40", "drb_per40", "ast_per40", "tov_per40", "stl_per40", "blk_per40", "pf_per40", "stocks_per40",
+      "ast_tov_per40", "fg_made_att_per40", "two_p_made_att_per40", "three_p_made_att_per40", "ft_made_att_per40",
       "fgm_per40", "fga_per40", "two_pm_per40", "two_pa_per40", "three_pm_per40", "three_pa_per40", "ftm_per40", "fta_per40",
     ],
   },
@@ -15285,11 +15332,11 @@ const PLAYER_PROFILE_DEFAULT_COLUMNS = [
   ...PLAYER_PROFILE_LOCKED_COLUMNS,
   "wingspan",
   "gp", "mpg",
-  "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_pg", "tov_pg", "stl_pg", "blk_pg", "pf_pg", "stocks_pg",
-  "fgm_pg", "fga_pg", "fg_pct",
-  "two_pm_pg", "two_pa_pg", "two_p_pct",
-  "three_pm_pg", "three_pa_pg", "three_p_pct",
-  "ftm_pg", "fta_pg", "ft_pct",
+  "pts_pg", "trb_pg", "orb_pg", "drb_pg", "ast_tov_pg", "stl_pg", "blk_pg", "pf_pg", "stocks_pg",
+  "fg_made_att_pg", "fg_pct",
+  "two_p_made_att_pg", "two_p_pct",
+  "three_p_made_att_pg", "three_p_pct",
+  "ft_made_att_pg", "ft_pct",
   "efg_pct", "ts_pct", "ftr", "three_pr", "ast_to",
   "pts_per40", "trb_per40", "ast_per40", "stl_per40", "blk_per40", "stocks_per40",
   "per", "bpm", "usg_pct", "ast_pct", "tov_pct", "stl_pct", "blk_pct",
@@ -15307,35 +15354,45 @@ const PLAYER_PROFILE_LABELS = {
   drb: "DRB",
   ast: "AST",
   tov: "TOV",
+  ast_tov: "AST:TOV",
   stl: "STL",
   blk: "BLK",
   pf: "PF",
   fgm: "FGM",
   fga: "FGA",
+  fg_made_att: "FG",
   two_pm: "2PM",
   two_pa: "2PA",
+  two_p_made_att: "2P",
   three_pm: "3PM",
   three_pa: "3PA",
+  three_p_made_att: "3P",
   ftm: "FTM",
   fta: "FTA",
+  ft_made_att: "FT",
   pts_pg: "PTS/G",
   trb_pg: "TRB/G",
   orb_pg: "ORB/G",
   drb_pg: "DRB/G",
   ast_pg: "AST/G",
   tov_pg: "TOV/G",
+  ast_tov_pg: "AST:TOV G",
   stl_pg: "STL/G",
   blk_pg: "BLK/G",
   pf_pg: "PF/G",
   stocks_pg: "Stocks/G",
   fgm_pg: "FGM/G",
   fga_pg: "FGA/G",
+  fg_made_att_pg: "FG G",
   two_pm_pg: "2PM/G",
   two_pa_pg: "2PA/G",
+  two_p_made_att_pg: "2P G",
   three_pm_pg: "3PM/G",
   three_pa_pg: "3PA/G",
+  three_p_made_att_pg: "3P G",
   ftm_pg: "FTM/G",
   fta_pg: "FTA/G",
+  ft_made_att_pg: "FT G",
   fg_pct: "FG%",
   two_p_pct: "2P%",
   three_p_pct: "3P%",
@@ -15351,18 +15408,23 @@ const PLAYER_PROFILE_LABELS = {
   drb_per40: "DRB/40",
   ast_per40: "AST/40",
   tov_per40: "TOV/40",
+  ast_tov_per40: "AST:TOV 40",
   stl_per40: "STL/40",
   blk_per40: "BLK/40",
   pf_per40: "PF/40",
   stocks_per40: "Stocks/40",
   fgm_per40: "FGM/40",
   fga_per40: "FGA/40",
+  fg_made_att_per40: "FG 40",
   two_pm_per40: "2PM/40",
   two_pa_per40: "2PA/40",
+  two_p_made_att_per40: "2P 40",
   three_pm_per40: "3PM/40",
   three_pa_per40: "3PA/40",
+  three_p_made_att_per40: "3P 40",
   ftm_per40: "FTM/40",
   fta_per40: "FTA/40",
+  ft_made_att_per40: "FT 40",
   ortg: "ORtg",
   drtg: "DRtg",
   net_rating: "NetRtg",
@@ -15371,6 +15433,24 @@ const PLAYER_PROFILE_LABELS = {
   bpm_diff: "BPMdiff",
   bpm_frac: "BPMfrac",
   stocks_pct: "STL%+BLK%",
+};
+
+const PLAYER_PROFILE_PAIRED_DISPLAY_COLUMNS = {
+  ast_tov: { left: "ast", right: "tov", separator: ":", decimals: 0, sort: "left" },
+  ast_tov_pg: { left: "ast_pg", right: "tov_pg", separator: ":", decimals: 1, sort: "left" },
+  ast_tov_per40: { left: "ast_per40", right: "tov_per40", separator: ":", decimals: 1, sort: "left" },
+  fg_made_att: { left: "fgm", right: "fga", separator: "-", decimals: 0, sort: "right" },
+  fg_made_att_pg: { left: "fgm_pg", right: "fga_pg", separator: "-", decimals: 1, sort: "right" },
+  fg_made_att_per40: { left: "fgm_per40", right: "fga_per40", separator: "-", decimals: 1, sort: "right" },
+  two_p_made_att: { left: "two_pm", right: "two_pa", separator: "-", decimals: 0, sort: "right" },
+  two_p_made_att_pg: { left: "two_pm_pg", right: "two_pa_pg", separator: "-", decimals: 1, sort: "right" },
+  two_p_made_att_per40: { left: "two_pm_per40", right: "two_pa_per40", separator: "-", decimals: 1, sort: "right" },
+  three_p_made_att: { left: "three_pm", right: "three_pa", separator: "-", decimals: 0, sort: "right" },
+  three_p_made_att_pg: { left: "three_pm_pg", right: "three_pa_pg", separator: "-", decimals: 1, sort: "right" },
+  three_p_made_att_per40: { left: "three_pm_per40", right: "three_pa_per40", separator: "-", decimals: 1, sort: "right" },
+  ft_made_att: { left: "ftm", right: "fta", separator: "-", decimals: 0, sort: "right" },
+  ft_made_att_pg: { left: "ftm_pg", right: "fta_pg", separator: "-", decimals: 1, sort: "right" },
+  ft_made_att_per40: { left: "ftm_per40", right: "fta_per40", separator: "-", decimals: 1, sort: "right" },
 };
 
 function dedupePlayerProfileRows(rows) {
@@ -15874,6 +15954,8 @@ function getPlayerProfileRenderTarget(root) {
 
 function hasPlayerProfileColumnValue(rows, column) {
   return (rows || []).some((row) => {
+    const pairedStats = isPlayerProfilePairedDisplayColumn(column) ? getPlayerProfilePairedDisplayStats(row, column) : null;
+    if (pairedStats) return Number.isFinite(pairedStats.left) || Number.isFinite(pairedStats.right);
     const splitStats = isSplitDisplayColumn(column) ? getSplitDisplayStats(row, column) : null;
     if (splitStats) {
       return Number.isFinite(splitStats.made) || Number.isFinite(splitStats.att) || Number.isFinite(splitStats.ratio);
@@ -15888,6 +15970,8 @@ function hasEveryPlayerProfileColumnValue(rows, column) {
   const candidates = (rows || []).filter(Boolean);
   if (!candidates.length) return false;
   return candidates.every((row) => {
+    const pairedStats = isPlayerProfilePairedDisplayColumn(column) ? getPlayerProfilePairedDisplayStats(row, column) : null;
+    if (pairedStats) return Number.isFinite(pairedStats.left) || Number.isFinite(pairedStats.right);
     const splitStats = isSplitDisplayColumn(column) ? getSplitDisplayStats(row, column) : null;
     if (splitStats) {
       return Number.isFinite(splitStats.made) || Number.isFinite(splitStats.att) || Number.isFinite(splitStats.ratio);
@@ -16003,6 +16087,41 @@ function getAvailablePlayerProfileColumns(rows, options = {}) {
   ));
 }
 
+function getPlayerProfilePairedDisplayConfig(column) {
+  return PLAYER_PROFILE_PAIRED_DISPLAY_COLUMNS[stripCompanionPrefix(column)] || null;
+}
+
+function getPlayerProfilePairedDisplayStats(row, column) {
+  const config = getPlayerProfilePairedDisplayConfig(column);
+  if (!config || !row) return null;
+  const left = firstFinite(row?.[config.left], getPlayerProfileTotalValue(row, config.left), Number.NaN);
+  const right = firstFinite(row?.[config.right], getPlayerProfileTotalValue(row, config.right), Number.NaN);
+  if (!Number.isFinite(left) && !Number.isFinite(right)) return null;
+  const sortValue = config.sort === "right" && Number.isFinite(right)
+    ? right
+    : (Number.isFinite(left) ? left : right);
+  return { ...config, left, right, sortValue };
+}
+
+function isPlayerProfilePairedDisplayColumn(column) {
+  return Boolean(getPlayerProfilePairedDisplayConfig(column));
+}
+
+function formatPlayerProfilePairedNumber(value, decimals = 1) {
+  if (!Number.isFinite(value)) return "";
+  if (decimals <= 0) return String(Math.round(value));
+  return value.toFixed(decimals).replace(/\.0$/, ".0");
+}
+
+function renderPlayerProfilePairedDisplay(row, column) {
+  const stats = getPlayerProfilePairedDisplayStats(row, column);
+  if (!stats) return "";
+  const left = formatPlayerProfilePairedNumber(stats.left, stats.decimals);
+  const right = formatPlayerProfilePairedNumber(stats.right, stats.decimals);
+  if (!left && !right) return "";
+  return `${left || "0"}${stats.separator}${right || "0"}`;
+}
+
 function normalizePlayerProfileSortState(sortState, availableColumns = PLAYER_PROFILE_ALL_COLUMNS) {
   const available = new Set(availableColumns);
   const fallbackColumn = available.has("season") ? "season" : (availableColumns[0] || PLAYER_PROFILE_LOCKED_COLUMNS[0] || "season");
@@ -16038,6 +16157,10 @@ function getPlayerProfileSortValue(row, column) {
   if (column === "season") {
     const year = extractLeadingYear(row?.season);
     return Number.isFinite(year) ? year : sanitizeCellDisplayValue(row?.season);
+  }
+  if (isPlayerProfilePairedDisplayColumn(column)) {
+    const pairedStats = getPlayerProfilePairedDisplayStats(row, column);
+    if (Number.isFinite(pairedStats?.sortValue)) return pairedStats.sortValue;
   }
   if (isSplitDisplayColumn(column)) {
     const splitStats = getSplitDisplayStats(row, column);
@@ -16167,14 +16290,17 @@ function buildPlayerProfileContentHtml(name, rows, options = {}) {
     ? sortedRows.map((row) => `<tr class="${row._careerAggregate ? "player-profile-career-row" : ""}" data-profile-row-kind="${row._careerAggregate ? "career" : "season"}">${columns.map((column) => {
       const hidden = visibleColumns.has(column) ? "" : " hidden";
       const rawValue = getRowColumnValue(dataset, row, column);
-      const style = colorsEnabled ? getCellStyle(dataset, profileColorState, column, rawValue, colorScale, row) : "";
+      const pairedHtml = isPlayerProfilePairedDisplayColumn(column)
+        ? renderPlayerProfilePairedDisplay(row, column)
+        : "";
+      const style = !pairedHtml && colorsEnabled ? getCellStyle(dataset, profileColorState, column, rawValue, colorScale, row) : "";
       const splitStats = isSplitDisplayColumn(column) ? getSplitDisplayStats(row, column) : null;
-      const styleAttribute = splitStats ? "" : (colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : "");
+      const styleAttribute = splitStats || pairedHtml ? "" : (colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : "");
       const storedStyleAttribute = style ? ` data-profile-color-style="${escapeAttribute(style)}"` : "";
       const splitHtml = splitStats
         ? `<span class="split-display"><span class="split-display__pair"><span class="split-display__made">${escapeHtml(Number.isFinite(splitStats.made) ? Math.round(splitStats.made) : 0)}</span><span class="split-display__sep">-</span><span class="split-display__att">${escapeHtml(Number.isFinite(splitStats.att) ? Math.round(splitStats.att) : 0)}</span></span><span class="split-display__pct"${colorsEnabled && style ? ` style="${escapeAttribute(style)}"` : ""}>${escapeHtml(formatSplitDisplayPct(splitStats.ratio))}</span></span>`
         : "";
-      return `<td data-profile-column="${escapeAttribute(column)}"${hidden}${styleAttribute}${storedStyleAttribute}>${splitHtml || escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, rawValue, row)))}</td>`;
+      return `<td data-profile-column="${escapeAttribute(column)}"${hidden}${styleAttribute}${storedStyleAttribute}>${pairedHtml ? escapeHtml(pairedHtml) : (splitHtml || escapeHtml(sanitizeCellDisplayValue(formatValue(dataset, column, rawValue, row))))}</td>`;
     }).join("")}</tr>`).join("")
     : `<tr><td colspan="${Math.max(columns.length, 1)}">No logged seasons found.</td></tr>`;
   const backLink = options.standalone ? `<div><a href="#player_career">Player/Career</a></div>` : "";
@@ -17650,6 +17776,7 @@ function enhanceCommonRow(row, datasetId) {
   if (!Number.isFinite(row.stocks) && Number.isFinite(row.stl) && Number.isFinite(row.blk)) {
     row.stocks = row.stl + row.blk;
   }
+  populateGeneralStatDisplayModes(row, datasetId);
 
   row.player_search_text = Array.from(new Set([row.player_name, row.player, row.player_search_text].map((value) => getStringValue(value).trim()).filter(Boolean))).join(" ");
   row.team_search_text = Array.from(new Set([row.team_name, row.team_full, row.team_alias, row.team_alias_all].map((value) => getStringValue(value).trim()).filter(Boolean))).join(" ");
@@ -18923,6 +19050,20 @@ function populateD1ShotProfileDisplayModes(row) {
   populateShotProfileDisplayModes(row);
 }
 
+function estimateD1PlaytypeTotalPossFromFreq(row) {
+  if (!row) return Number.NaN;
+  let possSum = 0;
+  let freqRatioSum = 0;
+  D1_TRUE_PLAYTYPE_IDS.forEach((id) => {
+    const poss = firstFinite(row[`${id}_poss`], Number.NaN);
+    const freq = normalizeFrequencyPercentValue(row[`${id}_freq`]);
+    if (!Number.isFinite(poss) || poss <= 0 || !Number.isFinite(freq) || freq <= 0) return;
+    possSum += poss;
+    freqRatioSum += freq / 100;
+  });
+  return possSum > 0 && freqRatioSum > 0 ? possSum / freqRatioSum : Number.NaN;
+}
+
 function normalizeD1TruePlaytypeFrequencies(row) {
   const possColumns = [
     "iso_poss",
@@ -18936,7 +19077,9 @@ function normalizeD1TruePlaytypeFrequencies(row) {
     "off_reb_poss",
     "transition_poss",
   ];
-  const total = possColumns.reduce((sum, column) => sum + (Number.isFinite(row[column]) ? row[column] : 0), 0);
+  const sourceTotal = estimateD1PlaytypeTotalPossFromFreq(row);
+  const summedTotal = possColumns.reduce((sum, column) => sum + (Number.isFinite(row[column]) ? row[column] : 0), 0);
+  const total = firstPositiveFinite(sourceTotal, summedTotal, Number.NaN);
   possColumns.forEach((column) => {
     const value = Number.isFinite(row[column]) ? row[column] : 0;
     const freqColumn = column.replace(/_poss$/, "_freq");
@@ -18951,7 +19094,7 @@ function normalizeD1TruePlaytypeFrequencies(row) {
 
 function normalizeD1DriveMetrics(row) {
   if (!row || row._careerAggregate) return;
-  const totalPoss = firstPositiveFinite(row.total_poss, estimatedPossessions(row), Number.NaN);
+  const totalPoss = firstPositiveFinite(estimateD1PlaytypeTotalPossFromFreq(row), row.total_poss, estimatedPossessions(row), Number.NaN);
   const driveGpColumns = ["drive_poss", "drive_fga", "drive_fta", "drive_two_pa"];
   if (Number.isFinite(row.transition_freq)) row.transition_freq = roundNumber(clampPercentValue(row.transition_freq), 1);
   let transitionPoss = Number.isFinite(totalPoss) && Number.isFinite(row.transition_freq)
@@ -18999,25 +19142,47 @@ function normalizeD1DriveMetrics(row) {
 
 function normalizeD1RimScoringMetrics(row) {
   if (!row || row._careerAggregate) return;
-  const totalPoss = firstPositiveFinite(row.total_poss, estimatedPossessions(row), Number.NaN);
-  let aggPoss = 0;
-  let aggPoints = 0;
-  let aggFga = 0;
-  let aggFgm = 0;
-  let weightedEfg = 0;
-  let hasPoss = false;
-  let hasPoints = false;
-  let hasFga = false;
-  let hasFgm = false;
-  let hasEfg = false;
+  const totalPoss = firstPositiveFinite(estimateD1PlaytypeTotalPossFromFreq(row), row.total_poss, estimatedPossessions(row), Number.NaN);
+  const aggregateSums = Object.fromEntries(D1_RIM_SCORING_TOTAL_SUFFIXES.map((suffix) => [suffix, { total: 0, has: false }]));
+  const weightedPercentSums = Object.fromEntries(["sf_pct", "score_pct", "plus1_pct"].map((suffix) => [suffix, { total: 0, weight: 0 }]));
 
   D1_RIM_SCORING_COMPONENTS.forEach((component) => {
     const prefix = component.prefix;
+    let fga = firstFinite(row[`${prefix}_fga`], Number.NaN);
+    let fgm = firstFinite(row[`${prefix}_fgm`], Number.NaN);
+    let fgMiss = firstFinite(row[`${prefix}_fg_miss`], Number.NaN);
+    let twoAtt = firstFinite(row[`${prefix}_two_fg_att`], Number.NaN);
+    let twoMade = firstFinite(row[`${prefix}_two_fg_made`], Number.NaN);
+    let twoMiss = firstFinite(row[`${prefix}_two_fg_miss`], Number.NaN);
+    let threeAtt = firstFinite(row[`${prefix}_three_fg_att`], Number.NaN);
+    let threeMade = firstFinite(row[`${prefix}_three_fg_made`], Number.NaN);
+    let threeMiss = firstFinite(row[`${prefix}_three_fg_miss`], Number.NaN);
+    let fta = firstFinite(row[`${prefix}_fta`], Number.NaN);
+    let ftm = firstFinite(row[`${prefix}_ftm`], Number.NaN);
+    let ftMiss = firstFinite(row[`${prefix}_ft_miss`], Number.NaN);
     const poss = firstFinite(row[`${prefix}_poss`], Number.NaN);
     const points = firstFinite(row[`${prefix}_points`], Number.NaN);
-    const fga = firstFinite(row[`${prefix}_fga`], Number.NaN);
-    const fgm = firstFinite(row[`${prefix}_fgm`], Number.NaN);
-    const efg = firstFinite(row[`${prefix}_efg_pct`], Number.NaN);
+    const tov = firstFinite(row[`${prefix}_tov`], Number.NaN);
+    const plus1 = firstFinite(row[`${prefix}_plus1`], Number.NaN);
+
+    if (!Number.isFinite(fga) && Number.isFinite(twoAtt) && Number.isFinite(threeAtt)) fga = twoAtt + threeAtt;
+    if (!Number.isFinite(fgm) && Number.isFinite(twoMade) && Number.isFinite(threeMade)) fgm = twoMade + threeMade;
+    if (!Number.isFinite(fgMiss) && Number.isFinite(fga) && Number.isFinite(fgm)) fgMiss = Math.max(0, fga - fgm);
+    if (!Number.isFinite(twoAtt) && Number.isFinite(fga) && Number.isFinite(threeAtt)) twoAtt = Math.max(0, fga - threeAtt);
+    if (!Number.isFinite(threeAtt) && Number.isFinite(fga) && Number.isFinite(twoAtt)) threeAtt = Math.max(0, fga - twoAtt);
+    if (!Number.isFinite(twoMiss) && Number.isFinite(twoAtt) && Number.isFinite(twoMade)) twoMiss = Math.max(0, twoAtt - twoMade);
+    if (!Number.isFinite(threeMiss) && Number.isFinite(threeAtt) && Number.isFinite(threeMade)) threeMiss = Math.max(0, threeAtt - threeMade);
+    if (!Number.isFinite(ftMiss) && Number.isFinite(fta) && Number.isFinite(ftm)) ftMiss = Math.max(0, fta - ftm);
+
+    [
+      ["fga", fga], ["fgm", fgm], ["fg_miss", fgMiss],
+      ["two_fg_att", twoAtt], ["two_fg_made", twoMade], ["two_fg_miss", twoMiss],
+      ["three_fg_att", threeAtt], ["three_fg_made", threeMade], ["three_fg_miss", threeMiss],
+      ["fta", fta], ["ftm", ftm], ["ft_miss", ftMiss],
+    ].forEach(([suffix, value]) => {
+      if (!Number.isFinite(row[`${prefix}_${suffix}`]) && Number.isFinite(value)) row[`${prefix}_${suffix}`] = roundNumber(value, 3);
+    });
+
     if (Number.isFinite(poss) && Number.isFinite(totalPoss) && totalPoss > 0) {
       row[`${prefix}_freq`] = roundNumber(clampPercentValue((poss / totalPoss) * 100), 1);
     }
@@ -19025,32 +19190,36 @@ function normalizeD1RimScoringMetrics(row) {
       row[`${prefix}_ppp`] = roundNumber(points / poss, 3);
     }
     if (!Number.isFinite(row[`${prefix}_fg_pct`])) row[`${prefix}_fg_pct`] = percentIfPossible(fgm, fga);
-    if (Number.isFinite(poss)) {
-      aggPoss += poss;
-      hasPoss = true;
+    if (!Number.isFinite(row[`${prefix}_two_fg_pct`])) row[`${prefix}_two_fg_pct`] = percentIfPossible(twoMade, twoAtt);
+    if (!Number.isFinite(row[`${prefix}_three_fg_pct`])) row[`${prefix}_three_fg_pct`] = percentIfPossible(threeMade, threeAtt);
+    if (!Number.isFinite(row[`${prefix}_ft_pct`])) row[`${prefix}_ft_pct`] = percentIfPossible(ftm, fta);
+    if (!Number.isFinite(row[`${prefix}_efg_pct`])) {
+      const efgPct = zeroSafeEfgPct(fgm, threeMade, fga);
+      if (efgPct !== "") row[`${prefix}_efg_pct`] = efgPct;
     }
-    if (Number.isFinite(points)) {
-      aggPoints += points;
-      hasPoints = true;
-    }
-    if (Number.isFinite(fga)) {
-      aggFga += fga;
-      hasFga = true;
-      if (Number.isFinite(efg)) {
-        weightedEfg += fga * ratioValueFromMaybePercent(efg);
-        hasEfg = true;
-      }
-    }
-    if (Number.isFinite(fgm)) {
-      aggFgm += fgm;
-      hasFgm = true;
-    }
+    if (!Number.isFinite(row[`${prefix}_ftr`])) row[`${prefix}_ftr`] = ratioIfPossible(fta, fga);
+    if (!Number.isFinite(row[`${prefix}_tov_pct`])) row[`${prefix}_tov_pct`] = percentOfPossessions(tov, poss);
+    if (!Number.isFinite(row[`${prefix}_plus1_pct`])) row[`${prefix}_plus1_pct`] = percentOfPossessions(plus1, poss);
+
+    D1_RIM_SCORING_TOTAL_SUFFIXES.forEach((suffix) => {
+      const value = firstFinite(row[`${prefix}_${suffix}`], Number.NaN);
+      if (!Number.isFinite(value)) return;
+      aggregateSums[suffix].total += value;
+      aggregateSums[suffix].has = true;
+    });
+    Object.keys(weightedPercentSums).forEach((suffix) => {
+      const value = firstFinite(row[`${prefix}_${suffix}`], Number.NaN);
+      if (!Number.isFinite(value) || !Number.isFinite(poss) || poss <= 0) return;
+      weightedPercentSums[suffix].total += ratioValueFromMaybePercent(value) * poss;
+      weightedPercentSums[suffix].weight += poss;
+    });
   });
 
-  if (!Number.isFinite(row.rim_scoring_poss) && hasPoss) row.rim_scoring_poss = roundNumber(aggPoss, 3);
-  if (!Number.isFinite(row.rim_scoring_points) && hasPoints) row.rim_scoring_points = roundNumber(aggPoints, 3);
-  if (!Number.isFinite(row.rim_scoring_fga) && hasFga) row.rim_scoring_fga = roundNumber(aggFga, 3);
-  if (!Number.isFinite(row.rim_scoring_fgm) && hasFgm) row.rim_scoring_fgm = roundNumber(aggFgm, 3);
+  D1_RIM_SCORING_TOTAL_SUFFIXES.forEach((suffix) => {
+    const column = `rim_scoring_${suffix}`;
+    const sum = aggregateSums[suffix];
+    if (!Number.isFinite(row[column]) && sum?.has) row[column] = roundNumber(sum.total, 3);
+  });
   if (Number.isFinite(row.rim_scoring_poss) && Number.isFinite(totalPoss) && totalPoss > 0) {
     row.rim_scoring_freq = roundNumber(clampPercentValue((row.rim_scoring_poss / totalPoss) * 100), 1);
   }
@@ -19058,11 +19227,26 @@ function normalizeD1RimScoringMetrics(row) {
     row.rim_scoring_ppp = roundNumber(row.rim_scoring_points / row.rim_scoring_poss, 3);
   }
   if (!Number.isFinite(row.rim_scoring_fg_pct)) row.rim_scoring_fg_pct = percentIfPossible(row.rim_scoring_fgm, row.rim_scoring_fga);
-  if (!Number.isFinite(row.rim_scoring_efg_pct) && hasEfg && aggFga > 0) row.rim_scoring_efg_pct = roundNumber((weightedEfg / aggFga) * 100, 1);
+  if (!Number.isFinite(row.rim_scoring_two_fg_pct)) row.rim_scoring_two_fg_pct = percentIfPossible(row.rim_scoring_two_fg_made, row.rim_scoring_two_fg_att);
+  if (!Number.isFinite(row.rim_scoring_three_fg_pct)) row.rim_scoring_three_fg_pct = percentIfPossible(row.rim_scoring_three_fg_made, row.rim_scoring_three_fg_att);
+  if (!Number.isFinite(row.rim_scoring_ft_pct)) row.rim_scoring_ft_pct = percentIfPossible(row.rim_scoring_ftm, row.rim_scoring_fta);
+  if (!Number.isFinite(row.rim_scoring_efg_pct)) {
+    const efgPct = zeroSafeEfgPct(row.rim_scoring_fgm, row.rim_scoring_three_fg_made, row.rim_scoring_fga);
+    if (efgPct !== "") row.rim_scoring_efg_pct = efgPct;
+  }
+  if (!Number.isFinite(row.rim_scoring_ftr)) row.rim_scoring_ftr = ratioIfPossible(row.rim_scoring_fta, row.rim_scoring_fga);
+  if (!Number.isFinite(row.rim_scoring_tov_pct)) row.rim_scoring_tov_pct = percentOfPossessions(row.rim_scoring_tov, row.rim_scoring_poss);
+  if (!Number.isFinite(row.rim_scoring_plus1_pct)) row.rim_scoring_plus1_pct = percentOfPossessions(row.rim_scoring_plus1, row.rim_scoring_poss);
+  Object.entries(weightedPercentSums).forEach(([suffix, bucket]) => {
+    const column = `rim_scoring_${suffix}`;
+    if (!Number.isFinite(row[column]) && bucket.weight > 0) row[column] = roundNumber((bucket.total / bucket.weight) * 100, 1);
+  });
 
   populateD1CountDisplayModes(row, [
-    "rim_scoring_poss", "rim_scoring_points", "rim_scoring_fga", "rim_scoring_fgm",
-    ...D1_RIM_SCORING_COMPONENTS.flatMap((component) => [`${component.prefix}_poss`, `${component.prefix}_points`, `${component.prefix}_fga`, `${component.prefix}_fgm`]),
+    ...D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `rim_scoring_${suffix}`),
+    ...D1_RIM_SCORING_COMPONENTS.flatMap((component) => (
+      D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `${component.prefix}_${suffix}`)
+    )),
   ]);
 }
 
@@ -19614,6 +19798,55 @@ function perGameValue(value, gp) {
   return roundNumber(value / gp, 2);
 }
 
+function populateGeneralStatDisplayModes(row, datasetId = "") {
+  if (!row || typeof row !== "object") return;
+  const aliases = {
+    pts: ["pts", "points"],
+    trb: ["trb", "reb", "treb"],
+    orb: ["orb", "oreb"],
+    drb: ["drb", "dreb"],
+    ast: ["ast", "assists"],
+    stl: ["stl", "steals"],
+    blk: ["blk", "blocks"],
+    tov: ["tov", "to", "turnovers"],
+    pf: ["pf", "fouls"],
+    stocks: ["stocks"],
+  };
+  Object.entries(aliases).forEach(([target, sourceKeys]) => {
+    if (Number.isFinite(row[target])) return;
+    const value = firstFinite(...sourceKeys.map((key) => row[key]), Number.NaN);
+    if (Number.isFinite(value)) row[target] = value;
+  });
+  if (!Number.isFinite(row.stocks) && (Number.isFinite(row.stl) || Number.isFinite(row.blk))) {
+    row.stocks = firstFinite(row.stl, 0) + firstFinite(row.blk, 0);
+  }
+  const gp = firstFinite(row.gp, row.g, row.games, Number.NaN);
+  const minutes = firstFinite(row.min, row.mp, Number.isFinite(gp) && Number.isFinite(row.mpg) ? gp * row.mpg : Number.NaN, Number.NaN);
+  const totalPoss = firstFinite(row.total_poss, estimatedPossessions(row), Number.NaN);
+  const sourceIsPerGame = datasetId === "d1";
+  GENERAL_TOTAL_COLUMNS.forEach((column) => {
+    const value = firstFinite(row[column], Number.NaN);
+    if (sourceIsPerGame) {
+      if (Number.isFinite(value) && !Number.isFinite(row[`${column}_pg`])) row[`${column}_pg`] = roundNumber(value, 2);
+      if (Number.isFinite(value) && Number.isFinite(row.mpg) && row.mpg > 0 && !Number.isFinite(row[`${column}_per40`])) {
+        row[`${column}_per40`] = roundNumber((value / row.mpg) * 40, 2);
+      }
+      if (Number.isFinite(value) && Number.isFinite(gp) && gp > 0 && Number.isFinite(totalPoss) && totalPoss > 0 && !Number.isFinite(row[`${column}_per100`])) {
+        row[`${column}_per100`] = roundNumber(((value * gp) / totalPoss) * 100, 2);
+      }
+      return;
+    }
+    const total = value;
+    const perGame = perGameValue(total, gp);
+    const per40 = per40Value(total, minutes);
+    if (perGame !== "" && !Number.isFinite(row[`${column}_pg`])) row[`${column}_pg`] = perGame;
+    if (per40 !== "" && !Number.isFinite(row[`${column}_per40`])) row[`${column}_per40`] = per40;
+    if (Number.isFinite(total) && Number.isFinite(totalPoss) && totalPoss > 0 && !Number.isFinite(row[`${column}_per100`])) {
+      row[`${column}_per100`] = roundNumber((total / totalPoss) * 100, 2);
+    }
+  });
+}
+
 function roundNumber(value, digits = 3) {
   if (!Number.isFinite(value)) return "";
   const factor = 10 ** digits;
@@ -20002,9 +20235,9 @@ function formatValue(dataset, column, value, row) {
   if (/^(gp|g|gs|min|mp|total_poss|games|wins|losses)$/i.test(column)) return String(Math.round(value));
   if (dataset?.id === "team_coach" && /_(?:fga|two_pa|three_pa|fta)_pg$/i.test(column)) return value.toFixed(1);
   if (dataset?.id === "team_coach" && /_(?:fga|two_pa|three_pa|fta)$/i.test(column)) return value.toFixed(1);
+  if (/_poss$/i.test(stripCompanionPrefix(column))) return String(Math.round(value));
   if (value === 0 && /(_pg$|_per_g$|_per40$|_att$|_made$|_miss$|_poss$)/i.test(stripCompanionPrefix(column))) return "0";
   if (isIntegerCountColumn(column)) return String(Math.round(value));
-  if (/_poss$/i.test(column)) return value.toFixed(1);
   if (/(_att$|_made$|_miss$)/i.test(column)) return String(Math.round(value));
   if (column === "ast_to") return value.toFixed(2);
   if (/^ast_pct_(?:usg|tov)_pct$/i.test(column)) return value.toFixed(2);
@@ -20056,7 +20289,8 @@ function isPercentRatioColumn(column) {
 
 function isIntegerCountColumn(column) {
   const baseColumn = stripCompanionPrefix(column);
-  return /^(pts|trb|ast|tov|stl|blk|pf|stocks|fgm|fga|2pm|2pa|3pm|3pa|ftm|fta|event_total_players|page_index)$/i.test(baseColumn);
+  return /^(pts|trb|ast|tov|stl|blk|pf|stocks|fgm|fga|2pm|2pa|3pm|3pa|ftm|fta|event_total_players|page_index)$/i.test(baseColumn)
+    || /(?:_poss|_points|_fga|_fgm|_fg_att|_fg_made|_fg_miss|_two_fg_att|_two_fg_made|_two_fg_miss|_three_fg_att|_three_fg_made|_three_fg_miss|_fta|_ftm|_tov|_plus1)$/i.test(baseColumn);
 }
 
 function isTeamDisplayColumn(dataset, column) {
