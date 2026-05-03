@@ -15671,6 +15671,7 @@ function normalizePlayerProfileRowForDisplay(row) {
   if (level !== "Other" && normalizeKey(out.competition_level) === "other") out.competition_level = getPlayerProfileDisplayLevel(level, out.competition_level);
   if (!getStringValue(out.team_name).trim()) out.team_name = getStringValue(out.team_abbrev || out.team_full || out.team).trim();
   normalizePlayerProfileShootingTotals(out);
+  if (!Number.isFinite(out.per) && Number.isFinite(out.rgm_per)) out.per = out.rgm_per;
   populateAstStlDerived(out, { overwrite: false });
   normalizePercentLikeColumns(out, inferPlayerProfileRowDatasetId(out));
   return out;
