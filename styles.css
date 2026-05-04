@@ -434,7 +434,7 @@ a,
 
 .stat-group__header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   gap: 3px;
   align-items: start;
   min-height: 19px;
@@ -446,8 +446,23 @@ a,
 }
 
 .group-cycle-button,
-.group-unit-button {
+.group-unit-button,
+.group-collapse-button {
   border-color: var(--line);
+}
+
+.group-collapse-button {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
+  cursor: pointer;
+  height: 19px;
+  min-width: 20px;
+  padding: 0;
+  text-align: center;
+  font-size: 10px;
+  line-height: 17px;
 }
 
 .group-cycle-button .cycle-note {
@@ -760,9 +775,11 @@ a,
 }
 
 .player-profile-bio {
-  margin-bottom: 3px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 5px;
   color: var(--text);
-  font-weight: 600;
 }
 
 .player-profile-header div,
@@ -773,6 +790,31 @@ a,
 
 .player-profile-header .player-profile-bio {
   color: var(--text);
+}
+
+.player-profile-bio-card {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  gap: 4px;
+  min-height: 24px;
+  padding: 3px 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: #f8fafc;
+  line-height: 1.05;
+}
+
+.player-profile-bio-card span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.player-profile-bio-card strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .player-profile-layout {
@@ -906,8 +948,9 @@ a,
   display: inline-grid;
   align-items: center;
   justify-content: center;
-  grid-template-columns: minmax(0, 5.8ch) minmax(0, 4.1ch);
-  gap: 0;
+  grid-template-columns: minmax(5.6ch, auto) minmax(4.6ch, auto);
+  gap: 2px;
+  min-width: 10.8ch;
   width: 100%;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -928,6 +971,15 @@ a,
   text-align: center;
 }
 
+.player-profile-table [data-profile-column="fg_pct"],
+.player-profile-table [data-profile-column="two_p_pct"],
+.player-profile-table [data-profile-column="three_p_pct"],
+.player-profile-table [data-profile-column="ft_pct"] {
+  min-width: 76px;
+  max-width: none;
+  overflow: visible;
+}
+
 .split-display__att {
   display: inline-block;
   min-width: 0;
@@ -943,7 +995,8 @@ a,
 .split-display__pct {
   display: inline-block;
   min-width: 0;
-  width: 4.1ch;
+  width: auto;
+  min-width: 4.4ch;
   padding: 1px 0;
   text-align: center;
 }

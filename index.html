@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stat Explorers</title>
   <meta name="description" content="D1, D2, NAIA, JUCO, FIBA, International, NBA, and Player/Career explorers in one basic webapp.">
-  <link rel="stylesheet" href="styles.css?v=20260504-performance-data-v83">
+  <link rel="stylesheet" href="styles.css?v=20260504-performance-data-v84">
   <script>
 window.__DATA_ASSET_BASE__ = "";
 (function () {
-      var version = "20260504-performance-data-v83";
+      var version = "20260504-performance-data-v84";
   var route = (window.location.hash || "#home").replace(/^#/, "").toLowerCase().split("?")[0];
   if (route === "player" || route === "player_profile") route = "profile";
   var preloads = {
@@ -50,10 +50,10 @@ window.__DATA_ASSET_BASE__ = "";
   });
 }());
   </script>
-  <script src="app.js?v=20260504-performance-data-v83" defer></script>
+  <script src="app.js?v=20260504-performance-data-v84" defer></script>
   <script>
 if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js?v=20260504-performance-data-v83").catch(function () {});
+    navigator.serviceWorker.register("sw.js?v=20260504-performance-data-v84").catch(function () {});
 }
   </script>
 </head>
@@ -135,10 +135,8 @@ if ("serviceWorker" in navigator) {
         <div class="section-header-row">
           <h2>Stat Filters</h2>
           <div class="bulk-actions">
-            <button class="link-button" id="statDefaultsBtn" type="button">Default</button>
-            <button class="link-button" id="statAllBtn" type="button">All</button>
-            <button class="link-button" id="statNoneBtn" type="button">None</button>
-            <button class="link-button" id="statClearBtn" type="button">Clear</button>
+            <button class="link-button" id="statCompressBtn" type="button">Compress</button>
+            <button class="link-button" id="statExpandBtn" type="button">Expand</button>
           </div>
         </div>
         <div id="statGroups"></div>

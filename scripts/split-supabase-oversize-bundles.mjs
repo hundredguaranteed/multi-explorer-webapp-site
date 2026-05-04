@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import vm from "node:vm";
 
 const projectRoot = process.cwd();
 const MAX_PART_BYTES = 12 * 1024 * 1024;
@@ -45,14 +46,27 @@ function extractWindowStringAssignment(sourceText) {
   return { globalName: match[1], text: JSON.parse(match[2]) };
 }
 
+function extractWindowStringByExecution(sourceText) {
+  const context = { window: {} };
+  vm.runInNewContext(sourceText, context, { timeout: 30000 });
+  const entries = Object.entries(context.window)
+    .filter(([, value]) => typeof value === "string" && value.length > 0)
+    .sort((left, right) => right[1].length - left[1].length);
+  if (!entries.length) throw new Error("Expected a window string assignment.");
+  return { globalName: entries[0][0], text: entries[0][1] };
+}
+
 function extractWindowStoreStringAssignment(sourceText) {
   const lines = sourceText.split(/\r?\n/);
   if (lines.length < 2) throw new Error("Expected store assignment source.");
   const storeLine = lines[0];
   const assignText = lines.slice(1).join("\n");
-  const match = assignText.match(/^window\.(\w+)\["([^"]+)"\]\s*=\s*("(?:\\.|[^"])*");\s*$/s);
-  if (!match) throw new Error("Expected window.<store>[\"key\"] = \"...\" assignment.");
-  return { storeInit: storeLine, storeName: match[1], key: match[2], text: JSON.parse(match[3]) };
+  const prefixMatch = assignText.slice(0, 256).match(/^window\.(\w+)\["([^"]+)"\]\s*=\s*/);
+  if (!prefixMatch) throw new Error("Expected window.<store>[\"key\"] = \"...\" assignment.");
+  const valueText = assignText.slice(prefixMatch[0].length).trim();
+  if (!valueText.endsWith(";")) throw new Error("Expected store assignment terminator.");
+  const jsonText = valueText.slice(0, -1).trim();
+  return { storeInit: storeLine, storeName: prefixMatch[1], key: prefixMatch[2], text: JSON.parse(jsonText) };
 }
 
 async function writeText(filePath, text) {
@@ -73,10 +87,14 @@ async function createCsvMultipartBundle({
     parsed = extractWindowStringAssignment(sourceText);
   } catch (error) {
     try {
-      await fs.access(manifestFile);
-      return;
+      parsed = extractWindowStringByExecution(sourceText);
     } catch {
-      throw error;
+      try {
+        await fs.access(manifestFile);
+        return;
+      } catch {
+        throw error;
+      }
     }
   }
   const { globalName, text } = parsed;
@@ -281,15 +299,17 @@ async function patchPlayerCareerChunkManifest(manifestFile, multipartMap) {
   const orderMatch = original.match(/window\.PLAYER_CAREER_CHUNK_ORDER = (\[[\s\S]*?\]);/);
   if (!orderMatch) throw new Error("Unable to parse player career chunk manifest.");
   const order = JSON.parse(orderMatch[1]);
+  const existingMultipartMatch = original.match(/window\.PLAYER_CAREER_CHUNK_MULTIPART = (\{[\s\S]*?\});/);
+  const existingMultipart = existingMultipartMatch ? JSON.parse(existingMultipartMatch[1]) : {};
   const nextText = [
     `window.PLAYER_CAREER_CHUNK_ORDER = ${JSON.stringify(order)};`,
-    `window.PLAYER_CAREER_CHUNK_MULTIPART = ${JSON.stringify(multipartMap)};`,
+    `window.PLAYER_CAREER_CHUNK_MULTIPART = ${JSON.stringify({ ...existingMultipart, ...multipartMap })};`,
     "",
   ].join("\n");
   await writeText(manifestFile, nextText);
 }
 
-async function patchPlayerCareerYearManifest(manifestFile, multipartYearChunks) {
+async function patchPlayerCareerYearManifest(manifestFile, multipartYearChunks, multipartSupplementChunks = {}) {
   const original = await fs.readFile(manifestFile, "utf8");
   const headerLines = [];
   const bodyLines = [];
@@ -306,7 +326,14 @@ async function patchPlayerCareerYearManifest(manifestFile, multipartYearChunks) 
   const jsonMatch = bodyText.match(/^window\.PLAYER_CAREER_YEAR_MANIFEST = ([\s\S]*);\s*$/);
   if (!jsonMatch) throw new Error("Unable to parse player career year manifest.");
   const manifest = JSON.parse(jsonMatch[1]);
-  manifest.multipartYearChunks = multipartYearChunks;
+  manifest.multipartYearChunks = {
+    ...(manifest.multipartYearChunks || {}),
+    ...multipartYearChunks,
+  };
+  manifest.multipartSupplementChunks = {
+    ...(manifest.multipartSupplementChunks || {}),
+    ...multipartSupplementChunks,
+  };
   const nextText = [
     ...headerLines,
     `window.PLAYER_CAREER_YEAR_MANIFEST = ${JSON.stringify(manifest, null, 2)};`,
@@ -358,6 +385,14 @@ async function main() {
     bootstrapFile: path.join(dataRoot, "vendor", "juco_all_seasons.js"),
   });
 
+  await createCsvMultipartBundle({
+    rootFile: path.join(dataRoot, "vendor", "d1_career_rows.js"),
+    manifestFile: path.join(dataRoot, "vendor", "d1_career_rows_manifest.js"),
+    partsDir: path.join(dataRoot, "vendor", "d1_career_rows_parts"),
+    manifestVarName: "D1_CAREER_ROWS_PARTS",
+    bootstrapFile: path.join(dataRoot, "vendor", "d1_career_rows.js"),
+  });
+
   await createD1FrontendMultipartBundle({
     sourceFile: path.join(dataRoot, "vendor", "d1_frontend_data.js"),
     manifestFile: path.join(dataRoot, "vendor", "d1_frontend_data_manifest.js"),
@@ -379,16 +414,29 @@ async function main() {
   );
 
   const playerCareerYearMultipart = {};
-  await createStoreMultipartBundle({
-    sourceFile: path.join(dataRoot, "vendor", "player_career_year_chunks", "2025.js"),
-    bootstrapFile: path.join(dataRoot, "vendor", "player_career_year_chunks", "2025.js"),
-    partsDir: path.join(dataRoot, "vendor", "player_career_year_chunk_parts"),
-    partMap: playerCareerYearMultipart,
-    mapKey: "2025",
-  });
+  for (const season of ["2023", "2025"]) {
+    await createStoreMultipartBundle({
+      sourceFile: path.join(dataRoot, "vendor", "player_career_year_chunks", `${season}.js`),
+      bootstrapFile: path.join(dataRoot, "vendor", "player_career_year_chunks", `${season}.js`),
+      partsDir: path.join(dataRoot, "vendor", "player_career_year_chunk_parts"),
+      partMap: playerCareerYearMultipart,
+      mapKey: season,
+    });
+  }
+  const playerCareerYearSupplementMultipart = {};
+  for (const season of ["2022", "2023", "2024", "2025"]) {
+    await createStoreMultipartBundle({
+      sourceFile: path.join(dataRoot, "vendor", "player_career_year_supplement_chunks", `${season}.js`),
+      bootstrapFile: path.join(dataRoot, "vendor", "player_career_year_supplement_chunks", `${season}.js`),
+      partsDir: path.join(dataRoot, "vendor", "player_career_year_supplement_chunk_parts"),
+      partMap: playerCareerYearSupplementMultipart,
+      mapKey: season,
+    });
+  }
   await patchPlayerCareerYearManifest(
     path.join(dataRoot, "vendor", "player_career_year_manifest.js"),
     playerCareerYearMultipart,
+    playerCareerYearSupplementMultipart,
   );
 
   console.log("Generated Supabase-safe multipart assets.");

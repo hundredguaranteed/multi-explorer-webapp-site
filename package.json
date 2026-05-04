@@ -1,0 +1,18 @@
+{
+  "name": "multi-explorer-webapp-site-publish",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:pages": "node scripts/build-pages-output.mjs",
+    "build:combine": "node scripts/build-combine-bundle.mjs",
+    "build:d1-bart-splits": "python scripts/build-d1-bart-splits.py",
+    "build:d1-hoop-rapm": "python scripts/update_d1_hoop_rapm.py",
+    "build:supabase:multipart": "node scripts/split-supabase-oversize-bundles.mjs",
+    "sync:supabase:data": "node scripts/sync-supabase-storage.mjs",
+    "cf:dev": "wrangler pages dev dist",
+    "cf:deploy": "wrangler pages deploy dist --project-name multi-explorer-webapp-site"
+  },
+  "devDependencies": {
+    "wrangler": "^4.12.0"
+  }
+}

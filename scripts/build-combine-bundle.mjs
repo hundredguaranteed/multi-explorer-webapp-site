@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MASTER_PATH = path.resolve(ROOT, "..", "Combine Measurements - Mastersheet.csv");
@@ -109,6 +110,9 @@ const PERCENTILE_FIELDS = [
   "avg_vert", "sprint", "lane_agility", "modified_lane_agility", "shuttle",
 ];
 const LOWER_IS_BETTER = new Set(["sprint", "lane_agility", "modified_lane_agility", "shuttle"]);
+const MANUAL_POSITION_OVERRIDES = new Map([
+  ["ej onu", "F"],
+]);
 
 const OUTPUT_COLUMNS = [
   "season", "event", "player_name", "pos", "height_wo_shoes", "weight_lb", "weight_kg", "bmi",
@@ -207,15 +211,136 @@ function normalizeName(value) {
     .trim();
 }
 
+function normalizeNumber(value) {
+  const number = toNumber(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function normalizePos(value) {
   const text = String(value || "").trim().toUpperCase();
   if (!text) return "";
   if (/^(PG|G|SG|G\/F|SF|F|PF|C)$/.test(text)) return text;
+  if (/^(PG|SG|SF|PF|C)(-(PG|SG|SF|PF|C))+$/.test(text)) {
+    const parts = new Set(text.split("-"));
+    const hasGuard = parts.has("PG") || parts.has("SG");
+    const hasForward = parts.has("SF") || parts.has("PF");
+    const hasCenter = parts.has("C");
+    if (hasGuard && hasForward) return "G/F";
+    if (hasForward && hasCenter) return "F/C";
+    if (hasGuard) return "G";
+    if (hasForward) return "F";
+    if (hasCenter) return "C";
+  }
   if (text.includes("CENTER")) return "C";
   if (text.includes("FORWARD") && text.includes("GUARD")) return "G/F";
   if (text.includes("FORWARD")) return "F";
   if (text.includes("GUARD")) return "G";
   return text;
+}
+
+function runWindowScript(filePath, window) {
+  vm.runInNewContext(fs.readFileSync(filePath, "utf8"), { window }, { timeout: 60000 });
+}
+
+function loadPlayerCareerYearManifest() {
+  const manifestPath = path.join(ROOT, "data", "vendor", "player_career_year_manifest.js");
+  if (!fs.existsSync(manifestPath)) return null;
+  const window = {};
+  runWindowScript(manifestPath, window);
+  return window.PLAYER_CAREER_YEAR_MANIFEST || null;
+}
+
+function loadPlayerCareerYearCsv(season, manifest) {
+  const storeName = "PLAYER_CAREER_YEAR_CSV_CHUNKS";
+  const chunkFile = path.join(ROOT, "data", "vendor", "player_career_year_chunks", `${season}.js`);
+  if (!fs.existsSync(chunkFile)) return "";
+  const window = {};
+  runWindowScript(chunkFile, window);
+  const parts = manifest?.multipartYearChunks?.[String(season)] || [];
+  for (const part of parts) {
+    const partFile = path.join(ROOT, "data", "vendor", "player_career_year_chunk_parts", `${part}.js`);
+    if (fs.existsSync(partFile)) runWindowScript(partFile, window);
+  }
+  return window[storeName]?.[String(season)] || "";
+}
+
+function buildCareerPositionLookup(seasons) {
+  const manifest = loadPlayerCareerYearManifest();
+  if (!manifest) return new Map();
+  const lookup = new Map();
+  for (const season of seasons) {
+    const csv = loadPlayerCareerYearCsv(season, manifest);
+    if (!csv) continue;
+    const rows = parseCsv(csv);
+    const header = rows[0] || [];
+    const index = Object.fromEntries(header.map((column, idx) => [column, idx]));
+    const needed = ["player_name", "season", "pos", "competition_level", "source_dataset", "height_in", "weight_lb", "min", "gp"];
+    if (needed.some((column) => index[column] === undefined)) continue;
+    for (const cells of rows.slice(1)) {
+      const nameKey = normalizeName(cells[index.player_name]);
+      const pos = normalizePos(cells[index.pos]);
+      if (!nameKey || !pos) continue;
+      if (!lookup.has(nameKey)) lookup.set(nameKey, []);
+      lookup.get(nameKey).push({
+        season: normalizeNumber(cells[index.season]),
+        pos,
+        level: String(cells[index.competition_level] || cells[index.source_dataset] || ""),
+        height: normalizeNumber(cells[index.height_in]),
+        weight: normalizeNumber(cells[index.weight_lb]),
+        minutes: normalizeNumber(cells[index.min]) || 0,
+        gp: normalizeNumber(cells[index.gp]) || 0,
+      });
+    }
+  }
+  return lookup;
+}
+
+function levelPositionScore(level) {
+  const text = String(level || "").toLowerCase();
+  if (text.includes("nba")) return 7;
+  if (text.includes("d1") || text.includes("college")) return 6;
+  if (text.includes("g league")) return 5;
+  if (text.includes("international") || text.includes("fiba")) return 4;
+  if (text.includes("naia") || text.includes("d2") || text.includes("juco")) return 3;
+  return 1;
+}
+
+function pickCareerPosition(record, lookup) {
+  const manual = MANUAL_POSITION_OVERRIDES.get(normalizeName(record.player_name));
+  if (manual) return manual;
+  const candidates = lookup.get(normalizeName(record.player_name)) || [];
+  if (!candidates.length) return "";
+  const season = normalizeNumber(record.season);
+  const height = normalizeNumber(record.height_wo_shoes);
+  const weight = normalizeNumber(record.weight_lb);
+  let best = null;
+  for (const candidate of candidates) {
+    const seasonDiff = Number.isFinite(season) && Number.isFinite(candidate.season)
+      ? Math.abs(candidate.season - season)
+      : 4;
+    if (seasonDiff > 3) continue;
+    let score = (4 - seasonDiff) * 20 + levelPositionScore(candidate.level) * 4;
+    if (height && candidate.height) score += Math.max(0, 8 - Math.abs(height - candidate.height) * 2);
+    if (weight && candidate.weight) score += Math.max(0, 6 - Math.abs(weight - candidate.weight) / 8);
+    score += Math.min(8, Math.log10((candidate.minutes || 0) + 1) * 2);
+    score += Math.min(3, (candidate.gp || 0) / 20);
+    if (!best || score > best.score) best = { ...candidate, score };
+  }
+  return best?.pos || "";
+}
+
+function fillMissingPositions(records) {
+  const seasons = Array.from(new Set(records.map((record) => String(record.season || "").trim()).filter(Boolean)));
+  const lookup = buildCareerPositionLookup(seasons);
+  let filled = 0;
+  for (const record of records) {
+    if (normalizePos(record.pos)) continue;
+    const pos = pickCareerPosition(record, lookup);
+    if (!pos) continue;
+    record.pos = pos;
+    filled += 1;
+  }
+  return filled;
 }
 
 function readMasterRecords() {
@@ -291,7 +416,7 @@ async function fetchOfficial2025Records() {
       standing_vert: round(toNumber(row.STANDING_VERTICAL_LEAP), 3),
       max_vert: round(toNumber(row.MAX_VERTICAL_LEAP), 3),
       lane_agility: round(toNumber(row.LANE_AGILITY_TIME), 3),
-      modified_lane_agility: round(toNumber(row.MODIFIED_LANE_AGILITY_TIME), 3),
+      shuttle: round(toNumber(row.MODIFIED_LANE_AGILITY_TIME), 3),
       sprint: round(toNumber(row.THREE_QUARTER_SPRINT), 3),
       bench_press: round(toNumber(row.BENCH_PRESS), 3),
     });
@@ -370,6 +495,7 @@ for (const record of officialRecords) {
   byKey.set(key, { ...(byKey.get(key) || {}), ...record });
 }
 const records = Array.from(byKey.values());
+const positionsFilled = fillMissingPositions(records);
 records.forEach(enrichDerived);
 assignComputedPercentiles(records);
 records.sort((left, right) => Number(right.season || 0) - Number(left.season || 0) || normalizeName(left.player_name).localeCompare(normalizeName(right.player_name)));
@@ -377,4 +503,4 @@ records.sort((left, right) => Number(right.season || 0) - Number(left.season || 
 const csvText = toCsv(records, OUTPUT_COLUMNS);
 fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
 fs.writeFileSync(OUT_PATH, `window.${GLOBAL_NAME} = ${JSON.stringify(csvText)};\n`, "utf8");
-console.log(JSON.stringify({ master: masterRecords.length, official2025: officialRecords.length, output: records.length, path: OUT_PATH }, null, 2));
+console.log(JSON.stringify({ master: masterRecords.length, official2025: officialRecords.length, positionsFilled, output: records.length, path: OUT_PATH }, null, 2));
