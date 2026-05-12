@@ -2501,6 +2501,8 @@ function buildCombineConfig() {
     event: "Event",
     player_name: "Player",
     pos: "Pos",
+    draft_year: "Draft",
+    draft_pick: "Pick",
     source: "Source",
     height_wo_shoes: "HT",
     weight_lb: "WT",
@@ -2554,13 +2556,13 @@ function buildCombineConfig() {
     playerColumn: "player_name",
     teamColumn: "event",
     lockedColumns: ["rank", "season", "player_name", "pos"],
-    searchColumns: withUniversalSearchColumns(["player_name", "event", "source"]),
+    searchColumns: withUniversalSearchColumns(["player_name", "event", "source", "draft_year", "draft_pick"]),
     sortBy: "max_vert",
     sortDir: "desc",
     minYear: 1992,
     minuteDefault: 0,
-    demoColumns: ["event", "body_fat_pct"],
-    demoFilterColumns: ["height_wo_shoes", "weight_lb", "wingspan", "standing_reach", "standing_vert", "max_vert", "sprint", "lane_agility", "shuttle"],
+    demoColumns: ["event", "draft_year", "draft_pick", "body_fat_pct"],
+    demoFilterColumns: ["draft_year", "draft_pick", "height_wo_shoes", "weight_lb", "wingspan", "standing_reach", "standing_vert", "max_vert", "sprint", "lane_agility", "shuttle"],
     groups: [
       { id: "measurements", label: "Measurements", columns: measurementColumns, defaultColumns: ["height_wo_shoes", "weight_lb", "wingspan", "standing_reach", "hand_length", "hand_width"] },
       { id: "athletic", label: "Athletic", columns: athleticColumns, defaultColumns: ["standing_vert", "max_vert", "sprint", "lane_agility", "shuttle"] },
@@ -2571,7 +2573,7 @@ function buildCombineConfig() {
       { id: "event", label: "Event", column: "event", renderAsSelect: true },
       { id: "pos", label: "Pos", column: "pos", sort: ["PG", "G", "SG", "G/F", "SF", "F", "PF", "F/C", "C"] },
     ],
-    defaultVisible: ["rank", "season", "player_name", "pos", "height_wo_shoes", "weight_lb", "wingspan", "standing_reach", "standing_vert", "max_vert", "sprint", "lane_agility", "shuttle", "ws_height", "sr_height"],
+    defaultVisible: ["rank", "season", "player_name", "pos", "draft_year", "draft_pick", "height_wo_shoes", "weight_lb", "wingspan", "standing_reach", "standing_vert", "max_vert", "sprint", "lane_agility", "shuttle", "ws_height", "sr_height"],
     labels,
   };
 }
@@ -11389,10 +11391,11 @@ function getNextGroupVisibilityState(dataset, group, state) {
 
 function renderStatGroups(dataset, state) {
   const numericColumnSet = dataset.meta.numericColumnSet || new Set(dataset.meta.numericColumns || []);
-  const groups = dataset.meta.groups
+  let groups = dataset.meta.groups
     .filter((group) => !(dataset.id === "d1" && group.id === "playtype_analysis"))
     .filter((group) => !group.hiddenInFilters);
   const renderedGroupColumns = new Map(groups.map((group) => [group.id, getRenderedFilterColumnsForGroup(dataset, group, state)]));
+  groups = groups.filter((group) => (renderedGroupColumns.get(group.id) || []).length);
   const shellKey = [
     dataset?.id,
     Array.from(dataset.meta.allColumns || []).map((column) => (state.visibleColumns[column] ? column : "")).join("|"),
@@ -11494,9 +11497,13 @@ function getGroupSelectionState(dataset, group, state) {
 
 function getRenderedFilterColumnsForGroup(dataset, group, state) {
   if (!group) return [];
+  const demoRangeColumns = new Set(dataset?.meta?.demoFilterColumns || []);
   const unitMode = getGroupUnitMode(state, dataset, group);
-  const unitColumns = getGroupColumnsForUnitMode(dataset, group, unitMode);
-  const activeFilters = (group.columns || []).filter((column) => hasActiveRangeFilter(state?.numericFilters?.[column]));
+  const unitColumns = getGroupColumnsForUnitMode(dataset, group, unitMode)
+    .filter((column) => !demoRangeColumns.has(column));
+  const activeFilters = (group.columns || [])
+    .filter((column) => !demoRangeColumns.has(column))
+    .filter((column) => hasActiveRangeFilter(state?.numericFilters?.[column]));
   return Array.from(new Set([...unitColumns, ...activeFilters]));
 }
 
@@ -12348,7 +12355,9 @@ function getActiveNumericFilters(dataset, state) {
   const key = serializeRangeFilters(dataset.meta.numericColumns || [], state.numericFilters);
   if (cache.activeNumericFiltersKey === key) return cache.activeNumericFilters;
   cache.activeNumericFiltersKey = key;
+  const demoRangeColumns = new Set(dataset?.meta?.demoFilterColumns || []);
   cache.activeNumericFilters = Object.entries(state.numericFilters || {})
+    .filter(([column]) => !demoRangeColumns.has(column))
     .map(([column, filter]) => {
       if (!hasActiveRangeFilter(filter)) return null;
       const minValue = inputHasValue(filter?.min) ? normalizeNumericFilterInput(column, filter.min) : Number.NaN;
