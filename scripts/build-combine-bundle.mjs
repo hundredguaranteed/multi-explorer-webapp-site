@@ -100,7 +100,7 @@ const MASTER_PCT_INDEX = {
 
 const NUMERIC_COLUMNS = [
   "season", "draft_year", "draft_pick", "height_wo_shoes", "weight_lb", "weight_kg", "bmi", "standing_vert", "max_vert",
-  "avg_vert", "max_vert_sr", "standing_vert_sr", "avg_vert_sr", "wingspan", "ws_height",
+  "avg_vert", "max_vert_sr", "standing_vert_sr", "avg_vert_sr", "wingspan", "ws_diff", "ws_height",
   "standing_reach", "sr_ws", "sr_height", "defensive_range", "hand_length", "hand_width",
   "hand_area", "body_fat_pct", "sprint", "lane_agility", "modified_lane_agility", "shuttle",
   "bench_press", "height_adj_max_vert_sr", "longitudinal_area", "mv_takeoff_force",
@@ -110,7 +110,7 @@ const NUMERIC_COLUMNS = [
 ];
 
 const PERCENTILE_FIELDS = [
-  "height_wo_shoes", "weight_lb", "bmi", "wingspan", "ws_height", "standing_reach",
+  "height_wo_shoes", "weight_lb", "bmi", "wingspan", "ws_diff", "ws_height", "standing_reach",
   "sr_height", "defensive_range", "hand_length", "hand_width", "standing_vert", "max_vert",
   "avg_vert", "sprint", "lane_agility", "modified_lane_agility", "shuttle",
 ];
@@ -122,7 +122,7 @@ const MANUAL_POSITION_OVERRIDES = new Map([
 
 const OUTPUT_COLUMNS = [
   "season", "event", "player_name", "pos", "draft_year", "draft_pick", "height_wo_shoes", "weight_lb", "weight_kg", "bmi",
-  "wingspan", "ws_height", "standing_reach", "sr_ws", "sr_height", "defensive_range",
+  "wingspan", "ws_diff", "ws_height", "standing_reach", "sr_ws", "sr_height", "defensive_range",
   "hand_length", "hand_width", "hand_area", "body_fat_pct", "standing_vert", "max_vert",
   "avg_vert", "standing_vert_sr", "max_vert_sr", "avg_vert_sr", "height_adj_max_vert_sr",
   "sprint", "lane_agility", "modified_lane_agility", "shuttle", "bench_press",
@@ -230,19 +230,24 @@ function normalizeNumber(value) {
 function normalizePos(value) {
   const text = String(value || "").trim().toUpperCase();
   if (!text) return "";
-  if (/^(PG|G|SG|G\/F|SF|F|PF|C)$/.test(text)) return text;
-  if (/^(PG|SG|SF|PF|C)(-(PG|SG|SF|PF|C))+$/.test(text)) {
-    const parts = new Set(text.split("-"));
-    const hasGuard = parts.has("PG") || parts.has("SG");
-    const hasForward = parts.has("SF") || parts.has("PF");
-    const hasCenter = parts.has("C");
-    if (hasGuard && hasForward) return "G/F";
-    if (hasForward && hasCenter) return "F/C";
-    if (hasGuard) return "G";
-    if (hasForward) return "F";
-    if (hasCenter) return "C";
-  }
+  if (/^(PG|G|SG|G\/F|SF|F|PF|F\/C|C)$/.test(text)) return text;
+  const tokenParts = text
+    .split(/\s*(?:-|\/|,|;|\||&|\+)\s*/)
+    .map((part) => {
+      if (/^(PG|POINT GUARD)$/.test(part)) return "PG";
+      if (/^(SG|SHOOTING GUARD)$/.test(part)) return "SG";
+      if (/^(SF|SMALL FORWARD|WING)$/.test(part)) return "SF";
+      if (/^(PF|POWER FORWARD)$/.test(part)) return "PF";
+      if (/^(C|CENTER|CENTRE)$/.test(part)) return "C";
+      return "";
+    })
+    .filter(Boolean);
+  if (tokenParts.length) return tokenParts[0];
   if (text.includes("CENTER")) return "C";
+  if (text.includes("SMALL FORWARD")) return "SF";
+  if (text.includes("POWER FORWARD")) return "PF";
+  if (text.includes("SHOOTING GUARD")) return "SG";
+  if (text.includes("POINT GUARD")) return "PG";
   if (text.includes("FORWARD") && text.includes("GUARD")) return "G/F";
   if (text.includes("FORWARD")) return "F";
   if (text.includes("GUARD")) return "G";
@@ -580,6 +585,7 @@ function enrichDerived(record) {
   const handLength = toNumber(record.hand_length);
   const handWidth = toNumber(record.hand_width);
   if (height && weight && !record.bmi) record.bmi = round((weight / (height * height)) * 703, 2);
+  if (height && wingspan) record.ws_diff = round(wingspan - height, 3);
   if (height && wingspan && !record.ws_height) record.ws_height = round(wingspan / height, 4);
   if (reach && wingspan && !record.sr_ws) record.sr_ws = round(reach / wingspan, 4);
   if (height && reach && !record.sr_height) record.sr_height = round(reach / height, 4);
@@ -653,7 +659,13 @@ function putBestRecord(record) {
     byKey.set(key, record);
   }
 }
-for (const record of masterRecords) putBestRecord(record);
+const officialYearSet = new Set(officialRecords.map((record) => String(record.season || "").trim()).filter(Boolean));
+const filteredMasterRecords = masterRecords.filter((record) => {
+  const season = String(record.season || "").trim();
+  if (officialYearSet.has(season) || Number(season) >= OFFICIAL_COMBINE_FIRST_YEAR) return false;
+  return String(record.event || "").trim().toLowerCase() === "nba combine";
+});
+for (const record of filteredMasterRecords) putBestRecord(record);
 for (const record of officialRecords) {
   const key = `${record.season}|${normalizeName(record.player_name)}`;
   byKey.set(key, mergeOfficialRecord(byKey.get(key), record));

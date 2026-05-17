@@ -76,9 +76,15 @@ function isBetterRecord(next, current) {
   const nextRank = sourceRank(next);
   const currentRank = sourceRank(current);
   if (nextRank !== currentRank) return nextRank > currentRank;
-  const nextCompleteness = ["height_wo_shoes", "weight_lb", "wingspan", "standing_reach"]
+  const nextCompleteness = [
+    "height_wo_shoes", "weight_lb", "wingspan", "standing_reach",
+    "standing_vert", "max_vert", "sprint", "lane_agility", "hand_area",
+  ]
     .reduce((total, key) => total + (Number.isFinite(next[key]) ? 1 : 0), 0);
-  const currentCompleteness = ["height_wo_shoes", "weight_lb", "wingspan", "standing_reach"]
+  const currentCompleteness = [
+    "height_wo_shoes", "weight_lb", "wingspan", "standing_reach",
+    "standing_vert", "max_vert", "sprint", "lane_agility", "hand_area",
+  ]
     .reduce((total, key) => total + (Number.isFinite(current[key]) ? 1 : 0), 0);
   if (nextCompleteness !== currentCompleteness) return nextCompleteness > currentCompleteness;
   return Number(next.season || 0) > Number(current.season || 0);
@@ -102,10 +108,35 @@ rows.forEach((row) => {
     season: toNumber(row[index.season]),
     event: row[index.event] || "",
     source: row[index.source] || "",
+    pos: row[index.pos] || "",
+    draft_year: toNumber(row[index.draft_year]),
+    draft_pick: toNumber(row[index.draft_pick]),
     height_wo_shoes: toNumber(row[index.height_wo_shoes]),
     weight_lb: toNumber(row[index.weight_lb]),
+    bmi: toNumber(row[index.bmi]),
     wingspan: toNumber(row[index.wingspan]),
+    ws_diff: toNumber(row[index.ws_diff]),
+    ws_height: toNumber(row[index.ws_height]),
     standing_reach: toNumber(row[index.standing_reach]),
+    sr_height: toNumber(row[index.sr_height]),
+    sr_ws: toNumber(row[index.sr_ws]),
+    defensive_range: toNumber(row[index.defensive_range]),
+    hand_length: toNumber(row[index.hand_length]),
+    hand_width: toNumber(row[index.hand_width]),
+    hand_area: toNumber(row[index.hand_area]),
+    body_fat_pct: toNumber(row[index.body_fat_pct]),
+    standing_vert: toNumber(row[index.standing_vert]),
+    max_vert: toNumber(row[index.max_vert]),
+    avg_vert: toNumber(row[index.avg_vert]),
+    standing_vert_sr: toNumber(row[index.standing_vert_sr]),
+    max_vert_sr: toNumber(row[index.max_vert_sr]),
+    avg_vert_sr: toNumber(row[index.avg_vert_sr]),
+    height_adj_max_vert_sr: toNumber(row[index.height_adj_max_vert_sr]),
+    sprint: toNumber(row[index.sprint]),
+    lane_agility: toNumber(row[index.lane_agility]),
+    modified_lane_agility: toNumber(row[index.modified_lane_agility]),
+    shuttle: toNumber(row[index.shuttle]),
+    bench_press: toNumber(row[index.bench_press]),
   };
   if (isBetterRecord(record, byName[key])) byName[key] = record;
 });

@@ -49,7 +49,7 @@ const PLAYER_PROFILE_BUCKET_MANIFEST_SCRIPT = "data/vendor/player_profile_bucket
 const D1_FOUL_LOOKUP_SCRIPT = "data/vendor/d1_foul_lookup.js";
 const D1_BART_SPLITS_MANIFEST_SCRIPT = "data/vendor/d1_bart_splits_manifest.js";
 const D1_CAREER_ROWS_SCRIPT = "data/vendor/d1_career_rows.js";
-const APP_BUILD_VERSION = "20260504-performance-data-v84";
+const APP_BUILD_VERSION = "20260516-combine-d1-v87";
 const SCRIPT_CACHE_BUST = APP_BUILD_VERSION;
 const DATA_ASSET_BASE = typeof window !== "undefined" && typeof window.__DATA_ASSET_BASE__ === "string"
   ? window.__DATA_ASSET_BASE__.trim().replace(/\/+$/, "")
@@ -604,11 +604,45 @@ const D1_DRIVE_COLUMNS = [
   { key: "drive_plus1_pct", label: "Drive +1%", defaultVisible: false },
 ];
 
+const D1_COMBINE_MEASUREMENT_COLUMNS = [
+  { key: "combine_source_year", label: "Combine Yr" },
+  { key: "combine_draft_year", label: "Draft Yr" },
+  { key: "combine_draft_pick", label: "Draft Pick" },
+  { key: "combine_pos", label: "Combine Pos" },
+  { key: "combine_height_wo_shoes", label: "Cmb HT" },
+  { key: "combine_weight_lb", label: "Cmb WT" },
+  { key: "combine_bmi", label: "Cmb BMI" },
+  { key: "combine_wingspan", label: "Cmb WS" },
+  { key: "combine_ws_diff", label: "WS Diff" },
+  { key: "combine_ws_height", label: "WS/HT" },
+  { key: "combine_standing_reach", label: "Reach" },
+  { key: "combine_sr_height", label: "Reach/HT" },
+  { key: "combine_sr_ws", label: "Reach/WS" },
+  { key: "combine_defensive_range", label: "Def Range" },
+  { key: "combine_hand_length", label: "Hand Len" },
+  { key: "combine_hand_width", label: "Hand Wid" },
+  { key: "combine_hand_area", label: "Hand Area" },
+  { key: "combine_body_fat_pct", label: "Body Fat" },
+  { key: "combine_standing_vert", label: "Stand Vert" },
+  { key: "combine_max_vert", label: "Max Vert" },
+  { key: "combine_avg_vert", label: "Avg Vert" },
+  { key: "combine_standing_vert_sr", label: "Stand Vert+R" },
+  { key: "combine_max_vert_sr", label: "Max Vert+R" },
+  { key: "combine_avg_vert_sr", label: "Avg Vert+R" },
+  { key: "combine_height_adj_max_vert_sr", label: "Adj Vert+R" },
+  { key: "combine_sprint", label: "Sprint" },
+  { key: "combine_lane_agility", label: "Lane Agil" },
+  { key: "combine_modified_lane_agility", label: "Mod Lane" },
+  { key: "combine_shuttle", label: "Shuttle" },
+  { key: "combine_bench_press", label: "Bench" },
+];
+
 const D1_RIM_SCORING_COMPONENTS = [
   { id: "iso", label: "Iso Rim", prefix: "rim_iso", sourcePrefix: "iso" },
   { id: "pnr", label: "PnR Rim", prefix: "rim_pnr", sourcePrefix: "pnr_bh" },
   { id: "spotup", label: "SU Rim", prefix: "rim_su", sourcePrefix: "spot_up" },
 ];
+const D1_RIM_TRUE_CREATED_COMPONENTS = D1_RIM_SCORING_COMPONENTS.filter((component) => component.id === "iso" || component.id === "pnr");
 const D1_RIM_SCORING_RATE_SUFFIXES = [
   "attempt_freq", "freq", "ppp", "fg_pct", "ftr", "tov_pct", "score_pct", "plus1_pct",
 ];
@@ -622,6 +656,16 @@ const D1_RIM_SCORING_AGG_RATE_COLUMNS = D1_RIM_SCORING_RATE_SUFFIXES.map((suffix
 const D1_RIM_SCORING_AGG_TOTAL_COLUMNS = D1_RIM_SCORING_TOTAL_SUFFIXES.map((suffix) => `rim_scoring_${suffix}`);
 const D1_RIM_SCORING_AGG_PER_GAME_COLUMNS = D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `rim_scoring_${suffix}_pg`);
 const D1_RIM_SCORING_AGG_PER40_COLUMNS = D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `rim_scoring_${suffix}_per40`);
+const D1_RIM_TRUE_CREATED_RATE_COLUMNS = D1_RIM_SCORING_RATE_SUFFIXES.map((suffix) => `rim_true_created_${suffix}`);
+const D1_RIM_TRUE_CREATED_TOTAL_COLUMNS = D1_RIM_SCORING_TOTAL_SUFFIXES.map((suffix) => `rim_true_created_${suffix}`);
+const D1_RIM_TRUE_CREATED_PER_GAME_COLUMNS = D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `rim_true_created_${suffix}_pg`);
+const D1_RIM_TRUE_CREATED_PER40_COLUMNS = D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `rim_true_created_${suffix}_per40`);
+const D1_RIM_TRUE_CREATED_COLUMNS = [
+  ...D1_RIM_TRUE_CREATED_RATE_COLUMNS,
+  ...D1_RIM_TRUE_CREATED_TOTAL_COLUMNS,
+  ...D1_RIM_TRUE_CREATED_PER_GAME_COLUMNS,
+  ...D1_RIM_TRUE_CREATED_PER40_COLUMNS,
+];
 const D1_RIM_SCORING_COMPONENT_RATE_COLUMNS = D1_RIM_SCORING_COMPONENTS.flatMap((component) => (
   D1_RIM_SCORING_RATE_SUFFIXES.map((suffix) => `${component.prefix}_${suffix}`)
 ));
@@ -642,22 +686,27 @@ const D1_RIM_SCORING_AGG_COLUMNS = [
 ];
 const D1_RIM_SCORING_RATE_COLUMNS = [
   ...D1_RIM_SCORING_AGG_RATE_COLUMNS,
+  ...D1_RIM_TRUE_CREATED_RATE_COLUMNS,
   ...D1_RIM_SCORING_COMPONENT_RATE_COLUMNS,
 ];
 const D1_RIM_SCORING_TOTAL_COLUMNS = [
   ...D1_RIM_SCORING_AGG_TOTAL_COLUMNS,
+  ...D1_RIM_TRUE_CREATED_TOTAL_COLUMNS,
   ...D1_RIM_SCORING_COMPONENT_TOTAL_COLUMNS,
 ];
 const D1_RIM_SCORING_PER_GAME_COLUMNS = [
   ...D1_RIM_SCORING_AGG_PER_GAME_COLUMNS,
+  ...D1_RIM_TRUE_CREATED_PER_GAME_COLUMNS,
   ...D1_RIM_SCORING_COMPONENT_PER_GAME_COLUMNS,
 ];
 const D1_RIM_SCORING_PER40_COLUMNS = [
   ...D1_RIM_SCORING_AGG_PER40_COLUMNS,
+  ...D1_RIM_TRUE_CREATED_PER40_COLUMNS,
   ...D1_RIM_SCORING_COMPONENT_PER40_COLUMNS,
 ];
 const D1_RIM_SCORING_COLUMNS = [...new Set([
   ...D1_RIM_SCORING_AGG_COLUMNS,
+  ...D1_RIM_TRUE_CREATED_COLUMNS,
   ...D1_RIM_SCORING_RATE_COLUMNS,
   ...D1_RIM_SCORING_TOTAL_COLUMNS,
   ...D1_RIM_SCORING_PER_GAME_COLUMNS,
@@ -696,6 +745,7 @@ function assignRimScoringLabels(prefix, label) {
   });
 }
 assignRimScoringLabels("rim_scoring", "Created Rim");
+assignRimScoringLabels("rim_true_created", "True Created");
 D1_RIM_SCORING_COMPONENTS.forEach((component) => {
   assignRimScoringLabels(component.prefix, component.label);
 });
@@ -1157,6 +1207,12 @@ function buildD1Config() {
       defaultColumns: [],
       hiddenInFilters: true,
     },
+    {
+      id: "combine_measurements",
+      label: "Combine",
+      columns: D1_COMBINE_MEASUREMENT_COLUMNS.map((item) => item.key),
+      defaultColumns: [],
+    },
     buildGeneralStatGroup({ includePer100: false }),
     ...D1_ADVANCED_GROUPS,
     ...D1_ANCILLARY_GROUPS,
@@ -1196,6 +1252,9 @@ function buildD1Config() {
   Object.assign(labels, GENERAL_LABELS);
   labels.nba_career_epm = "NBA EPM";
   D1_DRIVE_COLUMNS.forEach((item) => {
+    labels[item.key] = item.label;
+  });
+  D1_COMBINE_MEASUREMENT_COLUMNS.forEach((item) => {
     labels[item.key] = item.label;
   });
   Object.assign(labels, D1_RIM_SCORING_LABELS);
@@ -1243,6 +1302,7 @@ function buildD1Config() {
       defaultUnitMode: "rates",
       unitModes: [
         { id: "rates", label: "Rates", columns: D1_RIM_SCORING_RATE_COLUMNS, defaultColumns: ["rim_scoring_attempt_freq", "rim_scoring_ppp", "rim_scoring_fg_pct", "rim_scoring_ftr", "rim_scoring_plus1_pct", "rim_iso_fg_pct", "rim_pnr_fg_pct", "rim_su_fg_pct"] },
+        { id: "true_created", label: "True Created", columns: D1_RIM_TRUE_CREATED_COLUMNS, defaultColumns: ["rim_true_created_attempt_freq", "rim_true_created_ppp", "rim_true_created_fg_pct", "rim_true_created_ftr", "rim_true_created_tov_pct", "rim_true_created_plus1_pct", "rim_true_created_fga", "rim_true_created_poss"] },
         { id: "totals", label: "Totals", columns: D1_RIM_SCORING_TOTAL_COLUMNS, defaultColumns: ["rim_scoring_poss", "rim_scoring_points", "rim_scoring_fga", "rim_scoring_fgm", "rim_scoring_fta", "rim_iso_fga", "rim_pnr_fga", "rim_su_fga"] },
         { id: "per40", label: "Per 40", columns: D1_RIM_SCORING_PER40_COLUMNS, defaultColumns: ["rim_scoring_poss_per40", "rim_scoring_points_per40", "rim_scoring_fga_per40", "rim_scoring_fta_per40", "rim_iso_fga_per40", "rim_pnr_fga_per40", "rim_su_fga_per40"] },
         { id: "per_game", label: "Per Game", columns: D1_RIM_SCORING_PER_GAME_COLUMNS, defaultColumns: ["rim_scoring_poss_pg", "rim_scoring_points_pg", "rim_scoring_fga_pg", "rim_scoring_fta_pg", "rim_iso_fga_pg", "rim_pnr_fga_pg", "rim_su_fga_pg"] },
@@ -1268,7 +1328,7 @@ function buildD1Config() {
     title: "D1",
     subtitle: "",
     dataScript: "data/d1_enriched_all_seasons.js",
-    extraScripts: [WINGSPAN_LOOKUP_SCRIPT],
+    extraScripts: [WINGSPAN_LOOKUP_SCRIPT, COMBINE_MEASUREMENTS_LOOKUP_SCRIPT],
     multipartDataScript: {
       type: "multipart-script",
       manifestScript: "data/vendor/d1_enriched_all_seasons_manifest.js",
@@ -1328,7 +1388,8 @@ function buildD1Config() {
       { id: "pos", label: "Pos", column: "pos", sort: ["PG", "SG", "SF", "PF", "C"] },
       { id: "class_year", label: "Class", column: "class_year", sort: ["Fr", "So", "Jr", "Sr", "Gr"] },
     ],
-    defaultVisible: [...new Set([...demoColumns.filter((column) => !["conference", "coach", "bmi", "draft_pick", "weight_lb", "wingspan", "mpg", "dob", "min"].includes(column)), ...defaultVisible])],
+    defaultVisible: [...new Set([...demoColumns.filter((column) => !["conference", "coach", "bmi", "draft_pick", "weight_lb", "wingspan", "mpg", "dob", "min"].includes(column)), ...defaultVisible])]
+      .filter((column) => !GENERAL_DEFAULT_PER_GAME_COLUMNS.includes(column)),
     labels,
   };
 }
@@ -2480,19 +2541,18 @@ function buildTeamCoachConfig() {
 
 function buildCombineConfig() {
   const measurementColumns = [
-    "height_wo_shoes", "weight_lb", "bmi", "wingspan", "standing_reach",
+    "height_wo_shoes", "weight_lb", "bmi", "wingspan", "ws_diff", "standing_reach",
     "hand_length", "hand_width", "hand_area", "body_fat_pct",
   ];
   const athleticColumns = [
-    "standing_vert", "max_vert", "avg_vert", "max_vert_sr", "standing_vert_sr",
-    "avg_vert_sr", "sprint", "lane_agility", "shuttle", "bench_press",
+    "standing_vert", "max_vert", "sprint", "lane_agility", "modified_lane_agility", "shuttle", "bench_press",
   ];
   const modifiedMetricColumns = ["ws_height", "sr_height", "sr_ws", "max_vert_sr", "standing_vert_sr", "avg_vert_sr", "max_vert_sprint_sq", "avg_vert"];
   const percentileColumns = [
-    "height_wo_shoes_year_pos_pctile", "weight_lb_year_pos_pctile", "wingspan_year_pos_pctile",
+    "height_wo_shoes_year_pos_pctile", "weight_lb_year_pos_pctile", "wingspan_year_pos_pctile", "ws_diff_year_pos_pctile",
     "standing_reach_year_pos_pctile", "standing_vert_year_pos_pctile", "max_vert_year_pos_pctile",
     "sprint_year_pos_pctile", "lane_agility_year_pos_pctile", "shuttle_year_pos_pctile",
-    "height_wo_shoes_pos_pctile", "wingspan_pos_pctile", "standing_vert_pos_pctile",
+    "height_wo_shoes_pos_pctile", "wingspan_pos_pctile", "ws_diff_pos_pctile", "standing_vert_pos_pctile",
     "max_vert_pos_pctile", "sprint_pos_pctile", "lane_agility_pos_pctile", "shuttle_pos_pctile",
   ];
   const labels = {
@@ -2508,6 +2568,7 @@ function buildCombineConfig() {
     weight_lb: "WT",
     bmi: "BMI",
     wingspan: "WS",
+    ws_diff: "WS Diff",
     ws_height: "WS/HT",
     standing_reach: "Reach",
     sr_height: "Reach/HT",
@@ -2559,10 +2620,10 @@ function buildCombineConfig() {
     searchColumns: withUniversalSearchColumns(["player_name", "event", "source", "draft_year", "draft_pick"]),
     sortBy: "max_vert",
     sortDir: "desc",
-    minYear: 1992,
+    minYear: 2000,
     minuteDefault: 0,
     demoColumns: ["event", "draft_year", "draft_pick", "body_fat_pct"],
-    demoFilterColumns: ["draft_year", "draft_pick", "height_wo_shoes", "weight_lb", "wingspan", "standing_reach", "standing_vert", "max_vert", "sprint", "lane_agility", "shuttle"],
+    demoFilterColumns: ["draft_year", "draft_pick", "height_wo_shoes", "weight_lb", "wingspan", "ws_diff", "standing_reach", "standing_vert", "max_vert", "sprint", "lane_agility", "shuttle"],
     groups: [
       { id: "measurements", label: "Measurements", columns: measurementColumns, defaultColumns: ["height_wo_shoes", "weight_lb", "wingspan", "standing_reach", "hand_length", "hand_width"] },
       { id: "athletic", label: "Athletic", columns: athleticColumns, defaultColumns: ["standing_vert", "max_vert", "sprint", "lane_agility", "shuttle"] },
@@ -2573,7 +2634,7 @@ function buildCombineConfig() {
       { id: "event", label: "Event", column: "event", renderAsSelect: true },
       { id: "pos", label: "Pos", column: "pos", sort: ["PG", "G", "SG", "G/F", "SF", "F", "PF", "F/C", "C"] },
     ],
-    defaultVisible: ["rank", "season", "player_name", "pos", "draft_year", "draft_pick", "height_wo_shoes", "weight_lb", "wingspan", "standing_reach", "standing_vert", "max_vert", "sprint", "lane_agility", "shuttle", "ws_height", "sr_height"],
+    defaultVisible: ["rank", "season", "player_name", "pos", "draft_year", "draft_pick", "height_wo_shoes", "weight_lb", "wingspan", "ws_diff", "standing_reach", "standing_vert", "max_vert", "sprint", "lane_agility", "shuttle", "ws_height", "sr_height"],
     labels,
   };
 }
@@ -9917,6 +9978,20 @@ function normalizePosLabel(value) {
   if (!text) return "";
   const compact = text.replace(/[^A-Z]/g, "");
   if (!compact || compact === "NA") return "";
+  if (/^\s*(G\/F|F\/G|GUARD\/FORWARD|FORWARD\/GUARD)\s*$/.test(text)) return "G/F";
+  if (/^\s*(F\/C|C\/F|FORWARD\/CENTER|CENTER\/FORWARD)\s*$/.test(text)) return "F/C";
+  const strictParts = text
+    .split(/\s*(?:\/|,|&|\||\+|-)\s*/)
+    .map((part) => {
+      if (/^(PG|POINT GUARD)$/.test(part)) return "PG";
+      if (/^(SG|SHOOTING GUARD)$/.test(part)) return "SG";
+      if (/^(SF|SMALL FORWARD)$/.test(part)) return "SF";
+      if (/^(PF|POWER FORWARD)$/.test(part)) return "PF";
+      if (/^(C|CENTER|CENTRE)$/.test(part)) return "C";
+      return "";
+    })
+    .filter(Boolean);
+  if (strictParts.length) return strictParts[0];
   if (/^\s*(PG|POINT GUARD)\s*[\/,&|+-]\s*(SG|SHOOTING GUARD)\s*$/.test(text)
     || /^\s*(SG|SHOOTING GUARD)\s*[\/,&|+-]\s*(PG|POINT GUARD)\s*$/.test(text)
     || /^G$|^GUARD$|^CG$|^COMBOG$|^COMBOGUARD$/.test(compact)) return "G";
@@ -9934,7 +10009,7 @@ function normalizePosLabel(value) {
   if (/\bSHOOTING GUARD\b/.test(text)) return "SG";
   if (/\bSG\b|SCORING PG|COMBO G/.test(text)) return "SG";
   if (/\bSMALL FORWARD\b/.test(text)) return "SF";
-  if (/\bWING\b/.test(text)) return "G/F";
+  if (/\bWING\b/.test(text)) return "SF";
   if (/\bSF\b/.test(text)) return "SF";
   if (/\bPOWER FORWARD\b/.test(text)) return "PF";
   if (/\bPF\b|STRETCH 4/.test(text)) return "PF";
@@ -11394,7 +11469,17 @@ function renderStatGroups(dataset, state) {
   let groups = dataset.meta.groups
     .filter((group) => !(dataset.id === "d1" && group.id === "playtype_analysis"))
     .filter((group) => !group.hiddenInFilters);
-  const renderedGroupColumns = new Map(groups.map((group) => [group.id, getRenderedFilterColumnsForGroup(dataset, group, state)]));
+  const seenFilterColumns = new Set();
+  const renderedGroupColumns = new Map();
+  groups.forEach((group) => {
+    const columns = getRenderedFilterColumnsForGroup(dataset, group, state)
+      .filter((column) => {
+        if (seenFilterColumns.has(column)) return false;
+        seenFilterColumns.add(column);
+        return true;
+      });
+    renderedGroupColumns.set(group.id, columns);
+  });
   groups = groups.filter((group) => (renderedGroupColumns.get(group.id) || []).length);
   const shellKey = [
     dataset?.id,
@@ -13540,15 +13625,15 @@ function getGrassrootsPosAliases(pos) {
     case "SG":
       return ["SG", "G"];
     case "G":
-      return ["G", "PG", "SG", "G/F"];
+      return ["G", "PG", "SG"];
     case "G/F":
-      return ["G/F", "G", "F"];
+      return ["G/F"];
     case "SF":
       return ["SF", "F"];
     case "PF":
       return ["PF", "F"];
     case "F":
-      return ["F", "SF", "PF", "G/F"];
+      return ["F", "SF", "PF"];
     case "C":
       return ["C"];
     default:
@@ -18165,21 +18250,66 @@ async function ensureCombineMeasurementLookupLoaded() {
   return appState.combineMeasurementLookupLoad;
 }
 
-function applyCombineMeasurementLookup(row) {
+function applyCombineMeasurementLookup(row, options = {}) {
   if (!row || typeof row !== "object") return;
   const lookup = typeof window !== "undefined" ? (window.COMBINE_MEASUREMENT_LOOKUP || {}) : {};
   const nameKey = normalizeNameKey(row.player_name || row.player || row.nba_name || row.name);
   const entry = nameKey ? lookup.byName?.[nameKey] : null;
   if (!entry) return;
+  const prefixMappings = [
+    ["combine_source_year", "season"],
+    ["combine_event", "event"],
+    ["combine_source", "source"],
+    ["combine_pos", "pos"],
+    ["combine_draft_year", "draft_year"],
+    ["combine_draft_pick", "draft_pick"],
+    ["combine_height_wo_shoes", "height_wo_shoes"],
+    ["combine_weight_lb", "weight_lb"],
+    ["combine_bmi", "bmi"],
+    ["combine_wingspan", "wingspan"],
+    ["combine_ws_diff", "ws_diff"],
+    ["combine_ws_height", "ws_height"],
+    ["combine_standing_reach", "standing_reach"],
+    ["combine_sr_height", "sr_height"],
+    ["combine_sr_ws", "sr_ws"],
+    ["combine_defensive_range", "defensive_range"],
+    ["combine_hand_length", "hand_length"],
+    ["combine_hand_width", "hand_width"],
+    ["combine_hand_area", "hand_area"],
+    ["combine_body_fat_pct", "body_fat_pct"],
+    ["combine_standing_vert", "standing_vert"],
+    ["combine_max_vert", "max_vert"],
+    ["combine_avg_vert", "avg_vert"],
+    ["combine_standing_vert_sr", "standing_vert_sr"],
+    ["combine_max_vert_sr", "max_vert_sr"],
+    ["combine_avg_vert_sr", "avg_vert_sr"],
+    ["combine_height_adj_max_vert_sr", "height_adj_max_vert_sr"],
+    ["combine_sprint", "sprint"],
+    ["combine_lane_agility", "lane_agility"],
+    ["combine_modified_lane_agility", "modified_lane_agility"],
+    ["combine_shuttle", "shuttle"],
+    ["combine_bench_press", "bench_press"],
+  ];
+  prefixMappings.forEach(([target, source]) => {
+    const value = entry[source];
+    if (value === null || value === undefined || value === "") return;
+    if (typeof value === "number") {
+      if (Number.isFinite(value)) row[target] = roundNumber(value, 3);
+      return;
+    }
+    const text = getStringValue(value).trim();
+    if (text) row[target] = text;
+  });
   [
     ["height_in", "height_wo_shoes"],
     ["weight_lb", "weight_lb"],
     ["wingspan", "wingspan"],
     ["standing_reach", "standing_reach"],
   ].forEach(([target, source]) => {
+    if (options.prefixOnly) return;
     const value = firstFinite(entry[source], Number.NaN);
     if (!Number.isFinite(value) || value <= 0) return;
-    if (target === "wingspan" || target === "height_in" || target === "weight_lb" || !hasMeaningfulFieldValue(row[target])) {
+    if (!hasMeaningfulFieldValue(row[target])) {
       row[target] = roundNumber(value, 2);
     }
   });
@@ -18406,6 +18536,7 @@ function enhanceCommonRow(row, datasetId) {
 }
 
 function enhanceD1Row(row) {
+  applyCombineMeasurementLookup(row, { prefixOnly: true });
   normalizeD1PlaytypeColumns(row);
   populateD1PlaytypeVolumeMetrics(row);
   normalizeD1TruePlaytypeFrequencies(row);
@@ -18460,17 +18591,21 @@ function enhanceD1Row(row) {
     row.net_rating = roundNumber(row.ortg - row.drtg, 1);
   }
   row.drive_plus_trans_freq = firstFinite(
-    row.drive_plus_trans_freq,
     Number.isFinite(row.drive_freq) || Number.isFinite(row.transition_freq)
-      ? roundNumber(firstFinite(row.drive_freq, 0) + firstFinite(row.transition_freq, 0), 1)
+      ? roundNumber(clampPercentValue(firstFinite(row.drive_freq, 0) + firstFinite(row.transition_freq, 0)), 1)
       : Number.NaN,
+    row.drive_plus_trans_freq,
     Number.NaN
   );
+  if (Number.isFinite(row.drive_plus_trans_freq)) {
+    row.drive_plus_trans_freq = roundNumber(clampPercentValue(row.drive_plus_trans_freq), 1);
+  }
   row.ast_pct_usg_pct = firstFinite(row.ast_pct_usg_pct, ratioIfPossible(row.ast_pct, row.usg_pct), Number.NaN);
   row.ast_pct_tov_pct = firstFinite(row.ast_pct_tov_pct, ratioIfPossible(row.ast_pct, firstFinite(row.tov_pct_adv, row.tov_pct, Number.NaN)), Number.NaN);
   populateD1ShotProfileDisplayModes(row);
   fillMissingRateStats(row, ["orb_pct", "drb_pct", "ast_pct", "stl_pct", "blk_pct", "usg_pct"]);
   scalePercentRatioColumns(row);
+  normalizeD1FrequencyColumns(row);
   populateImpactMetrics(row);
 }
 
@@ -19701,7 +19836,11 @@ function normalizeD1TruePlaytypeFrequencies(row) {
   ];
   const sourceTotal = estimateD1PlaytypeTotalPossFromFreq(row);
   const summedTotal = possColumns.reduce((sum, column) => sum + (Number.isFinite(row[column]) ? row[column] : 0), 0);
-  const total = firstPositiveFinite(sourceTotal, summedTotal, Number.NaN);
+  const maxPoss = possColumns.reduce((max, column) => Math.max(max, Number.isFinite(row[column]) ? row[column] : 0), 0);
+  let total = firstPositiveFinite(sourceTotal, summedTotal, Number.NaN);
+  if (Number.isFinite(total) && maxPoss > total) {
+    total = Number.isFinite(summedTotal) && summedTotal >= maxPoss ? summedTotal : maxPoss;
+  }
   possColumns.forEach((column) => {
     const value = Number.isFinite(row[column]) ? row[column] : 0;
     const freqColumn = column.replace(/_poss$/, "_freq");
@@ -19875,12 +20014,72 @@ function normalizeD1RimScoringMetrics(row) {
     if (!Number.isFinite(row[column]) && bucket.weight > 0) row[column] = roundNumber((bucket.total / bucket.weight) * 100, 1);
   });
 
+  populateD1RimAggregateFromComponents(row, "rim_scoring", D1_RIM_SCORING_COMPONENTS, totalPoss);
+  populateD1RimAggregateFromComponents(row, "rim_true_created", D1_RIM_TRUE_CREATED_COMPONENTS, totalPoss);
   populateD1CountDisplayModes(row, [
     ...D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `rim_scoring_${suffix}`),
+    ...D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `rim_true_created_${suffix}`),
     ...D1_RIM_SCORING_COMPONENTS.flatMap((component) => (
       D1_RIM_SCORING_PER_MODE_SUFFIXES.map((suffix) => `${component.prefix}_${suffix}`)
     )),
   ]);
+}
+
+function populateD1RimAggregateFromComponents(row, targetPrefix, components, totalPoss) {
+  if (!row || !targetPrefix || !components?.length) return;
+  const totals = Object.fromEntries(D1_RIM_SCORING_TOTAL_SUFFIXES.map((suffix) => [suffix, { total: 0, has: false }]));
+  const weighted = Object.fromEntries(["sf_pct", "score_pct", "plus1_pct"].map((suffix) => [suffix, { total: 0, weight: 0 }]));
+  components.forEach((component) => {
+    const prefix = component.prefix;
+    const poss = firstFinite(row[`${prefix}_poss`], Number.NaN);
+    D1_RIM_SCORING_TOTAL_SUFFIXES.forEach((suffix) => {
+      const value = firstFinite(row[`${prefix}_${suffix}`], Number.NaN);
+      if (!Number.isFinite(value)) return;
+      totals[suffix].total += value;
+      totals[suffix].has = true;
+    });
+    Object.keys(weighted).forEach((suffix) => {
+      const value = firstFinite(row[`${prefix}_${suffix}`], Number.NaN);
+      if (!Number.isFinite(value) || !Number.isFinite(poss) || poss <= 0) return;
+      weighted[suffix].total += ratioValueFromMaybePercent(value) * poss;
+      weighted[suffix].weight += poss;
+    });
+  });
+  D1_RIM_SCORING_TOTAL_SUFFIXES.forEach((suffix) => {
+    const sum = totals[suffix];
+    if (sum?.has) row[`${targetPrefix}_${suffix}`] = roundNumber(sum.total, 3);
+  });
+  const poss = firstFinite(row[`${targetPrefix}_poss`], Number.NaN);
+  const fga = firstFinite(row[`${targetPrefix}_fga`], Number.NaN);
+  const fgm = firstFinite(row[`${targetPrefix}_fgm`], Number.NaN);
+  const fta = firstFinite(row[`${targetPrefix}_fta`], Number.NaN);
+  const tov = firstFinite(row[`${targetPrefix}_tov`], Number.NaN);
+  const plus1 = firstFinite(row[`${targetPrefix}_plus1`], Number.NaN);
+  const points = firstFinite(row[`${targetPrefix}_points`], Number.NaN);
+  if (Number.isFinite(poss) && Number.isFinite(totalPoss) && totalPoss > 0) {
+    row[`${targetPrefix}_freq`] = roundNumber(clampPercentValue((poss / totalPoss) * 100), 1);
+  }
+  if (Number.isFinite(points) && Number.isFinite(poss) && poss > 0) {
+    row[`${targetPrefix}_ppp`] = roundNumber(points / poss, 3);
+  }
+  const fgPct = percentIfPossible(fgm, fga);
+  if (fgPct !== "") row[`${targetPrefix}_fg_pct`] = fgPct;
+  const ftr = ratioIfPossible(fta, fga);
+  if (ftr !== "") row[`${targetPrefix}_ftr`] = ftr;
+  const tovPct = percentOfPossessions(tov, poss);
+  if (tovPct !== "") row[`${targetPrefix}_tov_pct`] = tovPct;
+  const plus1Pct = percentOfPossessions(plus1, poss);
+  if (plus1Pct !== "") row[`${targetPrefix}_plus1_pct`] = plus1Pct;
+  Object.entries(weighted).forEach(([suffix, bucket]) => {
+    if (bucket.weight > 0) row[`${targetPrefix}_${suffix}`] = roundNumber((bucket.total / bucket.weight) * 100, 1);
+  });
+  const sourceCreatedTwoAtt = components.reduce((total, component) => {
+    const value = getD1RimSourceTwoAttempts(row, component.sourcePrefix);
+    return Number.isFinite(value) ? total + value : total;
+  }, 0);
+  if (Number.isFinite(fga) && sourceCreatedTwoAtt > 0) {
+    row[`${targetPrefix}_attempt_freq`] = roundNumber(clampPercentValue((fga / sourceCreatedTwoAtt) * 100), 1);
+  }
 }
 
 function getD1RimSourceTwoAttempts(row, sourcePrefix) {
@@ -19917,6 +20116,17 @@ function clampPercentValue(value) {
   const numeric = normalizeFrequencyPercentValue(value);
   if (!Number.isFinite(numeric)) return Number.NaN;
   return Math.max(0, Math.min(100, numeric));
+}
+
+function normalizeD1FrequencyColumns(row) {
+  if (!row || row._careerAggregate) return;
+  Object.keys(row).forEach((column) => {
+    if (!/_freq$/i.test(column)) return;
+    if (typeof row[column] !== "number" || !Number.isFinite(row[column])) return;
+    const numeric = Number(row[column]);
+    const normalized = Math.abs(numeric) <= 1 ? numeric * 100 : numeric;
+    row[column] = roundNumber(Math.max(0, Math.min(100, normalized)), 1);
+  });
 }
 
 function normalizeJucoDivision(value) {

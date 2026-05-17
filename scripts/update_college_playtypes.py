@@ -123,6 +123,7 @@ TEAM_STOP_WORDS = {
 
 def main() -> None:
     csv.field_size_limit(1024 * 1024 * 1024)
+    d1_only = "--d1-only" in sys.argv
     sources = load_source_playtypes()
     rim_sources = load_rim_scoring_sources()
     print(f"Loaded {sum(len(items) for items in sources.values()):,} source playtype player rows.")
@@ -138,8 +139,8 @@ def main() -> None:
         for year in available_years
         if (ROOT / "data" / "vendor" / "d1_year_chunks" / f"{year}.js").exists()
     }
-    d2_rows = read_single_assignment_csv(ROOT / "data" / "d2_all_seasons.js")
-    naia_rows = read_multipart_csv(
+    d2_rows = [] if d1_only else read_single_assignment_csv(ROOT / "data" / "d2_all_seasons.js")
+    naia_rows = [] if d1_only else read_multipart_csv(
         ROOT / "data" / "vendor" / "naia_all_seasons_parts",
         "NAIA_ALL_CSV",
     )
@@ -150,8 +151,9 @@ def main() -> None:
     for year, rows in d1_year_rows.items():
         summaries.append((f"d1-year-{year}", apply_sources_to_dataset("d1", rows, sources)))
         summaries.append((f"d1-rim-year-{year}", apply_rim_sources_to_d1(rows, rim_sources)))
-    summaries.append(("d2", apply_sources_to_dataset("d2", d2_rows, sources)))
-    summaries.append(("naia", apply_sources_to_dataset("naia", naia_rows, sources)))
+    if not d1_only:
+        summaries.append(("d2", apply_sources_to_dataset("d2", d2_rows, sources)))
+        summaries.append(("naia", apply_sources_to_dataset("naia", naia_rows, sources)))
 
     write_multipart_csv(
         d1_full_rows,
@@ -162,21 +164,22 @@ def main() -> None:
     )
     for year, rows in d1_year_rows.items():
         write_d1_year_chunk(year, rows, ROOT / "data" / "vendor" / "d1_year_chunks" / f"{year}.js")
-    write_single_assignment_csv(d2_rows, ROOT / "data" / "d2_all_seasons.js", "D2_ALL_CSV")
-    write_multipart_csv(
-        d2_rows,
-        ROOT / "data" / "vendor" / "d2_all_seasons_parts",
-        ROOT / "data" / "vendor" / "d2_all_seasons_manifest.js",
-        "D2_ALL_CSV",
-        "D2_ALL_SEASONS_PARTS",
-    )
-    write_multipart_csv(
-        naia_rows,
-        ROOT / "data" / "vendor" / "naia_all_seasons_parts",
-        ROOT / "data" / "vendor" / "naia_all_seasons_manifest.js",
-        "NAIA_ALL_CSV",
-        "NAIA_ALL_SEASONS_PARTS",
-    )
+    if not d1_only:
+        write_single_assignment_csv(d2_rows, ROOT / "data" / "d2_all_seasons.js", "D2_ALL_CSV")
+        write_multipart_csv(
+            d2_rows,
+            ROOT / "data" / "vendor" / "d2_all_seasons_parts",
+            ROOT / "data" / "vendor" / "d2_all_seasons_manifest.js",
+            "D2_ALL_CSV",
+            "D2_ALL_SEASONS_PARTS",
+        )
+        write_multipart_csv(
+            naia_rows,
+            ROOT / "data" / "vendor" / "naia_all_seasons_parts",
+            ROOT / "data" / "vendor" / "naia_all_seasons_manifest.js",
+            "NAIA_ALL_CSV",
+            "NAIA_ALL_SEASONS_PARTS",
+        )
 
     for name, summary in summaries:
         print(
@@ -394,9 +397,11 @@ def choose_target_row(index: dict[str, object], dataset_id: str, source_row: dic
             seen.add(row_id)
             team_candidates.append(row)
 
+    require_team_match = False
     candidates = team_candidates
     if not candidates:
         candidates = index["player"].get(source_name_key, [])
+        require_team_match = True
     if not candidates:
         return None
 
@@ -407,6 +412,8 @@ def choose_target_row(index: dict[str, object], dataset_id: str, source_row: dic
         if name_score < 0.86:
             continue
         team_score = team_similarity(source_team, row)
+        if require_team_match and team_score < 0.72:
+            continue
         score = (name_score * 100) + (team_score * 20) + row_match_quality(row)
         if score > best_score:
             best_row = row
